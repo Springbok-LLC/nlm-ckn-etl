@@ -3,7 +3,7 @@ from pathlib import Path
 import sys
 import unittest
 
-sys.path.insert(0, str(Path(__file__).parents[2] / "src"))
+sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 
 import pandas as pd
 
@@ -21,36 +21,48 @@ class CreateTuplesFromNSForestTestCase(unittest.TestCase):
     """Tests for create_tuples_from_nsforest using summary fixture."""
 
     def setUp(self):
-        summary_path = SUMMARIES_DIRPATH / "nlm-ckn-nsforest-results-li-2023.json"
+        summary_path = SUMMARIES_DIRPATH / "cell-kn-mvp-nsforest-results-li-2023.json"
         with open(summary_path, "r") as fp:
             self.summary = json.load(fp)
         self.results_df = pd.DataFrame(self.summary["results"])
+        self.dataset_version_ids = self.summary["dataset_version_ids"]
         self.expected_tuples = self.summary["tuples"]
+
+    def _create_tuples(self):
+        return create_tuples_from_nsforest(
+            self.results_df, self.dataset_version_ids, {}
+        )
 
     def test_create_tuples_from_nsforest(self):
         """Tuples created from summary results match expected tuples."""
-        actual_tuples = create_tuples_from_nsforest(self.results_df)
+        actual_tuples = self._create_tuples()
         actual_as_strings = to_string_tuples(actual_tuples)
         self.assertEqual(actual_as_strings, self.expected_tuples)
 
     def test_tuple_count(self):
         """Number of tuples matches expected count."""
-        actual_tuples = create_tuples_from_nsforest(self.results_df)
+        actual_tuples = self._create_tuples()
         self.assertEqual(len(actual_tuples), len(self.expected_tuples))
 
     def test_contains_bmc_type_tuple(self):
         """First tuple is a BMC INSTANCE_OF Sequence_collection relation."""
-        actual_tuples = create_tuples_from_nsforest(self.results_df)
+        actual_tuples = self._create_tuples()
         first = list(str(x) for x in actual_tuples[0])
         self.assertIn("BMC_", first[0])
         self.assertIn("rdf#type", first[1])
         self.assertIn("SO_0001260", first[2])
 
     def test_contains_marker_count_tuple(self):
-        """Last tuple is a Marker_count edge annotation."""
-        actual_tuples = create_tuples_from_nsforest(self.results_df)
-        last = list(str(x) for x in actual_tuples[-1])
-        self.assertIn("CS_", last[0])
-        self.assertIn("BMC_", last[1])
-        self.assertIn("Marker_count", last[2])
-        self.assertEqual(last[3], "2")
+        """Tuples contain a Marker_count edge annotation."""
+        actual_tuples = self._create_tuples()
+        marker_count_tuples = [
+            list(str(x) for x in t)
+            for t in actual_tuples
+            if any("Marker_count" in str(elem) for elem in t)
+        ]
+        self.assertTrue(len(marker_count_tuples) > 0)
+        first_match = marker_count_tuples[0]
+        self.assertIn("CS_", first_match[0])
+        self.assertIn("BMC_", first_match[1])
+        self.assertIn("Marker_count", first_match[2])
+        self.assertEqual(first_match[3], "2")

@@ -4,7 +4,7 @@ import sys
 import unittest
 from unittest.mock import patch
 
-sys.path.insert(0, str(Path(__file__).parents[2] / "src"))
+sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 
 import pandas as pd
 
@@ -23,14 +23,14 @@ class CreateTuplesFromAuthorToClTestCase(unittest.TestCase):
 
     def setUp(self):
         # Load author-to-cl summary
-        author_to_cl_path = SUMMARIES_DIRPATH / "nlm-ckn-map-author-to-cl-li-2023.json"
+        author_to_cl_path = SUMMARIES_DIRPATH / "cell-kn-mvp-map-author-to-cl-li-2023.json"
         with open(author_to_cl_path, "r") as fp:
             self.author_to_cl_summary = json.load(fp)
         self.results_df = pd.DataFrame(self.author_to_cl_summary["results"])
         self.expected_tuples = self.author_to_cl_summary["tuples"]
 
         # Load cellxgene results from external-api summary
-        external_api_path = SUMMARIES_DIRPATH / "nlm-ckn-external-api-results.json"
+        external_api_path = SUMMARIES_DIRPATH / "cell-kn-mvp-external-api-results.json"
         with open(external_api_path, "r") as fp:
             external_api_summary = json.load(fp)
         self.cellxgene_results = external_api_summary["results"]["cellxgene"]
