@@ -12,7 +12,8 @@ from LoaderUtilities import (
     MIN_CLUSTER_SIZE,
     PURLBASE,
     RDFSBASE,
-    collect_results_sources_data,
+    get_results_sources,
+    get_dataset_file_paths,
     load_results,
     hyphenate,
 )
@@ -40,58 +41,6 @@ def create_tuples_from_author_to_cl(author_to_cl_results, cellxgene_results):
         List of tuples (triples or quadruples) created
     """
     tuples = []
-
-    dataset_version_ids = author_to_cl_results["dataset_version_id"].iloc[0].split("--")
-    pmid_data = get_data_for_pmid(author_to_cl_results["PMID"].iloc[0])
-    for dataset_version_id in dataset_version_ids:
-        # CSD node annotations
-        csd_term = f"CSD_{dataset_version_id}"
-        tuples.append(
-            (
-                URIRef(f"{PURLBASE}/{csd_term}"),
-                URIRef(f"{RDFSBASE}#Citation"),
-                Literal(pmid_data["Citation"]),
-            )
-        )
-        tuples.append(
-            (
-                URIRef(f"{PURLBASE}/{csd_term}"),
-                URIRef(f"{RDFSBASE}#Cell_type"),
-                Literal(str(author_to_cl_results["author_category"].iloc[0])),
-            )
-        )
-
-        # PUB node annotations
-        pub_term = f"PUB_{dataset_version_id}"
-        for key in pmid_data.keys():
-            tuples.append(
-                (
-                    URIRef(f"{PURLBASE}/{pub_term}"),
-                    URIRef(f"{RDFSBASE}#{key.capitalize().replace(' ', '_')}"),
-                    Literal(pmid_data[key]),
-                )
-            )
-        tuples.append(
-            (
-                URIRef(f"{PURLBASE}/{pub_term}"),
-                URIRef(f"{RDFSBASE}#PMID"),
-                Literal(str(author_to_cl_results["PMID"].iloc[0])),
-            )
-        )
-        tuples.append(
-            (
-                URIRef(f"{PURLBASE}/{pub_term}"),
-                URIRef(f"{RDFSBASE}#PMCID"),
-                Literal(str(author_to_cl_results["PMCID"].iloc[0])),
-            )
-        )
-        tuples.append(
-            (
-                URIRef(f"{PURLBASE}/{pub_term}"),
-                URIRef(f"{RDFSBASE}#DOI"),
-                Literal(author_to_cl_results["DOI"].iloc[0]),
-            )
-        )
 
     # Nodes for each cell type or cell set
     for _, row in author_to_cl_results.iterrows():
@@ -362,12 +311,11 @@ def create_tuples_from_author_to_cl(author_to_cl_results, cellxgene_results):
 
 
 def main(summarize=False):
-    """Collect paths to all NSForest results, and author cell set to
-    CL term mappings identified in the results sources, and
-    dataset_version_ids used for creating each NSForest results path
-    in order to create tuples consistent with schema v0.7, and write
-    the result to a JSON file. If summarizing, retain the first row
-    only, and include results in output.
+    """Get results sources directories and patterns, all NSForest results, and
+    mapping, silhouette scores, and dataset summary file paths, CELLxGENE data
+    in order to create tuples consistent with schema v0.7, and write the result
+    to a JSON file. If summarizing, retain the first row only, and include
+    results in output.
 
     Parameters
     ----------
@@ -378,20 +326,13 @@ def main(summarize=False):
     -------
     None
     """
-    # Collect paths to all NSForest results, and author cell set to CL
-    # term mappings identified in the results sources, and load the
-    # CELLxGENE results.
-    (
-        nsforest_paths,
-        _silhouette_paths,
-        author_to_cl_paths,
-        _dataset_version_id_lists,
-        _dataset_version_ids,
-        _cl_terms,
-        _gene_names,
-        _gene_ensembl_ids,
-        _gene_entrez_ids,
-    ) = collect_results_sources_data()
+    # Get results sources directories and patterns, and all NSForest results,
+    # and mapping, silhouette scores, and dataset summary file paths, then load
+    # CELLxGENE data
+    results_sources = get_results_sources()
+    file_paths = get_dataset_file_paths(results_sources)
+    author_to_cl_paths = file_paths["mapping_paths"]
+    nsforest_paths = file_paths["nsforest_paths"]
     with open(CELLXGENE_PATH, "r") as fp:
         cellxgene_results = json.load(fp)
     for author_to_cl_path, nsforest_path in zip(author_to_cl_paths, nsforest_paths):

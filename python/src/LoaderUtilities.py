@@ -10,7 +10,6 @@ from lxml import etree
 import pandas as pd
 import scanpy as sc
 
-from E_Utilities import find_gene_id_for_gene_name
 from OntologyParserLoader import parse_term
 from UniProtIdMapper import (
     submit_id_mapping,
@@ -28,7 +27,8 @@ OBO_IN_OWL_NS = "{http://www.geneontology.org/formats/oboInOwl#}"
 RDF_NS = "{http://www.w3.org/1999/02/22-rdf-syntax-ns#}"
 
 DATA_DIRPATH = Path(__file__).resolve().parents[2] / "data"
-RESULTS_SOURCES_PATH = DATA_DIRPATH / "results-sources-2026-01-06.json"
+# RESULTS_SOURCES_PATH = DATA_DIRPATH / "results-sources-2026-01-06-20260106T085622.json"
+RESULTS_SOURCES_PATH = DATA_DIRPATH / "results-sources-2026-01-06-5611f036a383.json"
 EXTERNAL_DIRPATH = DATA_DIRPATH / "external"
 BIOMART_DIRPATH = EXTERNAL_DIRPATH / "biomart"
 GENE_MAPPING_PATH = BIOMART_DIRPATH / "gene_mapping.csv"
@@ -39,190 +39,238 @@ with open(DATA_DIRPATH / "obo" / "deprecated_terms.txt", "r") as fp:
 MIN_CLUSTER_SIZE = 10
 
 
-def get_cl_terms(author_to_cl_results):
-    """Create a set of clean CL terms from the given author to CL results.
+def get_results_sources(results_sources_path=RESULTS_SOURCES_PATH):
+    """Get results sources directories and patterns from the specified path, or
+    use the default.
 
     Parameters
     ----------
-    author_cl_results : pd.DataFrame
-        DataFrame containing author to CL results
+    results_sources_path : Path
+        Path to results sources file
+
+    Returns
+    -------
+    results_sources : dict
+        Dictionary containing results sources
+    """
+    results_sources = {}
+
+    if results_sources_path.exists():
+        with open(results_sources_path, "r") as fp:
+            results_sources = json.load(fp)
+
+    return results_sources
+
+
+def get_cellxgene_harvester_data(results_sources):
+    """Get and concatenate cellxgene-harvester data from each results source.
+
+    Parameters
+    ----------
+    results_sources : dict
+        Dictionary containing list of results_sources
+
+    Returns
+    -------
+    harvester_data : pd.DataFrame
+        Dataframe containing the concatenated cellxgene-harvester data
+    """
+    harvester_data = pd.DataFrame()
+
+    harvester_paths = []
+    for results_source in results_sources:
+        print(f"Finding cellxgene-harvester data in {results_source['results_dir']}")
+        harvester_paths.extend(
+            (DATA_DIRPATH / results_source["results_dir"]).rglob(
+                results_source["harvester_pattern"]
+            )
+        )
+
+    if len(harvester_paths) > 0:
+        harvester_data = pd.concat([pd.read_csv(p) for p in harvester_paths])
+
+    return harvester_data
+
+
+def get_dataset_file_paths(results_sources):
+    """Get all paths to NSForest results, and mapping, silhouette scores, and
+    dataset summary file paths for each results_source. Note that file paths
+    are unique only if including the first parent as well as the file name.
+
+    Parameters
+    ----------
+    results_sources : dict
+        Dictionary containing list of results_sources
+
+    Returns
+    -------
+    file_paths:
+        Dictionary containing lists of file paths
+    """
+    file_paths = {}
+    file_paths["nsforest_paths"] = []
+    file_paths["mapping_paths"] = []
+    file_paths["scores_paths"] = []
+    file_paths["summary_paths"] = []
+
+    for results_source in results_sources:
+        results_dir = results_source["results_dir"]
+
+        nsforest_pattern = results_source["nsforest_pattern"]
+        nsforest_paths = list((DATA_DIRPATH / results_dir).rglob(nsforest_pattern))
+
+        mapping_substrs = results_source["mapping_substrs"]
+        mapping_paths = [
+            list(
+                (DATA_DIRPATH / results_dir).rglob(
+                    "/".join([p.parent.stem, p.name]).replace(
+                        mapping_substrs[0], mapping_substrs[1]
+                    )
+                )
+            )
+            for p in nsforest_paths
+        ]
+
+        scores_substrs = results_source["scores_substrs"]
+        scores_paths = [
+            list(
+                (DATA_DIRPATH / results_dir).rglob(
+                    "/".join([p.parent.stem, p.name]).replace(
+                        scores_substrs[0], scores_substrs[1]
+                    )
+                )
+            )
+            for p in nsforest_paths
+        ]
+
+        summary_substrs = results_source["summary_substrs"]
+        summary_paths = [
+            list(
+                (DATA_DIRPATH / results_dir).rglob(
+                    "/".join([p.parent.stem, p.name]).replace(
+                        summary_substrs[0], summary_substrs[1]
+                    )
+                )
+            )
+            for p in nsforest_paths
+        ]
+
+        file_paths["nsforest_paths"].extend(nsforest_paths)
+        file_paths["mapping_paths"].extend(mapping_paths)
+        file_paths["scores_paths"].extend(scores_paths)
+        file_paths["summary_paths"].extend(summary_paths)
+
+    return file_paths
+
+
+def get_dataset_version_id_lists(file_paths):
+    """Get dataset version id lists for each results source, first from the
+    dataset summary file, or if not available, from the author to CL mapping
+    file, or if not available, from the NSForest file name. Discovery of a
+    dataset version id is not assured.
+
+    Parameters
+    ----------
+    file_paths:
+        Dictionary containing lists of file paths
+
+    Returns
+    -------
+    dataset_version_id_lists: list(list)
+        List of the dataset version identifier listss corresponding to the
+        datasets used to generate each NSForest results path
+    """
+    dataset_version_id_lists = []
+
+    for summary_path, mapping_path, nsforest_path in zip(
+        file_paths["summary_paths"],
+        file_paths["mapping_paths"],
+        file_paths["nsforest_paths"],
+    ):
+        if len(summary_path) == 1:
+            dataset_version_ids = [
+                pd.read_csv(summary_path[0])["h5ad_url"][0].split("/")[-1].split(".")[0]
+            ]
+
+        elif len(mapping_path) == 1:
+            dataset_version_ids = (
+                pd.read_csv(mapping_path[0]).loc[0, "dataset_version_id"].split("--")
+            )
+
+        else:
+            match = re.search(
+                r"_([0-9a-z]{8}-[0-9a-z]{4}-[0-9a-z]{4}-[0-9a-z]{4}-[0-9a-z]{12})_",
+                nsforest_path.name,
+            )
+            if match:
+                dataset_version_ids = [match.group(1)]
+            else:
+                dataset_version_ids = []
+
+        dataset_version_id_lists.append(dataset_version_ids)
+
+    return dataset_version_id_lists
+
+
+def get_unique_gene_names_and_ids(nsforest_paths):
+    """Get unique gene names, and Ensembl and Entrez ids from all NSForest
+    results.
+
+    Parameters
+    ----------
+    nsforest_paths : list(Path)
+        List of NSForest results paths
+
+    Returns:
+    gene_data : dict
+        Dictionary contains names and ids
+    """
+    gene_names = set()
+    for nsforest_path in nsforest_paths:
+        print(f"Loading NSForest results from {nsforest_path}")
+        nsforest_results = load_results(nsforest_path).sort_values(
+            "clusterName", ignore_index=True
+        )
+        gene_names |= set(collect_unique_gene_names(nsforest_results))
+
+    gene_ensembl_ids = collect_unique_gene_ensembl_ids(gene_names)
+    gene_entrez_ids = collect_unique_gene_entrez_ids(gene_names)
+
+    return {
+        "gene_names": gene_names,
+        "gene_ensembl_ids": gene_ensembl_ids,
+        "gene_entrez_ids": gene_entrez_ids,
+    }
+
+
+def get_cl_terms(author_to_cl_paths):
+    """Create a set of clean CL terms from the given author to CL paths.
+
+    Parameters
+    ----------
+    author_to_cl_pahts : list(str)
+        List containing paths to author to CL mapping
 
     Returns
     -------
     set(str)
         Set of clean CL terms
     """
-    return set(
-        author_to_cl_results.loc[
-            author_to_cl_results["cell_ontology_id"].str.contains("CL"),
-            "cell_ontology_id",
-        ]
-        .str.replace("http://purl.obolibrary.org/obo/", "")
-        .str.replace("https://purl.obolibrary.org/obo/", "")
-    )
-
-
-def collect_results_sources_data():
-    """Collect paths to all NSForest results, silhouette scores, and
-    author cell set to CL term mappings identified in the results
-    sources. Collect all dataset_version_ids used for creating each
-    NSForest results path. Collect the unique gene names, Ensembl
-    identifiers, and Entrez identifiers corresponding to all NSForet
-    results.
-
-    Parameters
-    ----------
-    None
-
-    Returns
-    -------
-    nsforest_paths: list(Path)
-        List of paths to all NSForest results files
-    silhouette_paths: list(Path)
-        List of paths to all silhouette scores files
-    author_to_cl_paths: list(Path | None)
-        List of paths to all author cell set to CL term mapping files
-    dataset_version_id_lists: list(list)
-        List of the dataset version identifier listss corresponding to the
-        datasets used to generate each NSForest results path
-    dataset_version_ids: list(str)
-        List of the dataset version identifiers corresponding to the
-        datasets used to generate all NSForest results paths
-    gene_names: list(str)
-        List of gene names found in all NSForest results
-    gene_ensembl_ids: list(str)
-        List of Ensembl identifiers coooresponding to the gene names
-        found in all NSForest results
-    gene_entrez_ids: list(str)
-        List of Entrez identifiers coooresponding to the gene names
-        found in all NSForest results
-    """
-    nsforest_paths = []
-    silhouette_paths = []
-    author_to_cl_paths = []
-    dataset_version_id_lists = []
-    dataset_version_ids = []
     cl_terms = set()
-    gene_names = set()
-    gene_ensembl_ids = set()
-    gene_entrez_ids = set()
 
-    print(f"Loading results sources from {RESULTS_SOURCES_PATH}")
-    with open(RESULTS_SOURCES_PATH, "r") as fp:
-        results_sources = json.load(fp)
+    for author_to_cl_path in author_to_cl_paths:
+        author_to_cl_results = load_results(author_to_cl_path)
 
-    for results_source in results_sources:
-        print(f"Finding NSForest results in {results_source['nsforest_dirpath']}")
-        _nsforest_paths = [
-            Path(p).resolve()
-            for p in glob(
-                str(
-                    Path(results_source["nsforest_dirpath"])
-                    / results_source["nsforest_pattern"]
-                )
-            )
-        ]
-        nsforest_paths.extend(_nsforest_paths)
+        cl_terms.union(
+            author_to_cl_results.loc[
+                author_to_cl_results["cell_ontology_id"].str.contains("CL"),
+                "cell_ontology_id",
+            ]
+            .str.replace("http://purl.obolibrary.org/obo/", "")
+            .str.replace("https://purl.obolibrary.org/obo/", "")
+        )
 
-        # Collect paths to silhouette scores and author cell set to CL
-        # term mappings, dataset version identifiers and unique gene
-        # names considering all NSForest results
-        for _nsforest_path in _nsforest_paths:
-            print(
-                f"Finding silhouette scores and author cell set to CL term mapping paths, and dataset version id for {_nsforest_path}"
-            )
-            silhouette_path = None
-            author_to_cl_path = None
-            dataset_version_id_list = []
-            match = re.search(
-                results_source["identity_pattern"], str(_nsforest_path.name)
-            )
-            if match:
-                # TODO: Put this information in the results_source.json file?
-                if len(match.groups()) == 2:
-                    tissue = ""
-                    author = match.group(1)
-                    year = match.group(2)
-
-                elif len(match.groups()) == 3:
-                    tissue = match.group(1)
-                    author = match.group(2)
-                    year = match.group(3)
-
-                else:
-                    raise Exception("Unexpected number of groups")
-
-                # Find path to silhouette scores
-                silhouette_path = glob(
-                    str(
-                        Path(results_source["silhouette_dirpath"])
-                        / results_source["silhouette_pattern"].format(
-                            tissue=tissue, author=author, year=year
-                        )
-                    )
-                )
-                if len(silhouette_path) != 0:
-                    silhouette_path = Path(silhouette_path[0]).resolve()
-
-                # Find path to author cell set to CL term mappings
-                author_to_cl_path = glob(
-                    str(
-                        _nsforest_path.parent
-                        / results_source["mapping_pattern"].format(
-                            tissue=tissue, author=author, year=year
-                        )
-                    )
-                )
-                if len(author_to_cl_path) != 0:
-                    author_to_cl_path = Path(author_to_cl_path[0]).resolve()
-
-                    # Load author cell set to CL term mapping, and assign dataset
-                    # version identifier
-                    print(
-                        f"Loading author cell set to CL term mapping from {author_to_cl_path}"
-                    )
-                    author_to_cl_results = load_results(author_to_cl_path)
-                    dataset_version_id_list = author_to_cl_results[
-                        "dataset_version_id"
-                    ][0].split("--")
-                    cl_terms = cl_terms.union(get_cl_terms(author_to_cl_results))
-
-                else:
-                    # Parse dataset identifier within NSForest results
-                    # path, and assign
-                    match = re.search(
-                        "([0-9a-z]{8}-[0-9a-z]{4}-[0-9a-z]{4}-[0-9a-z]{4}-[0-9a-z]{12})",
-                        str(_nsforest_path.name),
-                    )
-                    dataset_version_id_list = [match.group(1)]
-
-            silhouette_paths.append(silhouette_path)
-            author_to_cl_paths.append(author_to_cl_path)
-            dataset_version_id_lists.append(dataset_version_id_list)
-            dataset_version_ids.extend(dataset_version_id_list)
-
-            # Collect unique gene names
-            print(f"Loading NSForest results from {_nsforest_path}")
-            nsforest_results = load_results(_nsforest_path).sort_values(
-                "clusterName", ignore_index=True
-            )
-            gene_names |= set(collect_unique_gene_names(nsforest_results))
-
-    # Collect unique gene identifiers
-    gene_ensembl_ids = collect_unique_gene_ensembl_ids(gene_names)
-    gene_entrez_ids = collect_unique_gene_entrez_ids(gene_names)
-
-    return (
-        nsforest_paths,
-        silhouette_paths,
-        author_to_cl_paths,
-        dataset_version_id_lists,
-        dataset_version_ids,
-        cl_terms,
-        gene_names,
-        gene_ensembl_ids,
-        gene_entrez_ids,
-    )
+    return cl_terms
 
 
 def get_uuid():
@@ -986,3 +1034,26 @@ def get_values_or_none(data, list_key, value_keys):
             else:
                 values += ", " + value
     return values
+
+
+def main():
+
+    results_sources_path = (
+        DATA_DIRPATH / "results-sources-2026-01-06-20260106T085622.json"
+    )
+    # results_sources_path = DATA_DIRPATH / "results-sources-2026-01-06-5611f036a383.json"
+
+    with open(results_sources_path, "r") as fp:
+        results_sources = json.load(fp)
+
+    harvester_data = get_cellxgene_harvester_data(results_sources)
+
+    file_paths = get_dataset_file_paths(results_sources)
+
+    dataset_version_id_lists = get_dataset_version_id_lists(file_paths)
+
+    return results_sources, harvester_data, file_paths, dataset_version_id_lists
+
+
+if __name__ == "__main__":
+    results_sources, harvester_data, file_paths, dataset_version_id_lists = main()

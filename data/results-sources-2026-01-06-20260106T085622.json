@@ -1,0 +1,36 @@
+[
+  {
+    "results_dir": "results-2026-01-06",
+    "harvester_pattern": "*_harvester_final.csv",
+    "nsforest_pattern": "*-nsforest-results-*.csv",
+    "mapping_substrs": [
+      "-nsforest-results-",
+      "-map-author-to-cl-"
+    ],
+    "scores_substrs": [
+      "-nsforest-results-",
+      ""
+    ],
+    "summary_substrs": [
+      "-nsforest-results-",
+      ""
+    ]
+  },
+  {
+    "results_dir": "results-20260106T085622",
+    "harvester_pattern": "*_harvester_final.csv",
+    "nsforest_pattern": "*_results.csv",
+    "mapping_substrs": [
+      "_results.csv",
+      "_mapping.csv"
+    ],
+    "scores_substrs": [
+      "_results.csv",
+      "_silhouette_scores.csv"
+    ],
+    "summary_substrs": [
+      "_results.csv",
+      ""
+    ]
+  }
+]

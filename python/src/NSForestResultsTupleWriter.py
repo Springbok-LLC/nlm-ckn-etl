@@ -9,7 +9,9 @@ from LoaderUtilities import (
     MIN_CLUSTER_SIZE,
     PURLBASE,
     RDFSBASE,
-    collect_results_sources_data,
+    get_dataset_file_paths,
+    get_dataset_version_id_lists,
+    get_results_sources,
     hyphenate,
     load_results,
 )
@@ -298,10 +300,11 @@ def create_tuples_from_nsforest(
 
 
 def main(summarize=False):
-    """Laod NSForest results identified in the results sources, create
-    tuples consistent with schema v0.7, and write the result to a JSON
-    file. If summarizing, retain the first row only, and include
-    results in output.
+    """Get results sources directories and patterns, all NSForest results, and
+    mapping, silhouette scores, and dataset summary file paths, and dataset
+    version id lists in order to create tuples consistent with schema v0.7, and
+    write the result to a JSON file. If summarizing, retain the first row only,
+    and include results in output.
 
     Parameters
     ----------
@@ -312,23 +315,14 @@ def main(summarize=False):
     -------
     None
     """
-
-    # Collect paths to all NSForest results, and author cell set to CL
-    # term mappings identified in the results sources. Collect the
-    # dataset_version_ids used for creating the NSForest results
-    # paths. Collect the unique gene names, Ensembl identifiers, and
-    # Entrez identifiers corresponding to all NSForet results.
-    (
-        nsforest_paths,
-        silhouette_paths,
-        _author_to_cl_paths,
-        dataset_version_id_lists,
-        _dataset_version_ids,
-        _cl_terms,
-        _gene_names,
-        _gene_ensembl_ids,
-        _gene_entrez_ids,
-    ) = collect_results_sources_data()
+    # Get results sources directories and patterns, all NSForest results, and
+    # mapping, silhouette scores, and dataset summary file paths, and dataset
+    # version id lists, and load CELLxGENE data
+    results_sources = get_results_sources()
+    file_paths = get_dataset_file_paths(results_sources)
+    nsforest_paths = file_paths["nsforest_paths"]
+    silhouette_paths = file_paths["silhouette_paths"]
+    dataset_version_id_lists = get_dataset_version_id_lists(file_paths)
     with open(CELLXGENE_PATH, "r") as fp:
         cellxgene_results = json.load(fp)
     for nsforest_path, silhouette_path, dataset_version_ids in zip(
