@@ -157,7 +157,7 @@ def create_tuples_from_cellxgene(cellxgene_results, summarize=False):
             "Link_to_CELLxGENE_collection",
         ]
         for key in keys:
-            value = results[key]
+            value = results[dataset_version_id][key]
             if isinstance(value, str):
                 value = value.replace("http://", "").replace("https://", "")
             tuples.append(
@@ -185,7 +185,7 @@ def create_tuples_from_cellxgene(cellxgene_results, summarize=False):
             "Dataset_version_ID",
         ]
         for key in keys:
-            value = results[key]
+            value = results[dataset_version_id][key]
             if isinstance(value, str):
                 value = value.replace("http://", "").replace("https://", "")
             tuples.append(

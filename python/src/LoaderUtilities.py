@@ -171,13 +171,13 @@ def get_dataset_version_id_lists(file_paths):
 
     Parameters
     ----------
-    file_paths:
+    file_paths: dict
         Dictionary containing lists of file paths
 
     Returns
     -------
-    dataset_version_id_lists: list(list)
-        List of the dataset version identifier listss corresponding to the
+    dataset_version_id_lists : list(list)
+        List of the dataset version identifier lists corresponding to the
         datasets used to generate each NSForest results path
     """
     dataset_version_id_lists = []

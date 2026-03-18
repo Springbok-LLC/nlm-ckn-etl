@@ -13,6 +13,7 @@ from LoaderUtilities import (
     RDFSBASE,
     get_results_sources,
     get_dataset_file_paths,
+    get_dataset_version_id_lists,
     load_results,
     hyphenate,
 )
@@ -20,7 +21,9 @@ from LoaderUtilities import (
 TUPLES_DIRPATH = Path(__file__).parents[2] / "data" / "tuples"
 
 
-def create_tuples_from_author_to_cl(author_to_cl_results, cellxgene_results):
+def create_tuples_from_author_to_cl(
+    author_to_cl_results, dataset_version_ids, cellxgene_results
+):
     """Creates tuples from manual author cell set to CL term mapping
     consistent with schema v0.7. Exclude clusters smaller than the
     minimum size. Create a cell set dataset for "--" separated lists
@@ -30,6 +33,9 @@ def create_tuples_from_author_to_cl(author_to_cl_results, cellxgene_results):
     ----------
     author_to_cl_results : pd.DataFrame
         DataFrame containing author to CL results
+    dataset_version_ids: list(str)
+        List of the dataset version identifiers corresponding to the
+        datasets used to generate the NSForest results
     cellxgene_results : dict
         Dictionaries containing cellxgene results dictionaries keyed
         by dataset_version_id
@@ -55,7 +61,7 @@ def create_tuples_from_author_to_cl(author_to_cl_results, cellxgene_results):
         if cluster_size < MIN_CLUSTER_SIZE:
             continue
         cs_term = f"CS_{author_cell_set}-{uuid}"
-        bmc_term = f"BMC_{uuid}"
+        # bmc_term = f"BMC_{uuid}"
         bgs_term = f"BGS_{uuid}"
 
         # Cell_type_Class, PART_OF, Anatomical_structure_Class
@@ -332,14 +338,18 @@ def main(summarize=False):
     file_paths = get_dataset_file_paths(results_sources)
     author_to_cl_paths = file_paths["mapping_paths"]
     nsforest_paths = file_paths["nsforest_paths"]
+    dataset_version_id_lists = get_dataset_version_id_lists(file_paths)
     with open(CELLXGENE_PATH, "r") as fp:
         cellxgene_results = json.load(fp)
-    for author_to_cl_path, nsforest_path in zip(author_to_cl_paths, nsforest_paths):
+    for author_to_cl_path, nsforest_path, dataset_version_id_list in zip(
+        author_to_cl_paths, nsforest_paths, dataset_version_id_lists
+    ):
         if author_to_cl_path == []:
             print(
                 f"No author cell set to CL term map for NSForest results {nsforest_path}"
             )
             continue
+        author_to_cl_path = author_to_cl_path[0]
 
         # Load author cell set to CL term mapping, dropping "uuid"
         # column in order to merge "uuid" column from NSForest results
@@ -375,7 +385,9 @@ def main(summarize=False):
 
         print(f"Creating tuples from {author_to_cl_path}")
         author_to_cl_tuples = create_tuples_from_author_to_cl(
-            author_to_cl_results, cellxgene_results
+            author_to_cl_results,
+            dataset_version_id_list,
+            cellxgene_results,
         )
         if summarize:
             output_dirpath = TUPLES_DIRPATH / "summaries"

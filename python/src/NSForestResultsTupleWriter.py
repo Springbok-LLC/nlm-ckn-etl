@@ -29,12 +29,12 @@ def create_tuples_from_nsforest(
     ----------
     nsforest_results : pd.DataFrame
         DataFrame containing NSForest results
-    cellxgene_results : dict
-        Dictionaries containing cellxgene results dictionaries keyed
-        by dataset_version_id
     dataset_version_ids: list(str)
         List of the dataset version identifiers corresponding to the
         datasets used to generate the NSForest results
+    cellxgene_results : dict
+        Dictionaries containing cellxgene results dictionaries keyed
+        by dataset_version_id
 
     Returns
     -------
