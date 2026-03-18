@@ -50,10 +50,10 @@ def create_tuples_from_nsforest(
         cluster_size = row["clusterSize"]
         if cluster_size < MIN_CLUSTER_SIZE:
             continue
-        if "median_silhouette" in row:
-            median_silhouette = row["median_silhouette"]
+        if "silhouette_score" in row:
+            silhouette_score = row["silhouette_score"]
         else:
-            median_silhouette = None
+            silhouette_score = None
         binary_genes = ast.literal_eval(row["binary_genes"])
         nsforest_markers = ast.literal_eval(row["NSForest_markers"])
         cs_term = f"CS_{cluster_name}-{uuid}"
@@ -163,12 +163,12 @@ def create_tuples_from_nsforest(
                 ),
             ]
         )
-        if median_silhouette:
+        if silhouette_score:
             tuples.append(
                 (
                     URIRef(f"{PURLBASE}/{cs_term}"),
-                    URIRef(f"{RDFSBASE}#Median_silhouette_score"),
-                    Literal(str(median_silhouette)),
+                    URIRef(f"{RDFSBASE}#Silhouette_score"),
+                    Literal(str(silhouette_score)),
                 ),
             )
 
@@ -321,12 +321,12 @@ def main(summarize=False):
     results_sources = get_results_sources()
     file_paths = get_dataset_file_paths(results_sources)
     nsforest_paths = file_paths["nsforest_paths"]
-    silhouette_paths = file_paths["silhouette_paths"]
+    scores_path = file_paths["scores_paths"]
     dataset_version_id_lists = get_dataset_version_id_lists(file_paths)
     with open(CELLXGENE_PATH, "r") as fp:
         cellxgene_results = json.load(fp)
-    for nsforest_path, silhouette_path, dataset_version_ids in zip(
-        nsforest_paths, silhouette_paths, dataset_version_id_lists
+    for nsforest_path, score_path, dataset_version_ids in zip(
+        nsforest_paths, scores_path, dataset_version_id_lists
     ):
         # Load NSForest results
         nsforest_results = load_results(nsforest_path).sort_values(
@@ -335,17 +335,17 @@ def main(summarize=False):
         if summarize:
             nsforest_results = nsforest_results.head(1)
 
-        if silhouette_path != []:
+        if score_path != []:
             # Load silhouette scores
             cluster_header = nsforest_results.loc[0, "cluster_header"]
-            silhouette_scores = load_results(silhouette_path).sort_values(
+            silhouette_scores = load_results(score_path[0]).sort_values(
                 cluster_header, ignore_index=True
             )
 
             # Merge silhouette scores with NSForest results since author
             # cell sets may not align exactly
             nsforest_results = nsforest_results.merge(
-                silhouette_scores[[cluster_header, "median_silhouette"]].copy(),
+                silhouette_scores[[cluster_header, "silhouette_score"]].copy(),
                 left_on="clusterName",
                 right_on=cluster_header,
             )

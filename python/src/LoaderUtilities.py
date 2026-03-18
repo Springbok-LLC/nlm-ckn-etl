@@ -259,7 +259,9 @@ def get_cl_terms(author_to_cl_paths):
     cl_terms = set()
 
     for author_to_cl_path in author_to_cl_paths:
-        author_to_cl_results = load_results(author_to_cl_path)
+        if author_to_cl_path == []:
+            continue
+        author_to_cl_results = load_results(author_to_cl_path[0])
 
         cl_terms.union(
             author_to_cl_results.loc[

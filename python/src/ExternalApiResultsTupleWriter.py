@@ -1091,7 +1091,7 @@ def main(summarize=False):
     # set of clean CL terms.
     results_sources = get_results_sources()
     file_paths = get_dataset_file_paths(results_sources)
-    cl_terms = get_cl_terms(file_paths["author_to_cl_paths"])
+    cl_terms = get_cl_terms(file_paths["mapping_paths"])
 
     print(f"Creating tuples from {CELLXGENE_PATH}")
     with open(CELLXGENE_PATH, "r") as fp:
