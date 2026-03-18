@@ -5,7 +5,6 @@ from urllib.parse import urlparse
 
 from rdflib.term import Literal, URIRef
 
-from E_Utilities import get_data_for_pmid
 from ExternalApiResultsFetcher import CELLXGENE_PATH
 from LoaderUtilities import (
     DEPRECATED_TERMS,
