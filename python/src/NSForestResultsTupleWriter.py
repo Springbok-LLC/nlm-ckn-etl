@@ -51,7 +51,7 @@ def create_tuples_from_nsforest(
         if cluster_size < MIN_CLUSTER_SIZE:
             continue
         if "silhouette_score" in row:
-            silhouette_score = row["silhouette_score"]
+            silhouette_score = row["median"]
         else:
             silhouette_score = None
         binary_genes = ast.literal_eval(row["binary_genes"])
@@ -345,7 +345,7 @@ def main(summarize=False):
             # Merge silhouette scores with NSForest results since author
             # cell sets may not align exactly
             nsforest_results = nsforest_results.merge(
-                silhouette_scores[[cluster_header, "silhouette_score"]].copy(),
+                silhouette_scores[[cluster_header, "median"]].copy(),
                 left_on="clusterName",
                 right_on=cluster_header,
             )
