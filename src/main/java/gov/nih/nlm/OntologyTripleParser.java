@@ -36,17 +36,17 @@ public class OntologyTripleParser {
             "http://www.geneontology.org/formats/oboInOwl#");
 
     /**
-     * Test whether a triple is valid by checking that the subject contains the root namespace, and optionally that
-     * any named object also contains the root namespace.
+     * Test whether a triple is valid by checking that the subject contains the root namespace, and optionally that any
+     * named object also contains the root namespace.
      *
      * @param triple     Triple to validate
      * @param rootNS     Root namespace to check against
-     * @param testObject If true, also validate that named objects contain the root namespace
+     * @param testObjectInRootNS If true, also validate that named objects contain the root namespace
      * @return true if the triple is valid
      */
-    public static boolean isValidTriple(Triple triple, String rootNS, boolean testObject) {
+    public static boolean isValidTriple(Triple triple, String rootNS, boolean testObjectInRootNS) {
         boolean subjectIsValid = triple.getSubject().toString().contains(rootNS);
-        if (testObject) {
+        if (testObjectInRootNS) {
             boolean objectIsNamedResource = triple.getObject().isURI();
             boolean objectContainsRootNS = triple.getObject().toString().contains(rootNS);
             return subjectIsValid && (!objectIsNamedResource || objectContainsRootNS);

@@ -56,7 +56,7 @@ public class PhenotypeGraphBuilder {
         aqlQuerySets.add(getQuerySetInTwo(graphName, "BMC", "BGS"));
         aqlQuerySets.add(getQuerySetInTwo(graphName, "CL", "CSD"));
         aqlQuerySets.add(getQuerySetInTwo(graphName, "CL", "GS"));
-        aqlQuerySets.add(getQuerySetInTwo(graphName, "CL", "PR"));
+        // aqlQuerySets.add(getQuerySetInTwo(graphName, "CL", "PR"));
         aqlQuerySets.add(getQuerySetInTwo(graphName, "CSD", "PUB"));
         aqlQuerySets.add(getQuerySetInTwo(graphName, "UBERON", "CHEBI"));
         aqlQuerySets.add(getQuerySetInTwo(graphName, "UBERON", "CSD"));
@@ -76,6 +76,7 @@ public class PhenotypeGraphBuilder {
 
         aqlQuerySets.add(getQuerySetInThree(graphName, "CL", "GO", "NCBITaxon"));
         aqlQuerySets.add(getQuerySetInThree(graphName, "CL", "GS", "BMC"));
+        aqlQuerySets.add(getQuerySetInThree(graphName, "CL", "GS", "PR"));
         aqlQuerySets.add(getQuerySetInThree(graphName, "CL", "GS", "UBERON"));
 
         aqlQuerySets.add(getQuerySetInThreeWithHierarchy(graphName,
