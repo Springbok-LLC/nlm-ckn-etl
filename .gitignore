@@ -45,10 +45,12 @@ build/
 .poetry/
 .pybiomart.sqlite
 .pytest_cache/
+.scratch/
 .tern-port
 .venv/
 .zshenv
 __pycache__/
+CLAUDE.md
 # data
 docs/java/
 log/

@@ -2,7 +2,7 @@ from pathlib import Path
 import sys
 import unittest
 
-sys.path.insert(0, str(Path(__file__).parents[2] / "src"))
+sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 
 from E_Utilities import find_names_or_none
 

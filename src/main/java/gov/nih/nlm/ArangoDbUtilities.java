@@ -13,6 +13,9 @@ import com.arangodb.model.arangosearch.ArangoSearchCreateOptions;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 
+import com.arangodb.entity.CollectionEntity;
+import com.arangodb.entity.CollectionType;
+
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -209,6 +212,59 @@ public class ArangoDbUtilities {
             options.dropCollections(true);
             graph.edgeCollection(edgeName).remove(options);
         }
+    }
+
+    /**
+     * Print a summary of document counts for each vertex and edge
+     * collection in the specified database.
+     *
+     * @param db Database to summarize
+     * @return Map with "vertex" and "edge" keys, each mapping collection
+     *         names to document counts (sorted alphabetically)
+     */
+    public Map<String, Map<String, Long>> printSummary(ArangoDatabase db) {
+        Collection<CollectionEntity> collections = db.getCollections();
+        List<CollectionEntity> vertexCollections = new ArrayList<>();
+        List<CollectionEntity> edgeCollections = new ArrayList<>();
+        for (CollectionEntity collection : collections) {
+            if (collection.getIsSystem()) {
+                continue;
+            }
+            if (collection.getType() == CollectionType.EDGES) {
+                edgeCollections.add(collection);
+            } else {
+                vertexCollections.add(collection);
+            }
+        }
+        vertexCollections.sort(Comparator.comparing(CollectionEntity::getName));
+        edgeCollections.sort(Comparator.comparing(CollectionEntity::getName));
+
+        Map<String, Long> vertexCounts = new LinkedHashMap<>();
+        System.out.println("Vertex collections:");
+        long vertexTotal = 0;
+        for (CollectionEntity collection : vertexCollections) {
+            long count = db.collection(collection.getName()).count().getCount();
+            vertexTotal += count;
+            vertexCounts.put(collection.getName(), count);
+            System.out.printf("  %-40s %,d%n", collection.getName(), count);
+        }
+        System.out.printf("  %-40s %,d%n", "TOTAL", vertexTotal);
+
+        Map<String, Long> edgeCounts = new LinkedHashMap<>();
+        System.out.println("Edge collections:");
+        long edgeTotal = 0;
+        for (CollectionEntity collection : edgeCollections) {
+            long count = db.collection(collection.getName()).count().getCount();
+            edgeTotal += count;
+            edgeCounts.put(collection.getName(), count);
+            System.out.printf("  %-40s %,d%n", collection.getName(), count);
+        }
+        System.out.printf("  %-40s %,d%n", "TOTAL", edgeTotal);
+
+        Map<String, Map<String, Long>> summary = new LinkedHashMap<>();
+        summary.put("vertex", vertexCounts);
+        summary.put("edge", edgeCounts);
+        return summary;
     }
 
     /**

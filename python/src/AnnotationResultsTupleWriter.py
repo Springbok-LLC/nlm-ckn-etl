@@ -64,7 +64,6 @@ def write_triple_components(annotation_results, terms, components_path):
 
     # Write triple component descriptions
     with open(components_path, "w") as f:
-
         f.write("\n=== Subjects and their CURIE\n\n")
         for subject_type in subject_types:
             f.write(

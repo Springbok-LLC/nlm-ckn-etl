@@ -12,11 +12,11 @@ from E_Utilities import get_data_for_gene_id
 from OpenTargetsGGetQueries import gget_queries
 from LoaderUtilities import (
     EXTERNAL_DIRPATH,
-    load_results,
-    collect_results_sources_data,
-    collect_unique_gene_ensembl_ids,
-    collect_unique_gene_entrez_ids,
-    collect_unique_gene_names,
+    get_cellxgene_harvester_data,
+    get_dataset_file_paths,
+    get_dataset_version_id_lists,
+    get_results_sources,
+    get_unique_gene_names_and_ids,
     get_value_or_none,
     get_values_or_none,
 )
@@ -52,15 +52,14 @@ UNIPROT_PATH = EXTERNAL_DIRPATH / "uniprot.json"
 HUBMAP_DIRPATH = EXTERNAL_DIRPATH / "hubmap"
 
 
-def get_cellxgene_metadata(dataset_version_ids, force=False):
-    """Use the CELLxGENE curation API to fetch metadata for the
-    dataset version ids specified.
+def get_cellxgene_metadata(dataset_version_id_lists, force=False):
+    """Use the CELLxGENE curation API to fetch metadata for the dataset version
+    ids specified.
 
     Parameters
     ----------
-    dataset_version_ids: list(str)
-        List of the dataset version identifiers corresponding to the
-        datasets used to generate each NSForest results path
+    dataset_version_id_lists: list(list)
+        List of the dataset version identifier lists corresponding to the
         datasets used to generate each NSForest results path
     force : bool
         Flag to force fetching, or not
@@ -68,47 +67,51 @@ def get_cellxgene_metadata(dataset_version_ids, force=False):
     Returns
     -------
     cellxgene_results : dict
-         Dictionaries containing cellxgene results keyed by
+         Dictionaries containing CELLxGENE dataset metadata results keyed by
          dataset_version_id
     """
     # Create, or load cellxgene results
     if not CELLXGENE_PATH.exists() or force:
-
-        # Create results
-
+        print("Creating cellxgene results")
         cellxgene_results = {}
 
-        print("Creating cellxgene results")
+        # Collect dataset version ids
+        dataset_version_ids = []
+        for dataset_version_id_list in dataset_version_id_lists:
+            dataset_version_ids.extend(dataset_version_id_list)
+
+        # Get dataset metadata
         base_url = "https://api.cellxgene.cziscience.com/curation/v1"
         for dataset_version_id in dataset_version_ids:
-
             dataset_results = {}
             dataset_url = f"{base_url}/dataset_versions/{dataset_version_id}"
             response = requests.get(dataset_url)
             if response.status_code == 200:
                 dataset_json = response.json()
 
+                # Get collection metadata
+                collection_id = get_value_or_none(dataset_json, ["collection_id"])
+                if collection_id:
+                    collection_url = f"{base_url}/collections/{collection_id}"
+                    response = requests.get(collection_url)
+                    if response.status_code == 200:
+                        collection_json = response.json()
+
                 print(
                     f"Assigning cellxgene metadata for dataset_version_id {dataset_version_id}"
                 )
-                dataset_results["Dataset_version_ID"] = dataset_version_id
-                dataset_results["Dataset_ID"] = get_value_or_none(
-                    dataset_json, ["dataset_id"]
-                )
-                dataset_results["Collection_version_ID"] = get_value_or_none(
-                    dataset_json, ["collection_version_id"]
-                )
-                dataset_results["Collection_ID"] = get_value_or_none(
-                    dataset_json, ["collection_id"]
+                first_author = collection_json["publisher_metadata"]["authors"][0][
+                    "family"
+                ]
+                published_year = collection_json["publisher_metadata"]["published_year"]
+                journal = collection_json["publisher_metadata"]["journal"]
+                dataset_results["Citation"] = (
+                    f"{first_author} ({published_year}) {journal}"
                 )
                 dataset_results["Link_to_publication"] = None
                 dataset_results["Link_to_CELLxGENE_collection"] = None
                 citation = get_value_or_none(dataset_json, ["citation"])
                 if not citation:
-                    collection_url = f"{base_url}/collections/{dataset_results['Collection_ID']}/datasets/{dataset_results['Dataset_ID']}"
-                    response = requests.get(collection_url)
-                    if response.status_code == 200:
-                        collection_json = response.json()
                     citation = get_value_or_none(collection_json, ["citation"])
                 if citation:
                     m = re.search(r"Publication:\s*(\S*)\s*Dataset Version:", citation)
@@ -135,11 +138,19 @@ def get_cellxgene_metadata(dataset_version_ids, force=False):
                 dataset_results["Disease_status"] = get_values_or_none(
                     dataset_json, "disease", ["label"]
                 )
-                dataset_results["Zenodo/Nextflow_workflow/Notebook"] = "TBC"
+                dataset_results["Collection_ID"] = get_value_or_none(
+                    dataset_json, ["collection_id"]
+                )
+                dataset_results["Collection_version_ID"] = get_value_or_none(
+                    dataset_json, ["collection_version_id"]
+                )
+                dataset_results["Dataset_ID"] = get_value_or_none(
+                    dataset_json, ["dataset_id"]
+                )
+                dataset_results["Dataset_version_ID"] = dataset_version_id
                 cellxgene_results[dataset_version_id] = dataset_results
 
             else:
-
                 print(
                     f"Could not assign cellxgene metadata for dataset_version_id {dataset_version_id}"
                 )
@@ -149,9 +160,6 @@ def get_cellxgene_metadata(dataset_version_ids, force=False):
                 json.dump(cellxgene_results, fp, indent=4)
 
     else:
-
-        # Load results
-
         print(f"Loading cellxgene results from {CELLXGENE_PATH}")
         with open(CELLXGENE_PATH, "r") as fp:
             cellxgene_results = json.load(fp)
@@ -160,7 +168,10 @@ def get_cellxgene_metadata(dataset_version_ids, force=False):
 
 
 def get_opentargets_results(
-    gene_ensembl_ids, resources=OPENTARGETS_RESOURCES, force=False
+    gene_ensembl_ids,
+    resources=OPENTARGETS_RESOURCES,
+    force=False,
+    opentargets_path=OPENTARGETS_PATH,
 ):
     """Use the Open Targets Platform GraphQL API to obtain the
     specified resources for each gene Ensembl id specified. The Open
@@ -183,18 +194,16 @@ def get_opentargets_results(
         Ensembl id, then by resource
     """
     # Create, or load opentargets results
-    if not OPENTARGETS_PATH.exists() or force:
-
+    if not opentargets_path.exists() or force:
         # Initialize results
 
         opentargets_results = {}
 
     else:
-
         # Load results
 
-        print(f"Loading opentargets results from {OPENTARGETS_PATH}")
-        with open(OPENTARGETS_PATH, "r") as fp:
+        print(f"Loading opentargets results from {opentargets_path}")
+        with open(opentargets_path, "r") as fp:
             opentargets_results = json.load(fp)
 
     # Consider each gene id, and setup to dump the results in
@@ -288,8 +297,8 @@ def get_opentargets_results(
 
             opentargets_results["gene_ensembl_ids"] = gene_ensembl_ids
 
-            print(f"Dumping opentargets results to {OPENTARGETS_PATH}")
-            with open(OPENTARGETS_PATH, "w") as fp:
+            print(f"Dumping opentargets results to {opentargets_path}")
+            with open(opentargets_path, "w") as fp:
                 json.dump(opentargets_results, fp, indent=4)
 
     return opentargets_results
@@ -339,7 +348,6 @@ def get_ebi_results(force=False):
     """
     # Create, or load EBI results
     if not EBI_PATH.exists() or force:
-
         # Initialize results, and collect unique drug names
 
         ebi_results = {}
@@ -351,7 +359,6 @@ def get_ebi_results(force=False):
         drug_names = collect_unique_drug_names(opentargets_results)
 
     else:
-
         # Load results, and assign unique drug names
 
         print(f"Loading ebi results from {EBI_PATH}")
@@ -423,7 +430,6 @@ def get_rxnav_results(force=False):
     """
     # Create, or load RxNav results
     if not RXNAV_PATH.exists() or force:
-
         # Initialize results, and collect unique drug names
 
         rxnav_results = {}
@@ -435,7 +441,6 @@ def get_rxnav_results(force=False):
         drug_names = collect_unique_drug_names(opentargets_results)
 
     else:
-
         # Load results, and assign unique drug names
 
         print(f"Loading RxNav results from {RXNAV_PATH}")
@@ -486,7 +491,6 @@ def get_rxnav_results(force=False):
 
             # Use the RXCUI to get drug properties
             if "rxnormId" in rxnav_results[drug_name]["idGroup"]:
-
                 rxcui = rxnav_results[drug_name]["idGroup"]["rxnormId"][0]
 
                 urls = [
@@ -589,7 +593,6 @@ def get_drugbank_results(force=False):
 
     # Create, or load DrugBank results
     if not DRUGBANK_PATH.exists() or force:
-
         # Initialize results, and collect unique drug names
 
         drugbank_results = {}
@@ -597,7 +600,6 @@ def get_drugbank_results(force=False):
         drug_names = rxnav_results["drug_names"]
 
     else:
-
         # Load results, and assign unique drug names
 
         print(f"Loading DrugBank results from {DRUGBANK_PATH}")
@@ -681,7 +683,6 @@ def get_ncats_results(force=False):
 
     # Create, or load NCATS results
     if not NCATS_PATH.exists() or force:
-
         # Initialize results, and collect unique drug names
 
         ncats_results = {}
@@ -689,7 +690,6 @@ def get_ncats_results(force=False):
         drug_names = rxnav_results["drug_names"]
 
     else:
-
         # Load results, and assign unique drug names
 
         print(f"Loading Ncats results from {NCATS_PATH}")
@@ -765,13 +765,11 @@ def get_gene_results(gene_entrez_ids, force=False):
     """
     # Create, or load gene results
     if not GENE_PATH.exists() or force:
-
         # Initialize results
 
         gene_results = {}
 
     else:
-
         # Load results
 
         print(f"Loading gene results from {GENE_PATH}")
@@ -865,7 +863,6 @@ def get_uniprot_results(force=False):
     """
     # Create, or load UniProt results
     if not UNIPROT_PATH.exists() or force:
-
         # Initialize results, and collect unique protein accessions
 
         uniprot_results = {}
@@ -877,7 +874,6 @@ def get_uniprot_results(force=False):
         protein_accessions = collect_unique_protein_accessions(gene_results)
 
     else:
-
         # Load results, and assign unique protein accessions
 
         print(f"Loading uniprot results from {UNIPROT_PATH}")
@@ -1016,7 +1012,6 @@ def get_hubmap_json_urls():
             raise Exception("No organ in HuBMAP URL")
         response = requests.get(latest_url)
         if response.status_code == 200:
-
             # Parse the response to find version and JSON file URL
             m_url = p_url.search(response.text)
             if m_url is not None:
@@ -1048,7 +1043,6 @@ def download_hubmap_data_tables():
     # Get the URL to all HuBMAP data table JSON files
     json_urls = get_hubmap_json_urls()
     for org, ver, url in json_urls:
-
         # Skip the current JSON file if it exists, otherwise, archive
         # any earlier versions
         hubmap_filepath = HUBMAP_DIRPATH / f"{org}-v{ver}.json"
@@ -1078,11 +1072,10 @@ def download_hubmap_data_tables():
 
 
 def main():
-    """Collect paths to all NSForest results, and author cell set to
-    CL term mappings identified in the results sources,
-    dataset_version_ids used for creating the NSForest results paths,
-    and the unique gene names, Ensembl identifiers, and Entrez
-    identifiers corresponding to all NSForet results. Then:
+    """Get results sources directories and patterns, cellxgene-harvester data,
+    NSForest results, and mapping, silhouette scores, and dataset summary file
+    paths, dataset version id lists, and unique gene names, and Ensembl and
+    Entrez ids. Then:
 
     - Use the CELLxGENE curation API to fetch metadata for each
       dataset version id
@@ -1179,32 +1172,27 @@ def main():
     )
     args = parser.parse_args()
 
-    # Collect paths to all NSForest results, and author cell set to CL
-    # term mappings identified in the results sources. Collect the
-    # dataset_version_ids used for creating the NSForest results
-    # paths. Collect the unique gene names, Ensembl identifiers, and
-    # Entrez identifiers corresponding to all NSForet results.
-    (
-        _nsforest_paths,
-        _silhouette_path,
-        _author_to_cl_paths,
-        dataset_version_ids,
-        _cl_terms,
-        _gene_names,
-        gene_ensembl_ids,
-        gene_entrez_ids,
-    ) = collect_results_sources_data()
+    # Get results sources directories and patterns, cellxgene-harvester data,
+    # NSForest results, and mapping, silhouette scores, and dataset summary
+    # file paths, dataset version id lists, and unique gene names, and Ensembl
+    # and Entrez ids.
+    results_sources = get_results_sources()
+    harvester_data = get_cellxgene_harvester_data(results_sources)
+    file_paths = get_dataset_file_paths(results_sources)
+    dataset_version_id_lists = get_dataset_version_id_lists(file_paths)
+    gene_data = get_unique_gene_names_and_ids(file_paths["nsforest_paths"])
 
     # Use the CELLxGENE curation API for each dataset version id
     # collected
     get_cellxgene_metadata(
-        dataset_version_ids, force=args.force_cellxgene or args.force_all
+        dataset_version_id_lists,
+        force=args.force_cellxgene or args.force_all,
     )
 
     # Use the Open Targets Platform GraphQL API for each gene Ensembl
     # id collected
     get_opentargets_results(
-        gene_ensembl_ids, force=args.force_opentargets or args.force_all
+        gene_data["gene_ensembl_ids"], force=args.force_opentargets or args.force_all
     )
 
     # TODO: Restore if, and when results used to write tuples
@@ -1229,7 +1217,9 @@ def main():
 
     # Use the E-Utilities to fetch Gene data for each unique gene
     # Entrez id collected
-    get_gene_results(gene_entrez_ids, force=args.force_gene or args.force_all)
+    get_gene_results(
+        gene_data["gene_entrez_ids"], force=args.force_gene or args.force_all
+    )
 
     # Use a UniProt API endpoint for each protein accession in the
     # gene results
