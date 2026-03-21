@@ -248,8 +248,8 @@ def create_tuples_from_nsforest(
                 ),
                 (
                     URIRef(f"{PURLBASE}/{cs_term}"),
-                    URIRef(f"{PURLBASE}/{bmc_term}"),
                     URIRef(f"{PURLBASE}/RO_0015004"),
+                    URIRef(f"{PURLBASE}/{bmc_term}"),
                     URIRef(f"{RDFSBASE}#TP"),  # [STAT:0000595]
                     Literal(str(row["TP"])),
                 ),
@@ -282,6 +282,7 @@ def create_tuples_from_nsforest(
         # tuples.append(
         #     (
         #         URIRef(f"{PURLBASE}/{cs_term}"),
+        #         URIRef(f"{PURLBASE}/BFO_0000050"),
         #         URIRef(f"{PURLBASE}/{bgs_term}"),
         #         URIRef(f"{RDFSBASE}#On_target"),  # [STAT:0000047]
         #         Literal(str(row["onTarget"])),

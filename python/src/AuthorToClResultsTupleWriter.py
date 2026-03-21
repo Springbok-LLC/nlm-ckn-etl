@@ -267,18 +267,18 @@ def create_tuples_from_author_to_cl(
 
             # Cell_type_Class, SELECTIVELY EXPRESS, Gene_Class
             # TODO: Update and use RO term
-            # CL:0000000, RO:0002292, SO:0000704
+            # CL:0000000, RO:0002294, SO:0000704
             tuples.append(
                 (
                     URIRef(f"{PURLBASE}/{cl_term}"),
-                    URIRef(f"{RDFSBASE}#SELECTIVELY_EXPRESS"),
+                    URIRef(f"{RDFSBASE}#RO_0002294"),
                     URIRef(f"{PURLBASE}/{gs_term}"),
                 )
             )
             tuples.append(
                 (
                     URIRef(f"{PURLBASE}/{cl_term}"),
-                    URIRef(f"{RDFSBASE}#SELECTIVELY_EXPRESS"),
+                    URIRef(f"{RDFSBASE}#RO_0002294"),
                     URIRef(f"{PURLBASE}/{gs_term}"),
                     URIRef(f"{RDFSBASE}#Source"),
                     Literal("Manual Mapping"),
