@@ -6,6 +6,7 @@ import com.arangodb.ArangoGraph;
 import com.arangodb.ArangoVertexCollection;
 import com.arangodb.entity.BaseDocument;
 import com.arangodb.entity.BaseEdgeDocument;
+import gov.nih.nlm.OntologyGraphBuilder.PTuple;
 import org.apache.jena.graph.Node;
 import org.apache.jena.graph.NodeFactory;
 import org.json.JSONArray;
@@ -191,7 +192,7 @@ public class ResultsGraphBuilder {
             if (!vtuple.isValidVertex()) continue;
 
             // Parse the predicate
-            String attribute = parsePredicate(ontologyElementMaps, tupleArrayList.get(TRIPLE_PREDICATE_IDX));
+            String attribute = parsePredicate(ontologyElementMaps, tupleArrayList.get(TRIPLE_PREDICATE_IDX)).label();
 
             // Update the corresponding vertex
             if (!vertexDocuments.get(vtuple.id()).containsKey(vtuple.number()))
@@ -243,8 +244,10 @@ public class ResultsGraphBuilder {
             if (!objectVTuple.isValidVertex()) continue;
 
             // Parse the predicate
-            String label = normalizeEdgeLabel(parsePredicate(ontologyElementMaps,
-                    tupleArrayList.get(TRIPLE_PREDICATE_IDX)));
+            PTuple pTuple = parsePredicate(ontologyElementMaps, tupleArrayList.get(TRIPLE_PREDICATE_IDX));
+            if (pTuple.label() == null) {
+                continue;
+            }
 
             // Create an edge collection, if needed
             String idPair = subjectVTuple.id() + "-" + objectVTuple.id();
@@ -256,16 +259,20 @@ public class ResultsGraphBuilder {
             }
 
             // Construct the edge, if needed
-            String key = subjectVTuple.number() + "-" + label + "-" + objectVTuple.number();
+            String key = subjectVTuple.number() + "-" + pTuple.curie() + "-" + objectVTuple.number();
+            BaseEdgeDocument doc;
             if (!edgeKeys.get(idPair).contains(key)) {
                 nEdges++;
-                BaseEdgeDocument doc = new BaseEdgeDocument(key,
+                doc = new BaseEdgeDocument(key,
                         subjectVTuple.id() + "/" + subjectVTuple.number(),
                         objectVTuple.id() + "/" + objectVTuple.number());
-                doc.addAttribute("Label", label);
                 edgeDocuments.get(idPair).put(key, doc);
                 edgeKeys.get(idPair).add(key);
+            } else {
+                doc = edgeDocuments.get(idPair).get(key);
             }
+            // Always assign the last label
+            doc.updateAttribute("Label", normalizeEdgeLabel(pTuple.label()));
         }
         long stopTime = System.nanoTime();
         System.out.println("Constructed " + nEdges + " edges using " + tuplesArrayList.size() + " tuples in " + (stopTime - startTime) / 1e9 + " s");
@@ -300,17 +307,17 @@ public class ResultsGraphBuilder {
             if (!objectVTuple.isValidVertex()) continue;
 
             // Parse the predicate
-            String label = normalizeEdgeLabel(parsePredicate(ontologyElementMaps, tupleArrayList.get(QUINTUPLE_PREDICATE_IDX)));
+            PTuple pTuple = parsePredicate(ontologyElementMaps, tupleArrayList.get(QUINTUPLE_PREDICATE_IDX));
 
             // Parse the attribute
-            String attribute = parsePredicate(ontologyElementMaps, tupleArrayList.get(QUINTUPLE_ATTRIBUTE_IDX));
+            String attribute = parsePredicate(ontologyElementMaps, tupleArrayList.get(QUINTUPLE_ATTRIBUTE_IDX)).label();
 
             // Parse the value
             String value = tupleArrayList.get(QUINTUPLE_VALUE_IDX).getLiteralValue().toString();
 
             // Update the corresponding edge
             String idPair = subjectVTuple.id() + "-" + objectVTuple.id();
-            String key = subjectVTuple.number() + "-" + label + "-" + objectVTuple.number();
+            String key = subjectVTuple.number() + "-" + pTuple.curie() + "-" + objectVTuple.number();
             if (!edgeDocuments.get(idPair).containsKey(key))
                 throw new RuntimeException("Invalid edge in collection " + idPair + " with key " + key);
             updatedEdges.add(subjectVTuple.id() + "/" + subjectVTuple.number() + "-" + objectVTuple.id() + "/" + objectVTuple.number());

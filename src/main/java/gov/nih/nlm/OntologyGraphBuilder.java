@@ -12,6 +12,7 @@ import org.apache.jena.graph.Triple;
 import java.io.BufferedWriter;
 import java.io.IOException;
 import java.net.URI;
+import java.net.URISyntaxException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -108,23 +109,28 @@ public class OntologyGraphBuilder {
      */
     public static PTuple parsePredicate(Map<String, OntologyElementMap> ontologyElementMaps,
                                         Node p) throws RuntimeException {
-        String term = null;
-        String label;
+        String path;
+        String fragment;
+        String term;
+        String curie;
+        String label = null;
         if (p.isURI()) {
-            label = createURI(p.getURI()).getFragment();
-            if (label == null) {
-                String path = createURI(p.getURI()).getPath();
-                if (path != null) {
-                    term = path.substring(path.lastIndexOf("/") + 1);
-                    if (ontologyElementMaps.get("ro").getTerms().containsKey(term)) {
-                        label = ontologyElementMaps.get("ro").getTerms().get(term).label().replace(" ", "-");
-                    }
+            path = createURI(p.getURI()).getPath();
+            fragment = createURI(p.getURI()).getFragment();
+            term = path.substring(path.lastIndexOf("/") + 1);
+            if (fragment == null) {
+                curie = term.replace("_", ":");
+                if (ontologyElementMaps.get("ro").getTerms().containsKey(term)) {
+                    label = ontologyElementMaps.get("ro").getTerms().get(term).label().replace(" ", "-");
                 }
+            } else {
+                curie = term.replace("rdf-schema", "rdfs") + ":" + fragment;
+                label = fragment;
             }
         } else {
             throw new RuntimeException("Unexpected predicate " + p);
         }
-        return new PTuple(term, label);
+        return new PTuple(term, curie, label);
     }
 
     /**
@@ -210,21 +216,20 @@ public class OntologyGraphBuilder {
             VTuple vtuple = createVTuple(triple.getSubject());
             if (vtuple.isValidVertex) {
 
-                // Parse the predicate
+                // Parse the predicate and object
                 String attribute = parsePredicate(ontologyElementMaps, triple.getPredicate()).label();
-
-                // Parse the object
                 String literal = o.getLiteralValue().toString();
+                if (attribute != null && literal != null) {
+                    // Get the vertex to update
+                    updatedVertices.add(vtuple.id + "-" + vtuple.number);
+                    BaseDocument doc = vertexDocuments.get(vtuple.id).get(vtuple.number);
 
-                // Get the vertex to update
-                updatedVertices.add(vtuple.id + "-" + vtuple.number);
-                BaseDocument doc = vertexDocuments.get(vtuple.id).get(vtuple.number);
-
-                // Handle each attribute as a single literal value
-                if (doc.getAttribute(attribute) == null) {
-                    doc.addAttribute(attribute, literal);
-                } else {
-                    doc.updateAttribute(attribute, literal);
+                    // Handle each attribute as a single literal value
+                    if (doc.getAttribute(attribute) == null) {
+                        doc.addAttribute(attribute, literal);
+                    } else {
+                        doc.updateAttribute(attribute, literal);
+                    }
                 }
             }
         }
@@ -327,7 +332,7 @@ public class OntologyGraphBuilder {
                                                  ArangoDbUtilities arangoDbUtilities,
                                                  ArangoGraph graph,
                                                  Map<String, ArangoEdgeCollection> edgeCollections,
-                                                 Map<String, Map<String, BaseEdgeDocument>> edgeDocuments) throws RuntimeException, IOException {
+                                                 Map<String, Map<String, BaseEdgeDocument>> edgeDocuments) throws RuntimeException {
 
         // Collect edge keys in each edge collection to prevent constructing duplicate
         // edges in the edge collection
@@ -349,8 +354,11 @@ public class OntologyGraphBuilder {
             if (!objectVTuple.isValidVertex) continue;
 
             // Parse the predicate and collect unique labels
-            String label = parsePredicate(ontologyElementMaps, triple.getPredicate()).label();
-            edgeLabels.add(label);
+            PTuple pTuple = parsePredicate(ontologyElementMaps, triple.getPredicate());
+            if (pTuple.label() == null) {
+                continue;
+            }
+            edgeLabels.add(pTuple.label());
 
             // Create an edge collection, if needed
             String idPair = subjectVTuple.id + "-" + objectVTuple.id;
@@ -366,26 +374,21 @@ public class OntologyGraphBuilder {
             }
 
             // Construct the edge, if needed
-            String key = subjectVTuple.number + "-" + label + "-" + objectVTuple.number;
-            String normalizedSource = normalizeEdgeSource(subjectVTuple.id);
-            String normalizedLabel = normalizeEdgeLabel(label);
+            String key = subjectVTuple.number + "-" + pTuple.curie() + "-" + objectVTuple.number;
+            BaseEdgeDocument doc;
             if (!edgeKeys.get(idPair).contains(key)) {
                 nEdges++;
-                BaseEdgeDocument doc = new BaseEdgeDocument(key,
+                doc = new BaseEdgeDocument(key,
                         subjectVTuple.id + "/" + subjectVTuple.number,
                         objectVTuple.id + "/" + objectVTuple.number);
-
-                // Assign the first label and source
-                doc.addAttribute("Label", normalizedLabel);
-                doc.addAttribute("Source", normalizedSource);
                 edgeDocuments.get(idPair).put(key, doc);
                 edgeKeys.get(idPair).add(key);
             } else {
-                BaseEdgeDocument doc = edgeDocuments.get(idPair).get(key);
-                // Assign the last label and source
-                doc.updateAttribute("Label", normalizedLabel);
-                doc.updateAttribute("Source", normalizedSource);
+                doc = edgeDocuments.get(idPair).get(key);
             }
+            // Assigns the last label and source
+            doc.addAttribute("Label", normalizeEdgeLabel(pTuple.label()));
+            doc.addAttribute("Source", normalizeEdgeSource(subjectVTuple.id));
         }
         long stopTime = System.nanoTime();
         System.out.println("Constructed " + nEdges + " edges from " + triples.size() + " triples in " + (stopTime - startTime) / 1e9 + " s");
@@ -537,6 +540,19 @@ public class OntologyGraphBuilder {
         // Parse Cell Ontology elements, and collect unique triples
         Map<String, OntologyElementMap> phenotypeElementMaps = parseOntologyElements(oboFiles);
         phenotypeElementMaps.put("ro", ontologyElementMaps.get("ro"));
+        try {
+            phenotypeElementMaps.get("ro").getTerms().put("RO_0002027",
+                    new OntologyElementMap.OntologyTerm(new URI("http://purl.obolibrary.org/obo/RO_0002027"),
+                            "has pharmacological effect"));
+            phenotypeElementMaps.get("ro").getTerms().put("RO_0002294",
+                    new OntologyElementMap.OntologyTerm(new URI("http://purl.obolibrary.org/obo/RO_0002294"),
+                            "selectively express"));
+            phenotypeElementMaps.get("ro").getTerms().put("RO_0020325",
+                    new OntologyElementMap.OntologyTerm(new URI("http://purl.obolibrary.org/obo/RO_0020325"),
+                            "evaluated in"));
+        } catch (URISyntaxException e) {
+            throw new RuntimeException("Could not put RO terms");
+        }
         HashSet<Triple> phenotypeTriples = collectUniqueTriples(oboFiles, false);
 
         // Initialize the phenotype database and subgraph
@@ -579,7 +595,6 @@ public class OntologyGraphBuilder {
     }
 
     // Define a record describing a predicate
-    public record PTuple(String term, String label) {
-
+    public record PTuple(String term, String curie, String label) {
     }
 }

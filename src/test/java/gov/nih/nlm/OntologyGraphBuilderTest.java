@@ -17,9 +17,18 @@ import java.io.File;
 import java.io.IOException;
 import java.nio.file.Path;
 import java.nio.file.Paths;
-import java.util.*;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
 
-import static org.junit.jupiter.api.Assertions.*;
+import static org.junit.jupiter.api.Assertions.assertArrayEquals;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class OntologyGraphBuilderTest {
 
@@ -146,7 +155,7 @@ class OntologyGraphBuilderTest {
         Map<String, OntologyElementMap> maps = new HashMap<>();
         maps.put("ro", new OntologyElementMap());
 
-        String label = OntologyGraphBuilder.parsePredicate(maps, node);
+        String label = OntologyGraphBuilder.parsePredicate(maps, node).label();
         assertEquals("subClassOf", label);
     }
 
@@ -157,7 +166,7 @@ class OntologyGraphBuilderTest {
         Map<String, OntologyElementMap> maps = OntologyElementParser.parseOntologyElements(roFile);
 
         var node = NodeFactory.createURI("http://purl.obolibrary.org/obo/RO_0002202");
-        String label = OntologyGraphBuilder.parsePredicate(maps, node);
+        String label = OntologyGraphBuilder.parsePredicate(maps, node).label();
         assertEquals("develops from", label);
     }
 
@@ -167,7 +176,7 @@ class OntologyGraphBuilderTest {
         Map<String, OntologyElementMap> maps = OntologyElementParser.parseOntologyElements(roFile);
 
         var node = NodeFactory.createURI("http://purl.obolibrary.org/obo/RO_0002215");
-        String label = OntologyGraphBuilder.parsePredicate(maps, node);
+        String label = OntologyGraphBuilder.parsePredicate(maps, node).label();
         assertEquals("capable of", label);
     }
 
@@ -361,10 +370,18 @@ class OntologyGraphBuilderTest {
             BaseDocument vertexDoc = vertexCollection.getVertex(number, BaseDocument.class);
 
             // Assert vertex attributes have expected values
-            assertArrayEquals(((ArrayList<String>) vertexDoc.getAttribute("hasDbXref")).toArray(), new ArrayList<>(Arrays.asList("ZFA:0009141", "CALOHA:TS-0587", "MESH:D008264", "FMA:83585", "BTO:0000801", "FMA:63261")).toArray());
+            assertArrayEquals(((ArrayList<String>) vertexDoc.getAttribute("hasDbXref")).toArray(),
+                    new ArrayList<>(Arrays.asList("ZFA:0009141",
+                            "CALOHA:TS-0587",
+                            "MESH:D008264",
+                            "FMA:83585",
+                            "BTO:0000801",
+                            "FMA:63261")).toArray());
             assertEquals(vertexDoc.getAttribute("hasExactSynonym"), "histiocyte");
-            assertEquals(vertexDoc.getAttribute("comment"), "Morphology: Diameter 30_M-80 _M, abundant cytoplasm, low N/C ratio, eccentric nucleus. Irregular shape with pseudopods, highly adhesive. Contain vacuoles and phagosomes, may contain azurophilic granules; markers: Mouse & Human: CD68, in most cases CD11b. Mouse: in most cases F4/80+; role or process: immune, antigen presentation, & tissue remodelling; lineage: hematopoietic, myeloid.");
-            assertEquals(vertexDoc.getAttribute("definition"), "A mononuclear phagocyte present in variety of tissues, typically differentiated from monocytes, capable of phagocytosing a variety of extracellular particulate material, including immune complexes, microorganisms, and dead cells.");
+            assertEquals(vertexDoc.getAttribute("comment"),
+                    "Morphology: Diameter 30_M-80 _M, abundant cytoplasm, low N/C ratio, eccentric nucleus. Irregular shape with pseudopods, highly adhesive. Contain vacuoles and phagosomes, may contain azurophilic granules; markers: Mouse & Human: CD68, in most cases CD11b. Mouse: in most cases F4/80+; role or process: immune, antigen presentation, & tissue remodelling; lineage: hematopoietic, myeloid.");
+            assertEquals(vertexDoc.getAttribute("definition"),
+                    "A mononuclear phagocyte present in variety of tissues, typically differentiated from monocytes, capable of phagocytosing a variety of extracellular particulate material, including immune complexes, microorganisms, and dead cells.");
             assertEquals(vertexDoc.getAttribute("label"), "macrophage");
             assertEquals(vertexDoc.getAttribute("id"), "CL:0000235");
 
