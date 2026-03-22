@@ -535,7 +535,7 @@ public class OntologyGraphBuilder {
         // Parse Cell Ontology elements, and collect unique triples
         Map<String, OntologyElementMap> phenotypeElementMaps = parseOntologyElements(oboFiles);
         phenotypeElementMaps.put("ro", ontologyElementMaps.get("ro"));
-        HashSet<Triple> phenotypeTriples = collectUniqueTriples(oboFiles, true);
+        HashSet<Triple> phenotypeTriples = collectUniqueTriples(oboFiles, false);
 
         // Initialize the phenotype database and subgraph
         String phenotypeDatabaseName = "Cell-KN-Phenotypes";

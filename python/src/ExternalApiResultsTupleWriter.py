@@ -16,12 +16,14 @@ from LoaderUtilities import (
     DEPRECATED_TERMS,
     PURLBASE,
     RDFSBASE,
-    collect_results_sources_data,
     get_chembl_to_pubchem_map,
+    get_cl_terms,
+    get_dataset_file_paths,
     get_efo_to_mondo_map,
     get_gene_ensembl_id_to_names_map,
     get_gene_entrez_id_to_names_map,
     get_gene_name_to_entrez_ids_map,
+    get_results_sources,
     map_chembl_to_pubchem,
     map_efo_to_mondo,
     map_gene_ensembl_id_to_names,
@@ -101,8 +103,7 @@ def create_tuples_from_cellxgene(cellxgene_results, summarize=False):
     Parameters
     ----------
     cellxgene_results : dict
-        Dictionaries containing cellxgene results keyed by
-        dataset_version_id
+        Dictionaries containing CELLxGENE metadata keyed by dataset_version_id
     summarize : bool
         Flag to summarize results, or not
 
@@ -111,8 +112,7 @@ def create_tuples_from_cellxgene(cellxgene_results, summarize=False):
     tuples : list(tuple(str))
         List of tuples (triples or quadruples) created
     results : dict
-        Dictionaries containing cellxgene results keyed by
-        dataset_version_id
+        Dictionaries containing CELLxGENE metadata keyed by dataset_version_id
     """
     tuples = []
 
@@ -130,11 +130,10 @@ def create_tuples_from_cellxgene(cellxgene_results, summarize=False):
 
     # Create tuples for each dataset
     for dataset_version_id, dataset_metadata in results.items():
-        csd_term = f"CSD_{dataset_version_id}"
-        pub_term = f"PUB_{dataset_version_id}"
-
         # Cell_set_dataset_Ind, SOURCE, Publication_Ind
         # IAO:0000100, dc:source, IAO:0000311
+        csd_term = f"CSD_{dataset_version_id}"
+        pub_term = f"PUB_{dataset_version_id}"
         tuples.append(
             (
                 URIRef(f"{PURLBASE}/{csd_term}"),
@@ -147,12 +146,31 @@ def create_tuples_from_cellxgene(cellxgene_results, summarize=False):
                 URIRef(f"{PURLBASE}/{csd_term}"),
                 URIRef(f"{PURLBASE}/{pub_term}"),
                 URIRef(f"{RDFSBASE}#Source"),
-                Literal("Manual Mapping"),
+                Literal(""),
             )
         )
 
+        # PUB node annotations
+        keys = [
+            "Citation",
+            "Link_to_publication",
+            "Link_to_CELLxGENE_collection",
+        ]
+        for key in keys:
+            value = results[dataset_version_id][key]
+            if isinstance(value, str):
+                value = value.replace("http://", "").replace("https://", "")
+            tuples.append(
+                (
+                    URIRef(f"{PURLBASE}/{pub_term}"),
+                    URIRef(f"{RDFSBASE}#{key}"),
+                    Literal(value),
+                )
+            )
+
         # CSD node annotations
         keys = [
+            "Citation",
             "Link_to_publication",
             "Link_to_CELLxGENE_collection",
             "Link_to_CELLxGENE_dataset",
@@ -165,16 +183,15 @@ def create_tuples_from_cellxgene(cellxgene_results, summarize=False):
             "Collection_version_ID",
             "Dataset_ID",
             "Dataset_version_ID",
-            "Zenodo/Nextflow_workflow/Notebook",
         ]
         for key in keys:
-            value = cellxgene_results[dataset_version_id][key]
+            value = results[dataset_version_id][key]
             if isinstance(value, str):
-                value = value.replace("https://", "")
+                value = value.replace("http://", "").replace("https://", "")
             tuples.append(
                 (
                     URIRef(f"{PURLBASE}/{csd_term}"),
-                    URIRef(f"{RDFSBASE}#{key.replace(' ', '_')}"),
+                    URIRef(f"{RDFSBASE}#{key}"),
                     Literal(value),
                 )
             )
@@ -1034,7 +1051,11 @@ def remove_protocols(value):
 
 
 def main(summarize=False):
-    """Load results from:
+    """Get results sources directories and patterns, all NSForest results, and
+    mapping, silhouette scores, and dataset summary file paths, and create a
+    set of clean CL terms. Then load results from:
+
+    - Using the CELLxGENE curation API to obtain dataset metadata
 
     - Using the Open Targets Platform GraphQL API to obtain the
       diseases, drugs, interactions, pharmacogenetics, tractability,
@@ -1065,22 +1086,12 @@ def main(summarize=False):
     -------
     None
     """
-    # Collect paths to all NSForest results, and author cell set to CL
-    # term mappings identified in the results sources. Collect the
-    # dataset_version_ids used for creating the NSForest results
-    # paths. Collect the unique gene names, Ensembl identifiers, and
-    # Entrez identifiers corresponding to all NSForet results.
-    (
-        _nsforest_paths,
-        _silhouette_paths,
-        _author_to_cl_paths,
-        _dataset_version_id_lists,
-        _dataset_version_ids,
-        cl_terms,
-        _gene_names,
-        _gene_ensembl_ids,
-        _gene_entrez_ids,
-    ) = collect_results_sources_data()
+    # Get results sources directories and patterns, all NSForest results, and
+    # mapping, silhouette scores, and dataset summary file paths, and create a
+    # set of clean CL terms.
+    results_sources = get_results_sources()
+    file_paths = get_dataset_file_paths(results_sources)
+    cl_terms = get_cl_terms(file_paths["mapping_paths"])
 
     print(f"Creating tuples from {CELLXGENE_PATH}")
     with open(CELLXGENE_PATH, "r") as fp:
