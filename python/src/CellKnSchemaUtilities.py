@@ -392,7 +392,6 @@ def main():
     # TODO: Relocate?
     # Create analyzers and views
     for database_name in ["Cell-KN-Ontologies", "Cell-KN-Phenotypes"]:
-
         # First delete
         try:
             adb.delete_view(database_name)

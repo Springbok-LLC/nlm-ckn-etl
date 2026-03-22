@@ -120,6 +120,33 @@ class ArangoDbUtilitiesTestCase(unittest.TestCase):
         adb.delete_edge_collection(graph, edge_name)
         self.assertFalse(graph.has_edge_definition(edge_name))
 
+    def test_print_summary(self):
+
+        db = adb.create_or_get_database(self.database_name)
+        graph = adb.create_or_get_graph(db, self.graph_name)
+        adb.create_or_get_vertex_collection(graph, self.from_vertex_name)
+        adb.create_or_get_vertex_collection(graph, self.to_vertex_name)
+        edge_name = f"{self.from_vertex_name}-{self.to_vertex_name}"
+        adb.create_or_get_edge_collection(
+            graph, self.from_vertex_name, self.to_vertex_name
+        )
+
+        summary = adb.print_summary(self.database_name)
+
+        # Verify vertex collections
+        vertex_counts = summary["vertex"]
+        self.assertEqual(len(vertex_counts), 2)
+        self.assertIn(self.from_vertex_name, vertex_counts)
+        self.assertIn(self.to_vertex_name, vertex_counts)
+        self.assertEqual(vertex_counts[self.from_vertex_name], 0)
+        self.assertEqual(vertex_counts[self.to_vertex_name], 0)
+
+        # Verify edge collections
+        edge_counts = summary["edge"]
+        self.assertEqual(len(edge_counts), 1)
+        self.assertIn(edge_name, edge_counts)
+        self.assertEqual(edge_counts[edge_name], 0)
+
     def tearDown(self):
 
         # Stop the ArangoDB instance using the test data directory

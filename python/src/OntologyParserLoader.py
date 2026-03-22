@@ -104,7 +104,6 @@ def update_downloads(urls, download_dirpath, find_version):
     None
     """
     for url in urls:
-
         print(f"Getting {url}")
         r = requests.get(url)
 
@@ -122,7 +121,6 @@ def update_downloads(urls, download_dirpath, find_version):
 
         download_filepath_cur = download_dirpath / (download_stem + download_suffix)
         if download_filepath_cur.exists():
-
             version_cur = find_version(download_filepath_cur)
             print(f"Found current version {version_cur}")
 
@@ -186,10 +184,8 @@ def parse_obo(obo_dir, obo_fnm):
     ids = set()
 
     for about_element_type in about_element_types:
-
         # Consider each element of the current type
         for about_element in root.iter(f"{OWL_NS}{about_element_type}"):
-
             # Look for an about attribute
             uriref = about_element.get(f"{RDF_NS}about")
             if uriref is None:
@@ -239,7 +235,6 @@ def parse_term(term, ro=None):
     fragment = urlparse(term).fragment
     match = URIREF_PATTERN.match(path)
     if match is not None:
-
         # Matched as URL
         oid = match.group(1)
         if oid == "GOREL":
@@ -262,13 +257,11 @@ def parse_term(term, ro=None):
             return oid, number, term, None, "class"
 
     elif fragment != "":
-
         # Parsed as URL with a fragment, so assume fragment is a
         # predicate
         return None, None, None, fragment, "predicate"
 
     elif isinstance(term, BNode):
-
         # Create pseudo ontology identifier, number, and term for a
         # BNode
         oid = "BNode"
@@ -277,7 +270,6 @@ def parse_term(term, ro=None):
         return oid, number, term, None, "class"
 
     else:
-
         # Parsed as URL without a fragment, so assume stem is a
         # literal
         return None, None, None, Path(path).stem, "literal"
@@ -329,7 +321,6 @@ def collect_fnode_triples(rdf_graph):
     triples = []
 
     for s, p, o in rdf_graph:
-
         if isinstance(s, BNode) or isinstance(o, BNode):
             continue
 
@@ -365,7 +356,6 @@ def collect_bnode_triple_sets(rdf_graph, triple_sets, use="subject", ro=None):
     None
     """
     for s, p, o in rdf_graph:
-
         if isinstance(s, BNode) and isinstance(o, BNode):
             continue
 
@@ -438,7 +428,6 @@ def create_bnode_triples_from_bnode_triple_sets(triple_sets, ro=None):
     bnode_triples = []
     ignored_triples = []
     for bnode, triple_set in triple_sets.items():
-
         # Create and collect 'relation' triples
         relation_bnode_triples, relation_ignored_triples = (
             create_bnode_triples_from_bnode_triple_set(triple_set, "relation", ro=ro)
@@ -504,13 +493,11 @@ def create_bnode_triples_from_bnode_triple_set(triple_set, set_type, ro=None):
 
     # Expect exactly three triples in a set to create a triple
     if len(triple_set[set_type]) == 3:
-
         # Attempt to create the subject, predicate, and object
         created_s = None
         created_p = None
         created_o = None
         for s, p, o in triple_set[set_type]:
-
             _, _, _, p_fragment, _ = parse_term(p, ro=ro)
 
             if p_fragment == s_p_fragment:
@@ -523,29 +510,24 @@ def create_bnode_triples_from_bnode_triple_set(triple_set, set_type, ro=None):
                 created_o = get_fnode(s, o)
 
         if created_s is not None and created_p is not None and created_o is not None:
-
             # Created a valid triple, so append it
             bnode_triples.append((created_s, created_p, created_o))
 
             if set_type == "annotation":
-
                 # Annotation triple sets identify a class to which
                 # 'literal' triple sets provide additional annotation
                 for s, p, o in triple_set["literal"]:
                     bnode_triples.append((created_s, p, o))
 
         else:
-
             # Collect all invalid triple sets
             pprint(f"Invalid triple_set['{set_type}']: {triple_set[set_type]}")
             ignored_triples.extend(triple_set[set_type])
 
             if set_type == "annotation":
-
                 ignored_triples.extend(triple_set["literal"])
 
     elif len(triple_set[set_type]) != 0:
-
         # Collect all invalid triple sets
         pprint(f"Invalid triple_set['{set_type}']: {triple_set[set_type]}")
         ignored_triples.extend(triple_set[set_type])
@@ -613,7 +595,6 @@ def create_or_get_vertices_from_triple(vertex_collections, s, p, o, ro=None):
     vertices = []
 
     for term in [s, o]:
-
         oid, number, term, _fragment, term_type = parse_term(term, ro=ro)
 
         if term_type != "class":
@@ -1062,7 +1043,6 @@ def insert_vertices(adb_graph, vertex_collections, do_update=False):
     None
     """
     for vertex_name, vertex_docs in vertex_collections.items():
-
         vertex_collection = adb.create_or_get_vertex_collection(adb_graph, vertex_name)
 
         for vertex_doc in vertex_docs.values():

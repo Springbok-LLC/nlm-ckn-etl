@@ -1,5 +1,6 @@
 package gov.nih.nlm;
 
+import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -162,6 +163,31 @@ class ArangoDbUtilitiesTest {
 		assertTrue(graph.db().collection(edgeName).exists());
 		arangoDbUtilities.deleteEdgeCollection(graph, edgeName);
 		assertFalse(graph.db().collection(edgeName).exists());
+	}
+
+	@Test
+	void printSummary() {
+		ArangoDatabase db = arangoDbUtilities.createOrGetDatabase(databaseName);
+		ArangoGraph graph = arangoDbUtilities.createOrGetGraph(db, graphName);
+		arangoDbUtilities.createOrGetVertexCollection(graph, fromVertexName);
+		arangoDbUtilities.createOrGetVertexCollection(graph, toVertexName);
+		arangoDbUtilities.createOrGetEdgeCollection(graph, fromVertexName, toVertexName);
+
+		Map<String, Map<String, Long>> summary = arangoDbUtilities.printSummary(db);
+
+		// Verify vertex collections
+		Map<String, Long> vertexCounts = summary.get("vertex");
+		assertEquals(2, vertexCounts.size());
+		assertTrue(vertexCounts.containsKey(fromVertexName));
+		assertTrue(vertexCounts.containsKey(toVertexName));
+		assertEquals(0L, vertexCounts.get(fromVertexName));
+		assertEquals(0L, vertexCounts.get(toVertexName));
+
+		// Verify edge collections
+		Map<String, Long> edgeCounts = summary.get("edge");
+		assertEquals(1, edgeCounts.size());
+		assertTrue(edgeCounts.containsKey(edgeName));
+		assertEquals(0L, edgeCounts.get(edgeName));
 	}
 
 	@Test

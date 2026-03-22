@@ -202,6 +202,55 @@ def delete_edge_collection(graph, edge_name):
         graph.delete_edge_definition(edge_name)
 
 
+def print_summary(database_name):
+    """Print a summary of document counts for each vertex and edge collection
+    in the named database.
+
+    Parameters
+    ----------
+    database_name : str
+        Name of the database to summarize
+
+    Returns
+    -------
+    summary : dict
+        Dictionary with "vertex" and "edge" keys, each mapping collection
+        names to document counts (sorted alphabetically)
+    """
+    db = create_or_get_database(database_name)
+    vertex_collections = []
+    edge_collections = []
+    for collection in db.collections():
+        if collection["system"]:
+            continue
+        if collection["type"] == "edge":
+            edge_collections.append(collection["name"])
+        else:
+            vertex_collections.append(collection["name"])
+
+    vertex_counts = {}
+    print("Vertex collections:")
+    vertex_total = 0
+    for name in sorted(vertex_collections):
+        count = db.collection(name).count()
+        vertex_total += count
+        vertex_counts[name] = count
+        print(f"  {name:<40s} {count:,d}")
+    print(f"  {'TOTAL':<40s} {vertex_total:,d}")
+
+    edge_counts = {}
+    print("Edge collections:")
+    edge_total = 0
+    for name in sorted(edge_collections):
+        count = db.collection(name).count()
+        edge_total += count
+        edge_counts[name] = count
+        print(f"  {name:<40s} {count:,d}")
+    print(f"  {'TOTAL':<40s} {edge_total:,d}")
+
+    return {"vertex": vertex_counts, "edge": edge_counts}
+
+
 def create_analyzers(database_name):
     """Create n-gram and text analyzers in the named database.
 
