@@ -36,10 +36,10 @@ build/
 
 ### Dev ###
 *~
+*.csv
+*.xlsx
 .arangodb-password
 .built
-.built-ontology
-.built-results
 .ai
 .archived
 .poetry/
@@ -55,11 +55,11 @@ CLAUDE.md
 docs/java/
 log/
 data/arangodb/
-data/external/
+data/external*/
 data/obo/
 data/results-*/
 data/scores-*/
-data/tuples/
+data/tuples*/
 python/tests/arangodb/
 # archives
 arangodb.tar.gz
