@@ -363,6 +363,13 @@ def create_tuples_from_opentargets(opentargets_results, gene_results, summarize=
         for drug in results[gene_ensembl_id]["drugs"]:
             if drug["drug"]["maximumClinicalStage"] not in VALID_PHASES:
                 continue
+            for drug_warning in drug["drug"]["drugWarnings"]:
+                hasBeenWithdrawn = False
+                if drug_warning["warningType"] == "Withdrawn":
+                    hasBeenWithdrawn = True
+                    break
+            if hasBeenWithdrawn:
+                continue
 
             # Follow term naming convention for parsing
             chembl_term = drug["drug"]["id"].replace("CHEMBL", "CHEMBL_")

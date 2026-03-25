@@ -326,8 +326,12 @@ def collect_unique_drug_names(opentargets_results):
         if gene_ensembl_id == "gene_ensembl_ids":
             continue
         for drug in resources["drugs"]:
-            if len(drug["drugWarnings"]) > 0:
-                breakpoint()
+            for drug_warning in drug["drug"]["drugWarnings"]:
+                hasBeenWithdrawn = False
+                if drug_warning["warningType"] == "Withdrawn":
+                    hasBeenWithdrawn = True
+                    break
+            if hasBeenWithdrawn:
                 continue
             drug_names.add(drug["approvedName"])
 
