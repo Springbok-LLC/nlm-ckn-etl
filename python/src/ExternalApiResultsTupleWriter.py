@@ -60,7 +60,7 @@ def get_mondo_term(disease_id, efo2mondo):
         mondo_term = map_efo_to_mondo(disease_id, efo2mondo)
 
     if mondo_term in DEPRECATED_TERMS:
-<        print(f"Warning: MONDO term {mondo_term} deprecated")
+        print(f"Warning: MONDO term {mondo_term} deprecated")
         return None
 
     return mondo_term
