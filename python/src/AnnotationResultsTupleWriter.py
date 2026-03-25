@@ -217,9 +217,9 @@ def create_tuples_from_annotation(annotation_results):
         o = URIRef(f"{PURLBASE}/{object}")
         tuples.append((s, p, o))
 
-        p = URIRef(f"{RDFSBASE}#Source")
-        l = Literal("Manual Annotation")
-        tuples.append((s, o, p, l))
+        a = URIRef(f"{RDFSBASE}#Source")
+        v = Literal("Manual Annotation")
+        tuples.append((s, p, o, a, v))
 
         if annotation["subject_type"] == "Cell_set":
             p = URIRef(f"{RDFSBASE}#Label")

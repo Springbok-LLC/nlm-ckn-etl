@@ -144,9 +144,10 @@ def create_tuples_from_cellxgene(cellxgene_results, summarize=False):
         tuples.append(
             (
                 URIRef(f"{PURLBASE}/{csd_term}"),
+                URIRef(f"{RDFSBASE}/dc#Source"),
                 URIRef(f"{PURLBASE}/{pub_term}"),
                 URIRef(f"{RDFSBASE}#Source"),
-                Literal(""),
+                Literal("CELLxGENE"),
             )
         )
 
@@ -311,17 +312,18 @@ def create_tuples_from_opentargets(opentargets_results, gene_results, summarize=
 
             # == Disease relations
 
-            # Gene, IS_GENETIC_BASIS_FOR_CONDITION, Disease
+            # Gene, RO_0004010 (IS_GENETIC_BASIS_FOR_CONDITION), Disease
             tuples.append(
                 (
                     URIRef(f"{PURLBASE}/{gs_term}"),
-                    URIRef(f"{RDFSBASE}#GENETIC_BASIS_FOR"),
+                    URIRef(f"{RDFSBASE}#RO_0004010"),
                     URIRef(f"{PURLBASE}/{mondo_term}"),
                 )
             )
             tuples.append(
                 (
                     URIRef(f"{PURLBASE}/{gs_term}"),
+                    URIRef(f"{RDFSBASE}#RO_0004010"),
                     URIRef(f"{PURLBASE}/{mondo_term}"),
                     URIRef(f"{RDFSBASE}#Source"),
                     Literal("Open Targets"),
@@ -350,6 +352,7 @@ def create_tuples_from_opentargets(opentargets_results, gene_results, summarize=
             tuples.append(
                 (
                     URIRef(f"{PURLBASE}/{gs_term}"),
+                    URIRef(f"{RDFSBASE}#RO_0004010"),
                     URIRef(f"{PURLBASE}/{mondo_term}"),
                     URIRef(f"{RDFSBASE}#Score"),
                     Literal(str(disease["score"])),
@@ -372,24 +375,25 @@ def create_tuples_from_opentargets(opentargets_results, gene_results, summarize=
 
             # == Drug_product relations
 
-            # Drug_product, IS_SUBSTANCE_THAT_TREATS, Disease
+            # Drug_product, RO_0002606 (IS_SUBSTANCE_THAT_TREATS), Disease
             tuples.append(
                 (
                     URIRef(f"{PURLBASE}/{chembl_term}"),
-                    URIRef(f"{RDFSBASE}#IS_SUBSTANCE_THAT_TREATS"),
+                    URIRef(f"{RDFSBASE}#RO_0002606"),
                     URIRef(f"{PURLBASE}/{mondo_term}"),
                 )
             )
             tuples.append(
                 (
                     URIRef(f"{PURLBASE}/{chembl_term}"),
+                    URIRef(f"{RDFSBASE}#RO_0002606"),
                     URIRef(f"{PURLBASE}/{mondo_term}"),
                     URIRef(f"{RDFSBASE}#Source"),
                     Literal("Open Targets"),
                 )
             )
 
-            # Drug_product, MOLECULARLY_INTERACTS_WITH, Protein
+            # Drug_product, RO_0002436 (MOLECULARLY_INTERACTS_WITH), Protein
             if (
                 "UniProt_name" in gene_results[gene_entrez_id]
                 and gene_results[gene_entrez_id]["UniProt_name"]
@@ -399,13 +403,14 @@ def create_tuples_from_opentargets(opentargets_results, gene_results, summarize=
                 tuples.append(
                     (
                         URIRef(f"{PURLBASE}/{chembl_term}"),
-                        URIRef(f"{RDFSBASE}#MOLECULARLY_INTERACTS_WITH"),
+                        URIRef(f"{RDFSBASE}#RO_0002436"),
                         URIRef(f"{PURLBASE}/{pr_term}"),
                     )
                 )
                 tuples.append(
                     (
                         URIRef(f"{PURLBASE}/{chembl_term}"),
+                        URIRef(f"{RDFSBASE}#RO_0002436"),
                         URIRef(f"{PURLBASE}/{pr_term}"),
                         URIRef(f"{RDFSBASE}#Source"),
                         Literal("Open Targets and UniProt"),
@@ -435,17 +440,18 @@ def create_tuples_from_opentargets(opentargets_results, gene_results, summarize=
 
                 # == Clinical_trial relations
 
-                # Drug_product, EVALUATED_IN, Clinical_trial
+                # Drug_product, RO_0020325 (EVALUATED_IN), Clinical_trial
                 tuples.append(
                     (
                         URIRef(f"{PURLBASE}/{chembl_term}"),
-                        URIRef(f"{RDFSBASE}#EVALUATED_IN"),
+                        URIRef(f"{RDFSBASE}#RO_0020325"),
                         URIRef(f"{PURLBASE}/{nct_term}"),
                     )
                 )
                 tuples.append(
                     (
                         URIRef(f"{PURLBASE}/{chembl_term}"),
+                        URIRef(f"{RDFSBASE}#RO_0020325"),
                         URIRef(f"{PURLBASE}/{nct_term}"),
                         URIRef(f"{RDFSBASE}#Source"),
                         Literal("Open Targets"),
@@ -543,34 +549,36 @@ def create_tuples_from_opentargets(opentargets_results, gene_results, summarize=
 
             # == Pharmacogenetic relations
 
-            # Gene, HAS_QUALITY, Mutation
+            # Gene, RO_0000086 (HAS_QUALITY), Mutation
             tuples.append(
                 (
                     URIRef(f"{PURLBASE}/{gs_term}"),
-                    URIRef(f"{RDFSBASE}#HAS_QUALITY"),
+                    URIRef(f"{RDFSBASE}#RO_0000086"),
                     URIRef(f"{PURLBASE}/{rs_term}"),
                 )
             )
             tuples.append(
                 (
                     URIRef(f"{PURLBASE}/{gs_term}"),
+                    URIRef(f"{RDFSBASE}#RO_0000086"),
                     URIRef(f"{PURLBASE}/{rs_term}"),
                     URIRef(f"{RDFSBASE}#Source"),
                     Literal("Open Targets"),
                 )
             )
 
-            # Mutation, INVOLVED_IN, Variant_consequence
+            # Mutation, RO_0002331 (INVOLVED_IN), Variant_consequence
             tuples.append(
                 (
                     URIRef(f"{PURLBASE}/{rs_term}"),
-                    URIRef(f"{RDFSBASE}#INVOLVED_IN"),
+                    URIRef(f"{RDFSBASE}#RO_0002331"),
                     URIRef(f"{PURLBASE}/{so_term}"),
                 )
             )
             tuples.append(
                 (
                     URIRef(f"{PURLBASE}/{rs_term}"),
+                    URIRef(f"{RDFSBASE}#RO_0002331"),
                     URIRef(f"{PURLBASE}/{so_term}"),
                     URIRef(f"{RDFSBASE}#Source"),
                     Literal("Open Targets"),
@@ -587,17 +595,18 @@ def create_tuples_from_opentargets(opentargets_results, gene_results, summarize=
                     "CHEMBL", "CHEMBL_"
                 )
 
-                # Mutation, HAS_PHARMACOLOGICAL_EFFECT, Drug_product
+                # Mutation, RO_0002027 (HAS_PHARMACOLOGICAL_EFFECT), Drug_product
                 tuples.append(
                     (
                         URIRef(f"{PURLBASE}/{rs_term}"),
-                        URIRef(f"{RDFSBASE}#HAS_PHARMACOLOGICAL_EFFECT"),
+                        URIRef(f"{RDFSBASE}#RO_0002027"),
                         URIRef(f"{PURLBASE}/{pharmacogenetic_chembl_term}"),
                     )
                 )
                 tuples.append(
                     (
                         URIRef(f"{PURLBASE}/{rs_term}"),
+                        URIRef(f"{RDFSBASE}#RO_0002027"),
                         URIRef(f"{PURLBASE}/{pharmacogenetic_chembl_term}"),
                         URIRef(f"{RDFSBASE}#Source"),
                         Literal("Open Targets"),
@@ -676,18 +685,19 @@ def create_tuples_from_opentargets(opentargets_results, gene_results, summarize=
 
             # == Expression relations
 
-            # Gene, EXPRESSED_IN, Anatomical_structure
+            # Gene, RO_0002206 (EXPRESSED_IN), Anatomical_structure
             # NOTE: Removed to resolve issue 105
             # tuples.append(
             #     (
             #         URIRef(f"{PURLBASE}/{gs_term}"),
-            #         URIRef(f"{RDFSBASE}#EXPRESSED_IN"),
+            #         URIRef(f"{RDFSBASE}#RO_0002206"),
             #         URIRef(f"{PURLBASE}/{exp_term}"),
             #     )
             # )
             # tuples.append(
             #     (
             #         URIRef(f"{PURLBASE}/{gs_term}"),
+            #         URIRef(f"{RDFSBASE}#RO_0002206"),
             #         URIRef(f"{PURLBASE}/{exp_term}"),
             #         URIRef(f"{RDFSBASE}#Source"),
             #         Literal("Open Targets"),
@@ -701,24 +711,28 @@ def create_tuples_from_opentargets(opentargets_results, gene_results, summarize=
             #     [
             #         (
             #             URIRef(f"{PURLBASE}/{gs_term}"),
+            #             URIRef(f"{RDFSBASE}#RO_0002206"),
             #             URIRef(f"{PURLBASE}/{exp_term}"),
             #             URIRef(f"{RDFSBASE}#RNA_zscore"),
             #             Literal(str(expression["rna"]["zscore"])),
             #         ),
             #         (
             #             URIRef(f"{PURLBASE}/{gs_term}"),
+            #             URIRef(f"{RDFSBASE}#RO_0002206"),
             #             URIRef(f"{PURLBASE}/{exp_term}"),
             #             URIRef(f"{RDFSBASE}#RNA_value"),
             #             Literal(str(expression["rna"]["value"])),
             #         ),
             #         (
             #             URIRef(f"{PURLBASE}/{gs_term}"),
+            #             URIRef(f"{RDFSBASE}#RO_0002206"),
             #             URIRef(f"{PURLBASE}/{exp_term}"),
             #             URIRef(f"{RDFSBASE}#RNA_unit"),
             #             Literal(str(expression["rna"]["unit"])),
             #         ),
             #         (
             #             URIRef(f"{PURLBASE}/{gs_term}"),
+            #             URIRef(f"{RDFSBASE}#RO_0002206"),
             #             URIRef(f"{PURLBASE}/{exp_term}"),
             #             URIRef(f"{RDFSBASE}#RNA_level"),
             #             Literal(str(expression["rna"]["level"])),
@@ -796,7 +810,7 @@ def create_tuples_from_gene(gene_results, summarize=False):
 
         # == Gene relations
 
-        # Gene, PRODUCES, Protein
+        # Gene, RO_0003000 (PRODUCES), Protein
         if (
             "UniProt_name" in gene_results[gene_entrez_id]
             and gene_results[gene_entrez_id]["UniProt_name"]
@@ -806,13 +820,14 @@ def create_tuples_from_gene(gene_results, summarize=False):
             tuples.append(
                 (
                     URIRef(f"{PURLBASE}/{gs_term}"),
-                    URIRef(f"{RDFSBASE}#PRODUCES"),
+                    URIRef(f"{RDFSBASE}#RO_0003000"),
                     URIRef(f"{PURLBASE}/{pr_term}"),
                 )
             )
             tuples.append(
                 (
                     URIRef(f"{PURLBASE}/{gs_term}"),
+                    URIRef(f"{RDFSBASE}#RO_0003000"),
                     URIRef(f"{PURLBASE}/{pr_term}"),
                     URIRef(f"{RDFSBASE}#Source"),
                     Literal("UniProt"),
@@ -949,17 +964,18 @@ def create_tuples_from_hubmap(hubmap_data, cl_terms, summarize=False):
 
             # == Anatomical structure relations
 
-            # Anatomical_structure, PART_OF, Anatomical_structure
+            # Anatomical_structure, BFO_0000050 (PART_OF), Anatomical_structure
             tuples.append(
                 (
                     URIRef(f"{PURLBASE}/{s_uberon_term}"),
-                    URIRef(f"{RDFSBASE}#PART_OF"),
+                    URIRef(f"{RDFSBASE}#BFO_0000050"),
                     URIRef(f"{PURLBASE}/{o_uberon_term}"),
                 )
             )
             tuples.append(
                 (
                     URIRef(f"{PURLBASE}/{s_uberon_term}"),
+                    URIRef(f"{RDFSBASE}#BFO_0000050"),
                     URIRef(f"{PURLBASE}/{o_uberon_term}"),
                     URIRef(f"{RDFSBASE}#Source"),
                     Literal("HuBMAP"),
@@ -1000,17 +1016,18 @@ def create_tuples_from_hubmap(hubmap_data, cl_terms, summarize=False):
 
             # == Cell type relations
 
-            # Cell_type, PART_OF, Anatomical_structure
+            # Cell_type, BFO_0000050 (PART_OF), Anatomical_structure
             tuples.append(
                 (
                     URIRef(f"{PURLBASE}/{cl_term}"),
-                    URIRef(f"{RDFSBASE}#PART_OF"),
+                    URIRef(f"{RDFSBASE}#BFO_0000050"),
                     URIRef(f"{PURLBASE}/{uberon_term}"),
                 )
             )
             tuples.append(
                 (
                     URIRef(f"{PURLBASE}/{cl_term}"),
+                    URIRef(f"{RDFSBASE}#BFO_0000050"),
                     URIRef(f"{PURLBASE}/{uberon_term}"),
                     URIRef(f"{RDFSBASE}#Source"),
                     Literal("HuBMAP"),
