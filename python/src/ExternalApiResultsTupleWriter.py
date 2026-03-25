@@ -33,6 +33,7 @@ from LoaderUtilities import (
 )
 
 TUPLES_DIRPATH = Path(__file__).parents[2] / "data" / "tuples"
+VALID_PHASES = ["PHASE_3", "PHASE_4"]
 
 
 def get_mondo_term(disease_id, efo2mondo):
@@ -360,38 +361,20 @@ def create_tuples_from_opentargets(opentargets_results, gene_results, summarize=
             )
 
         for drug in results[gene_ensembl_id]["drugs"]:
-            mondo_term = get_mondo_term(drug["diseaseId"], efo2mondo)
-            if (
-                mondo_term is None
-                or drug["drug"]["maximumClinicalTrialPhase"] < 3
-                or not drug["drug"]["isApproved"]
-                or drug["drug"]["hasBeenWithdrawn"]
-            ):
+            if drug["drug"]["maximumClinicalStage"] not in VALID_PHASES:
                 continue
-            # TODO: Test disease score
+            hasBeenWithdrawn = False
+            for drug_warning in drug["drug"]["drugWarnings"]:
+                if drug_warning["warningType"] == "Withdrawn":
+                    hasBeenWithdrawn = True
+                    break
+            if hasBeenWithdrawn:
+                continue
 
             # Follow term naming convention for parsing
             chembl_term = drug["drug"]["id"].replace("CHEMBL", "CHEMBL_")
 
             # == Drug_product relations
-
-            # Drug_product, RO_0002606 (IS_SUBSTANCE_THAT_TREATS), Disease
-            tuples.append(
-                (
-                    URIRef(f"{PURLBASE}/{chembl_term}"),
-                    URIRef(f"{RDFSBASE}#RO_0002606"),
-                    URIRef(f"{PURLBASE}/{mondo_term}"),
-                )
-            )
-            tuples.append(
-                (
-                    URIRef(f"{PURLBASE}/{chembl_term}"),
-                    URIRef(f"{RDFSBASE}#RO_0002606"),
-                    URIRef(f"{PURLBASE}/{mondo_term}"),
-                    URIRef(f"{RDFSBASE}#Source"),
-                    Literal("Open Targets"),
-                )
-            )
 
             # Drug_product, RO_0002436 (MOLECULARLY_INTERACTS_WITH), Protein
             if (
@@ -418,49 +401,77 @@ def create_tuples_from_opentargets(opentargets_results, gene_results, summarize=
                 )
 
             if drug["drug"]["indications"]:
+                mondo_terms = []
                 for indication in drug["drug"]["indications"]["rows"]:
                     mondo_term = get_mondo_term(indication["disease"]["id"], efo2mondo)
-                    if mondo_term is None or indication["maxPhaseForIndication"] < 4:
+                    if (
+                        mondo_term is None
+                        or indication["maxClinicalStage"] not in VALID_PHASES
+                    ):
                         continue
-                    # TODO: Test disease score
+                    mondo_terms.append(mondo_term)
 
-                    # == Indications annotations
-
+                    # Drug_product, RO_0002606 (IS_SUBSTANCE_THAT_TREATS), Disease
                     tuples.append(
                         (
                             URIRef(f"{PURLBASE}/{chembl_term}"),
-                            URIRef(f"{RDFSBASE}#Indications"),
-                            Literal(mondo_term),
-                        ),
+                            URIRef(f"{RDFSBASE}#RO_0002606"),
+                            URIRef(f"{PURLBASE}/{mondo_term}"),
+                        )
+                    )
+                    tuples.append(
+                        (
+                            URIRef(f"{PURLBASE}/{chembl_term}"),
+                            URIRef(f"{RDFSBASE}#RO_0002606"),
+                            URIRef(f"{PURLBASE}/{mondo_term}"),
+                            URIRef(f"{RDFSBASE}#Source"),
+                            Literal("Open Targets"),
+                        )
                     )
 
-            for drug_trial_id in drug["ctIds"]:
-                # Follow term naming convention for parsing
-                nct_term = drug_trial_id.replace("NCT", "NCT_")
+                    for clinical_report in indication["clinicalReports"]:
+                        drug_trial_id = clinical_report["id"]
+                        if "nct" not in drug_trial_id:
+                            continue
 
-                # == Clinical_trial relations
+                        # Follow term naming convention for parsing
+                        nct_term = drug_trial_id.replace("NCT", "NCT_").replace(
+                            "nct", "NCT_"
+                        )
 
-                # Drug_product, RO_0020325 (EVALUATED_IN), Clinical_trial
+                        # == Clinical_trial relations
+
+                        # Drug_product, RO_0020325 (EVALUATED_IN), Clinical_trial
+                        tuples.append(
+                            (
+                                URIRef(f"{PURLBASE}/{chembl_term}"),
+                                URIRef(f"{RDFSBASE}#RO_0020325"),
+                                URIRef(f"{PURLBASE}/{nct_term}"),
+                            )
+                        )
+                        tuples.append(
+                            (
+                                URIRef(f"{PURLBASE}/{chembl_term}"),
+                                URIRef(f"{RDFSBASE}#RO_0020325"),
+                                URIRef(f"{PURLBASE}/{nct_term}"),
+                                URIRef(f"{RDFSBASE}#Source"),
+                                Literal("Open Targets"),
+                            )
+                        )
+
+                        # == Clinical_trial annotations
+
+                        # None
+
+                # == Indications annotations
+
                 tuples.append(
                     (
                         URIRef(f"{PURLBASE}/{chembl_term}"),
-                        URIRef(f"{RDFSBASE}#RO_0020325"),
-                        URIRef(f"{PURLBASE}/{nct_term}"),
-                    )
+                        URIRef(f"{RDFSBASE}#Indications"),
+                        Literal(str(mondo_terms)),
+                    ),
                 )
-                tuples.append(
-                    (
-                        URIRef(f"{PURLBASE}/{chembl_term}"),
-                        URIRef(f"{RDFSBASE}#RO_0020325"),
-                        URIRef(f"{PURLBASE}/{nct_term}"),
-                        URIRef(f"{RDFSBASE}#Source"),
-                        Literal("Open Targets"),
-                    )
-                )
-
-                # == Clinical_trial annotations
-
-                # None
 
             # == Drug_product annotations
 
@@ -475,16 +486,6 @@ def create_tuples_from_opentargets(opentargets_results, gene_results, summarize=
                         URIRef(f"{PURLBASE}/{chembl_term}"),
                         URIRef(f"{RDFSBASE}#Target"),
                         Literal(gs_term.replace("GS_", "")),
-                    ),
-                    (
-                        URIRef(f"{PURLBASE}/{chembl_term}"),
-                        URIRef(f"{RDFSBASE}#Type"),
-                        Literal(str(drug["drugType"])),
-                    ),
-                    (
-                        URIRef(f"{PURLBASE}/{chembl_term}"),
-                        URIRef(f"{RDFSBASE}#Mechanism_of_action"),
-                        Literal(str(drug["mechanismOfAction"])),
                     ),
                     (
                         URIRef(f"{PURLBASE}/{chembl_term}"),
@@ -503,16 +504,24 @@ def create_tuples_from_opentargets(opentargets_results, gene_results, summarize=
                     ),
                     (
                         URIRef(f"{PURLBASE}/{chembl_term}"),
-                        URIRef(f"{RDFSBASE}#Approved"),
-                        Literal(str(drug["drug"]["isApproved"])),
-                    ),
-                    (
-                        URIRef(f"{PURLBASE}/{chembl_term}"),
-                        URIRef(f"{RDFSBASE}#Withdrawn"),
-                        Literal(str(drug["drug"]["hasBeenWithdrawn"])),
+                        URIRef(f"{RDFSBASE}#Type"),
+                        Literal(str(drug["drug"]["drugType"])),
                     ),
                 ]
             )
+
+            for mechanism_of_action in drug["drug"]["mechanismsOfAction"]["rows"]:
+                if gene_ensembl_id in [
+                    target["id"] for target in mechanism_of_action["targets"]
+                ]:
+                    tuples.append(
+                        (
+                            URIRef(f"{PURLBASE}/{chembl_term}"),
+                            URIRef(f"{RDFSBASE}#Mechanism_of_action"),
+                            Literal(mechanism_of_action["mechanismOfAction"]),
+                        ),
+                    )
+                break
 
             pubchem_id = map_chembl_to_pubchem(
                 chembl_term.replace("_", ""), chembl2pubchem
