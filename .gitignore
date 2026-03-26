@@ -55,11 +55,11 @@ CLAUDE.md
 docs/java/
 log/
 data/arangodb/
-data/external/
+data/external*/
 data/obo/
-data/results-*/
-data/scores-*/
-data/tuples/
+data/results*/
+data/scores*/
+data/tuples*/
 python/tests/arangodb/
 # archives
 arangodb.tar.gz
