@@ -1157,7 +1157,7 @@ def main(summarize=False):
     else:
         output_dirpath = TUPLES_DIRPATH
 
-    with open(output_dirpath / "cell-kn-mvp-external-api-results.json", "w") as f:
+    with open(output_dirpath / "nlm-ckn-external-api-results.json", "w") as f:
         data = {}
         if summarize:
             data["results"] = {}
