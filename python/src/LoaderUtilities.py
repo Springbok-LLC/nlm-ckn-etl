@@ -27,8 +27,6 @@ OBO_IN_OWL_NS = "{http://www.geneontology.org/formats/oboInOwl#}"
 RDF_NS = "{http://www.w3.org/1999/02/22-rdf-syntax-ns#}"
 
 DATA_DIRPATH = Path(__file__).resolve().parents[2] / "data"
-# RESULTS_SOURCES_PATH = DATA_DIRPATH / "results-sources-2026-01-06-20260106T085622.json"
-# RESULTS_SOURCES_PATH = DATA_DIRPATH / "results-sources-2026-01-06-5611f036a383.json"
 RESULTS_SOURCES_PATH = DATA_DIRPATH / "results-sources-2026-01-06-6253d09e2fc7.json"
 EXTERNAL_DIRPATH = DATA_DIRPATH / "external"
 BIOMART_DIRPATH = EXTERNAL_DIRPATH / "biomart"
@@ -188,25 +186,27 @@ def get_dataset_version_id_lists(file_paths):
         file_paths["mapping_paths"],
         file_paths["nsforest_paths"],
     ):
-        if len(summary_path) == 1:
-            dataset_version_ids = [
-                pd.read_csv(summary_path[0])["h5ad_url"][0].split("/")[-1].split(".")[0]
-            ]
-
-        elif len(mapping_path) == 1:
+        if len(mapping_path) == 1:
             dataset_version_ids = (
                 pd.read_csv(mapping_path[0]).loc[0, "dataset_version_id"].split("--")
             )
 
+        elif len(summary_path) == 1:
+            dataset_version_ids = [
+                pd.read_csv(summary_path[0])["h5ad_url"][0].split("/")[-1].split(".")[0]
+            ]
+
         else:
-            match = re.search(
-                r"_([0-9a-z]{8}-[0-9a-z]{4}-[0-9a-z]{4}-[0-9a-z]{4}-[0-9a-z]{12})_",
-                nsforest_path.name,
-            )
-            if match:
-                dataset_version_ids = [match.group(1)]
-            else:
-                dataset_version_ids = []
+            raise Exception(f"No dataset version id found for {nsforest_path}")
+            # TODO: Resore if needed to process older production delivery
+            # match = re.search(
+            #     r"_([0-9a-z]{8}-[0-9a-z]{4}-[0-9a-z]{4}-[0-9a-z]{4}-[0-9a-z]{12})_",
+            #     nsforest_path.name,
+            # )
+            # if match:
+            #     dataset_version_ids = [match.group(1)]
+            # else:
+            #     dataset_version_ids = []
 
         dataset_version_id_lists.append(dataset_version_ids)
 
@@ -1041,10 +1041,7 @@ def get_values_or_none(data, list_key, value_keys):
 
 def main():
 
-    results_sources_path = (
-        DATA_DIRPATH / "results-sources-2026-01-06-20260106T085622.json"
-    )
-    # results_sources_path = DATA_DIRPATH / "results-sources-2026-01-06-5611f036a383.json"
+    results_sources_path = DATA_DIRPATH / "results-sources-2026-01-06-6253d09e2fc7.json"
 
     with open(results_sources_path, "r") as fp:
         results_sources = json.load(fp)
