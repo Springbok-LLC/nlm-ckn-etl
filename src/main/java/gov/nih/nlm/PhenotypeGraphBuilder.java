@@ -99,6 +99,7 @@ public class PhenotypeGraphBuilder {
         List<Map<String, Object>> paths = new ArrayList<>();
         for (AqlQuerySet aqlQuerySet : aqlQuerySets) {
             System.out.println(aqlQuerySet.queryStr().lines().collect(Collectors.joining()).replaceAll("\\s+", " "));
+            System.out.println(aqlQuerySet.bindVars());
             long startTime = System.nanoTime();
             @SuppressWarnings("unchecked")
             List<Map<String, Object>> queryPaths = (List<Map<String, Object>>) (List<?>) db.query(aqlQuerySet.queryStr(),
