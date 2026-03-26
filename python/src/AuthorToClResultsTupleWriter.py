@@ -83,26 +83,6 @@ def create_tuples_from_author_to_cl(
             )
         )
 
-        # Cell_set_Ind, DERIVES_FROM, Anatomical_structure_Cls
-        # -, RO:0001000, UBERON:0001062
-        # TODO: Add Anatomical_structure_Ind annotations, remove, or replace?
-        tuples.append(
-            (
-                URIRef(f"{PURLBASE}/{cs_term}"),
-                URIRef(f"{PURLBASE}/RO_0001000"),
-                URIRef(f"{PURLBASE}/{uberon_term}"),
-            )
-        )
-        tuples.append(
-            (
-                URIRef(f"{PURLBASE}/{cs_term}"),
-                URIRef(f"{PURLBASE}/RO_0001000"),
-                URIRef(f"{PURLBASE}/{uberon_term}"),
-                URIRef(f"{RDFSBASE}#Source"),
-                Literal("Manual Mapping"),
-            )
-        )
-
         for dataset_version_id in dataset_version_ids:
             csd_term = f"CSD_{dataset_version_id}"
 
@@ -144,24 +124,6 @@ def create_tuples_from_author_to_cl(
             )
         )
 
-        # Cell_set, RO:0002292 (EXPRESSES), Binary_gene_set
-        tuples.append(
-            (
-                URIRef(f"{PURLBASE}/{cs_term}"),
-                URIRef(f"{PURLBASE}/RO_0002292"),
-                URIRef(f"{PURLBASE}/{bgs_term}"),
-            )
-        )
-        tuples.append(
-            (
-                URIRef(f"{PURLBASE}/{cs_term}"),
-                URIRef(f"{PURLBASE}/RO_0002292"),
-                URIRef(f"{PURLBASE}/{bgs_term}"),
-                URIRef(f"{RDFSBASE}#Source"),
-                Literal("NSForest"),
-            )
-        )
-
         # Biomarker_combination_Ind, IS_CHARACTERIZING_MARKER_SET_FOR, Cell_type_Class
         # TODO: Update and use RO term
         # -, RO:0015004, CL:0000000
@@ -184,30 +146,6 @@ def create_tuples_from_author_to_cl(
         # )
 
         # Node annotations
-        tuples.append(
-            (
-                URIRef(f"{PURLBASE}/{cs_term}"),
-                URIRef(f"{RDFSBASE}#Author_cell_term"),
-                Literal(row["author_cell_term"]),
-            )
-        )
-        keys = [
-            "Link_to_publication",
-            "Link_to_CELLxGENE_collection",
-            "Link_to_CELLxGENE_dataset",
-            "Dataset_name",
-        ]
-        for key in keys:
-            value = cellxgene_results[dataset_version_id][key]
-            if isinstance(value, str):
-                value = value.replace("https://", "")
-            tuples.append(
-                (
-                    URIRef(f"{PURLBASE}/{cs_term}"),
-                    URIRef(f"{RDFSBASE}#{key.replace(' ', '_')}"),
-                    Literal(value),
-                )
-            )
         tuples.append(
             (
                 URIRef(f"{PURLBASE}/{cs_term}"),

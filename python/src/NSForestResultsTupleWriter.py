@@ -2,6 +2,7 @@ import ast
 import json
 from pathlib import Path
 
+import pandas as pd
 from rdflib.term import Literal, URIRef
 
 from ExternalApiResultsFetcher import CELLXGENE_PATH
@@ -20,7 +21,7 @@ TUPLES_DIRPATH = Path(__file__).parents[2] / "data" / "tuples"
 
 
 def create_tuples_from_nsforest(
-    nsforest_results, dataset_version_ids, cellxgene_results
+    nsforest_results, summary_data, dataset_version_ids, cellxgene_results
 ):
     """Creates tuples from NSForest results consistent with schema
     v0.7. Exclude clusters smaller than the minimum size.
@@ -29,6 +30,8 @@ def create_tuples_from_nsforest(
     ----------
     nsforest_results : pd.DataFrame
         DataFrame containing NSForest results
+    summary_data : pd.DataFrame
+        DataFrame containing summary data
     dataset_version_ids: list(str)
         List of the dataset version identifiers corresponding to the
         datasets used to generate the NSForest results
@@ -43,7 +46,11 @@ def create_tuples_from_nsforest(
     """
     tuples = []
 
-    # Nodes for each cell set, marker and binary genes, and cell type
+    # Nodes for each cell set, marker and binary genes
+    uberon_terms = [
+        t.replace(":", "_").strip()
+        for t in summary_data["tissue_ontology_term_id"][0].split("|")
+    ]
     for _, row in nsforest_results.iterrows():
         uuid = row["uuid"]
         cluster_name = hyphenate(row["clusterName"])
@@ -59,6 +66,86 @@ def create_tuples_from_nsforest(
         cs_term = f"CS_{cluster_name}-{uuid}"
         bmc_term = f"BMC_{uuid}"
         bgs_term = f"BGS_{uuid}"
+
+        # Cell_set_Ind, DERIVES_FROM, Anatomical_structure_Cls
+        # -, RO:0001000, UBERON:0001062
+        # TODO: Add Anatomical_structure_Ind annotations, remove, or replace?
+        for uberon_term in uberon_terms:
+            tuples.append(
+                (
+                    URIRef(f"{PURLBASE}/{cs_term}"),
+                    URIRef(f"{PURLBASE}/RO_0001000"),
+                    URIRef(f"{PURLBASE}/{uberon_term}"),
+                )
+            )
+            tuples.append(
+                (
+                    URIRef(f"{PURLBASE}/{cs_term}"),
+                    URIRef(f"{PURLBASE}/RO_0001000"),
+                    URIRef(f"{PURLBASE}/{uberon_term}"),
+                    URIRef(f"{RDFSBASE}#Source"),
+                    Literal("Manual Mapping"),
+                )
+            )
+
+        # Cell_set, RO:0002292 (EXPRESSES), Binary_gene_set
+        tuples.append(
+            (
+                URIRef(f"{PURLBASE}/{cs_term}"),
+                URIRef(f"{PURLBASE}/RO_0002292"),
+                URIRef(f"{PURLBASE}/{bgs_term}"),
+            )
+        )
+        tuples.append(
+            (
+                URIRef(f"{PURLBASE}/{cs_term}"),
+                URIRef(f"{PURLBASE}/RO_0002292"),
+                URIRef(f"{PURLBASE}/{bgs_term}"),
+                URIRef(f"{RDFSBASE}#Source"),
+                Literal("NSForest"),
+            )
+        )
+
+        # Cell_set_Ind, HAS_CHARACTERIZING_MARKER_SET, Biomarker_combination_Ind
+        # ---, RO:0015004, SO:0001260
+        tuples.append(
+            (
+                URIRef(f"{PURLBASE}/{cs_term}"),
+                URIRef(f"{PURLBASE}/RO_0015004"),
+                URIRef(f"{PURLBASE}/{bmc_term}"),
+            )
+        )
+        tuples.append(
+            (
+                URIRef(f"{PURLBASE}/{cs_term}"),
+                URIRef(f"{PURLBASE}/RO_0015004"),
+                URIRef(f"{PURLBASE}/{bmc_term}"),
+                URIRef(f"{RDFSBASE}#Source"),
+                Literal("NSForest"),
+            )
+        )
+
+        for dataset_version_id in dataset_version_ids:
+            csd_term = f"CSD_{dataset_version_id}"
+
+            # Cell_set_Ind, SOURCE, Cell_set_dataset_Ind
+            # -, dc:source, IAO:0000100
+            tuples.append(
+                (
+                    URIRef(f"{PURLBASE}/{cs_term}"),
+                    URIRef(f"{RDFSBASE}/dc#Source"),
+                    URIRef(f"{PURLBASE}/{csd_term}"),
+                )
+            )
+            tuples.append(
+                (
+                    URIRef(f"{PURLBASE}/{cs_term}"),
+                    URIRef(f"{RDFSBASE}/dc#Source"),
+                    URIRef(f"{PURLBASE}/{csd_term}"),
+                    URIRef(f"{RDFSBASE}#Source"),
+                    Literal("NSForest"),
+                )
+            )
 
         # Biomarker_combination_Ind, INSTANCE_OF, Biomarker_combination_Class
         # ---, rdf:type, SO:0001260
@@ -99,25 +186,6 @@ def create_tuples_from_nsforest(
                     Literal("NSForest"),
                 )
             )
-
-        # Cell_set_Ind, HAS_CHARACTERIZING_MARKER_SET, Biomarker_combination_Ind
-        # ---, RO:0015004, SO:0001260
-        tuples.append(
-            (
-                URIRef(f"{PURLBASE}/{cs_term}"),
-                URIRef(f"{PURLBASE}/RO_0015004"),
-                URIRef(f"{PURLBASE}/{bmc_term}"),
-            )
-        )
-        tuples.append(
-            (
-                URIRef(f"{PURLBASE}/{cs_term}"),
-                URIRef(f"{PURLBASE}/RO_0015004"),
-                URIRef(f"{PURLBASE}/{bmc_term}"),
-                URIRef(f"{RDFSBASE}#Source"),
-                Literal("NSForest"),
-            )
-        )
 
         # Biomarker_combination_Ind, SUBCLUSTER_OF, Binary_gene_combination_Ind
         # SO:0001260, RO:0015003, SO:0001260
@@ -289,28 +357,6 @@ def create_tuples_from_nsforest(
         #     )
         # )
 
-        for dataset_version_id in dataset_version_ids:
-            csd_term = f"CSD_{dataset_version_id}"
-
-            # Cell_set_Ind, SOURCE, Cell_set_dataset_Ind
-            # -, dc:source, IAO:0000100
-            tuples.append(
-                (
-                    URIRef(f"{PURLBASE}/{cs_term}"),
-                    URIRef(f"{RDFSBASE}/dc#Source"),
-                    URIRef(f"{PURLBASE}/{csd_term}"),
-                )
-            )
-            tuples.append(
-                (
-                    URIRef(f"{PURLBASE}/{cs_term}"),
-                    URIRef(f"{RDFSBASE}/dc#Source"),
-                    URIRef(f"{PURLBASE}/{csd_term}"),
-                    URIRef(f"{RDFSBASE}#Source"),
-                    Literal("NSForest"),
-                )
-            )
-
     return tuples
 
 
@@ -336,12 +382,13 @@ def main(summarize=False):
     results_sources = get_results_sources()
     file_paths = get_dataset_file_paths(results_sources)
     nsforest_paths = file_paths["nsforest_paths"]
-    scores_path = file_paths["scores_paths"]
+    scores_paths = file_paths["scores_paths"]
+    summary_paths = file_paths["summary_paths"]
     dataset_version_id_lists = get_dataset_version_id_lists(file_paths)
     with open(CELLXGENE_PATH, "r") as fp:
         cellxgene_results = json.load(fp)
-    for nsforest_path, score_path, dataset_version_ids in zip(
-        nsforest_paths, scores_path, dataset_version_id_lists
+    for nsforest_path, score_path, summary_path, dataset_version_ids in zip(
+        nsforest_paths, scores_paths, summary_paths, dataset_version_id_lists
     ):
         # Load NSForest results
         nsforest_results = load_results(nsforest_path).sort_values(
@@ -350,8 +397,8 @@ def main(summarize=False):
         if summarize:
             nsforest_results = nsforest_results.head(1)
 
+        # Load silhouette scores, if it exists
         if score_path != []:
-            # Load silhouette scores
             cluster_header = nsforest_results.loc[0, "cluster_header"]
             silhouette_scores = load_results(score_path[0]).sort_values(
                 cluster_header, ignore_index=True
@@ -365,9 +412,12 @@ def main(summarize=False):
                 right_on=cluster_header,
             )
 
+        # Load summary data
+        summary_data = load_results(summary_path[0])
+
         print(f"Creating tuples from {nsforest_path}")
         nsforest_tuples = create_tuples_from_nsforest(
-            nsforest_results, dataset_version_ids, cellxgene_results
+            nsforest_results, summary_data, dataset_version_ids, cellxgene_results
         )
         if summarize:
             output_dirpath = TUPLES_DIRPATH / "summaries"
