@@ -14,7 +14,6 @@ import ArangoDbUtilities as adb
 
 
 class ArangoDbUtilitiesTestCase(unittest.TestCase):
-
     def setUp(self):
 
         # Stop any ArangoDB instance
