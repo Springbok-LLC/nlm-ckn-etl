@@ -135,7 +135,7 @@ public class PhenotypeGraphBuilder {
         // CS - CL - GS - MONDO - CHEMBL
         aqlQuerySets.add(getQuerySetInFour(graphName, "CL", "GS", "MONDO", "CHEMBL"));
         // CS - CL - GS - CHEMBL - PR
-        aqlQuerySets.add(getQuerySetInFour(graphName, "CL", "GS", "MONDO", "PR"));
+        aqlQuerySets.add(getQuerySetInFour(graphName, "CL", "GS", "CHEMBL", "PR"));
         // CS - CL - GS - PR - CHEMBL
         aqlQuerySets.add(getQuerySetInFour(graphName, "CL", "GS", "PR", "CHEMBL"));
 
