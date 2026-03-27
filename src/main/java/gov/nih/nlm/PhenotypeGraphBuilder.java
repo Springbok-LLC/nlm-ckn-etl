@@ -18,10 +18,8 @@ import java.util.Set;
 import java.util.stream.Collectors;
 
 import static gov.nih.nlm.AqlQuerySetBuilder.AqlQuerySet;
-import static gov.nih.nlm.AqlQuerySetBuilder.getQuerySetInFive;
 import static gov.nih.nlm.AqlQuerySetBuilder.getQuerySetInFour;
 import static gov.nih.nlm.AqlQuerySetBuilder.getQuerySetInFourWithHierarchy;
-import static gov.nih.nlm.AqlQuerySetBuilder.getQuerySetInOne;
 import static gov.nih.nlm.AqlQuerySetBuilder.getQuerySetInThree;
 import static gov.nih.nlm.AqlQuerySetBuilder.getQuerySetInThreeWithHierarchy;
 import static gov.nih.nlm.AqlQuerySetBuilder.getQuerySetInTwo;
@@ -51,48 +49,175 @@ public class PhenotypeGraphBuilder {
 
         List<AqlQuerySet> aqlQuerySets = new ArrayList<>();
 
-        aqlQuerySets.add(getQuerySetInOne(graphName, "BGS"));
-
-        aqlQuerySets.add(getQuerySetInTwo(graphName, "BMC", "BGS"));
-        aqlQuerySets.add(getQuerySetInTwo(graphName, "CL", "CSD"));
-        aqlQuerySets.add(getQuerySetInTwo(graphName, "CL", "GS"));
-        // aqlQuerySets.add(getQuerySetInTwo(graphName, "CL", "PR"));
+        // CS - CSD - PUB
         aqlQuerySets.add(getQuerySetInTwo(graphName, "CSD", "PUB"));
-        aqlQuerySets.add(getQuerySetInTwo(graphName, "UBERON", "CHEBI"));
-        aqlQuerySets.add(getQuerySetInTwo(graphName, "UBERON", "CSD"));
-        aqlQuerySets.add(getQuerySetInTwo(graphName, "UBERON", "GS"));
-        aqlQuerySets.add(getQuerySetInTwo(graphName, "UBERON", "NCBITaxon"));
-        aqlQuerySets.add(getQuerySetInTwo(graphName, "UBERON", "PATO"));
-        aqlQuerySets.add(getQuerySetInTwo(graphName, "UBERON", "PR"));
+        // CS - CL - GS
+        aqlQuerySets.add(getQuerySetInTwo(graphName, "CL", "GS"));
+        // CS - CL - PR
+        aqlQuerySets.add(getQuerySetInTwo(graphName, "CL", "PR"));
+        // CS - BMC - GS
+        aqlQuerySets.add(getQuerySetInTwo(graphName, "BMC", "GS"));
+        // CS - BMC - BGS
+        aqlQuerySets.add(getQuerySetInTwo(graphName, "BMC", "BGS"));
 
+        // CS - UBERON - NCBITaxon +
         aqlQuerySets.add(getQuerySetInTwoWithHierarchy(graphName,
-                "CL",
+                "UBERON",
                 "NCBITaxon",
                 "NCBITaxon-NCBITaxon",
                 "SUB_CLASS_OF"));
+        // CS - CL - MONDO +
+        aqlQuerySets.add(getQuerySetInTwoWithHierarchy(graphName, "CL", "MONDO", "MONDO-MONDO", "SUB_CLASS_OF"));
+        // CS - CL - GO +
+        aqlQuerySets.add(getQuerySetInTwoWithHierarchy(graphName, "CL", "GO", "GO-GO", "SUB_CLASS_OF"));
+        // CS - CL - PATO +
         aqlQuerySets.add(getQuerySetInTwoWithHierarchy(graphName, "CL", "PATO", "PATO-PATO", "SUB_CLASS_OF"));
-        aqlQuerySets.add(getQuerySetInTwoWithHierarchy(graphName, "CL", "UBERON", "UBERON-UBERON", "PART_OF"));
-        aqlQuerySets.add(getQuerySetInTwoWithHierarchy(graphName, "UBERON", "GO", "GO-GO", "SUB_CLASS_OF"));
 
-        aqlQuerySets.add(getQuerySetInThree(graphName, "CL", "GO", "NCBITaxon"));
-        aqlQuerySets.add(getQuerySetInThree(graphName, "CL", "GS", "BMC"));
+        // CS - CL - GS - RS
+        aqlQuerySets.add(getQuerySetInThree(graphName, "CL", "GS", "RS"));
+        // CS - CL - GS - CHEMBL
+        aqlQuerySets.add(getQuerySetInThree(graphName, "CL", "GS", "CHEMBL"));
+        // CS - CL - GS - PR
         aqlQuerySets.add(getQuerySetInThree(graphName, "CL", "GS", "PR"));
-        aqlQuerySets.add(getQuerySetInThree(graphName, "CL", "GS", "UBERON"));
 
+        // CS - BMC - GS - RS
+        aqlQuerySets.add(getQuerySetInThree(graphName, "BMC", "GS", "RS"));
+        // CS - BMC - GS - CHEMBL
+        aqlQuerySets.add(getQuerySetInThree(graphName, "BMC", "GS", "CHEMBL"));
+        // CS - BMC - GS - PR
+        aqlQuerySets.add(getQuerySetInThree(graphName, "BMC", "GS", "PR"));
+
+        // CS - CL - PR - GS
+        aqlQuerySets.add(getQuerySetInThree(graphName, "CL", "PR", "GS"));
+        // CS - CL - PR - CHEMBL
+        aqlQuerySets.add(getQuerySetInThree(graphName, "CL", "PR", "CHEMBL"));
+
+        // CS - CL - MONDO - GS
+        aqlQuerySets.add(getQuerySetInThree(graphName, "CL", "MONDO", "GS"));
+        // CS - CL - MONDO - RS
+        aqlQuerySets.add(getQuerySetInThree(graphName, "CL", "MONDO", "RS"));
+        // CS - CL - MONDO - CHEMBL
+        aqlQuerySets.add(getQuerySetInThree(graphName, "CL", "MONDO", "CHEMBL"));
+
+        // CS - BMC - GS - MONDO +
         aqlQuerySets.add(getQuerySetInThreeWithHierarchy(graphName,
-                "CL",
+                "BMC",
                 "GS",
                 "MONDO",
                 "MONDO-MONDO",
                 "SUB_CLASS_OF"));
+        // CS - CL - PR - GO +
+        aqlQuerySets.add(getQuerySetInThreeWithHierarchy(graphName, "CL", "PR", "GO", "GO-GO", "SUB_CLASS_OF"));
+        // CS - CL - GO - NCBITaxon +
+        aqlQuerySets.add(getQuerySetInThreeWithHierarchy(graphName,
+                "CL",
+                "GO",
+                "NCBITaxon",
+                "NCBITaxon-NCBITaxon",
+                "SUB_CLASS_OF"));
+        // CS - CL - GO - HsapDv +
+        aqlQuerySets.add(getQuerySetInThreeWithHierarchy(graphName,
+                "CL",
+                "GO",
+                "HsapDv",
+                "HsapDv-HsapDv",
+                "SUB_CLASS_OF"));
+        // CS - CL - GO - UBERON +
+        aqlQuerySets.add(getQuerySetInThreeWithHierarchy(graphName, "CL", "GO", "UBERON", "UBERON-UBERON", "PART_OF"));
+        // CS - CL - PATO - UBERON +
+        aqlQuerySets.add(getQuerySetInThreeWithHierarchy(graphName,
+                "CL",
+                "PATO",
+                "UBERON",
+                "UBERON-UBERON",
+                "PART_OF"));
 
+        // CS - CL - GS - MONDO - CHEMBL
+        aqlQuerySets.add(getQuerySetInFour(graphName, "CL", "GS", "MONDO", "CHEMBL"));
+        // CS - CL - GS - CHEMBL - PR
+        aqlQuerySets.add(getQuerySetInFour(graphName, "CL", "GS", "MONDO", "PR"));
+        // CS - CL - GS - PR - CHEMBL
         aqlQuerySets.add(getQuerySetInFour(graphName, "CL", "GS", "PR", "CHEMBL"));
-        aqlQuerySets.add(getQuerySetInFour(graphName, "CL", "GS", "MONDO", "NCBITaxon"));
 
-        aqlQuerySets.add(getQuerySetInFourWithHierarchy(graphName, "CL", "GS", "MONDO", "HP", "HP-HP", "SUB_CLASS_OF"));
+        // CS - BMC - GS - MONDO - CHEMBL
+        aqlQuerySets.add(getQuerySetInFour(graphName, "BMC", "GS", "MONDO", "CHEMBL"));
+        // CS - BMC - GS - CHEMBL - PR
+        aqlQuerySets.add(getQuerySetInFour(graphName, "BMC", "GS", "CHEMBL", "PR"));
+        // CS - BMC - GS - PR - CHEMBL
+        aqlQuerySets.add(getQuerySetInFour(graphName, "BMC", "GS", "PR", "CHEMBL"));
 
-        aqlQuerySets.add(getQuerySetInFive(graphName, "CL", "GS", "RS", "CHEMBL", "MONDO"));
-        aqlQuerySets.add(getQuerySetInFive(graphName, "CL", "GS", "RS", "CHEMBL", "PR"));
+        // CS - CL - PR - GS - RS
+        aqlQuerySets.add(getQuerySetInFour(graphName, "CL", "PR", "GS", "RS"));
+        // CS - CL - PR - GS - CHEMBL
+        aqlQuerySets.add(getQuerySetInFour(graphName, "CL", "PR", "GS", "CHEMBL"));
+        // CS - CL - PR - CHEMBL - GS
+        aqlQuerySets.add(getQuerySetInFour(graphName, "CL", "PR", "CHEMBL", "GS"));
+
+        // CS - CL - MONDO - GS - RS
+        aqlQuerySets.add(getQuerySetInFour(graphName, "CL", "MONDO", "GS", "RS"));
+        // CS - CL - MONDO - GS - CHEMBL
+        aqlQuerySets.add(getQuerySetInFour(graphName, "CL", "MONDO", "GS", "CHEMBL"));
+        // CS - CL - MONDO - GS - PR
+        aqlQuerySets.add(getQuerySetInFour(graphName, "CL", "MONDO", "GS", "PR"));
+        // CS - CL - MONDO - RS - GS
+        aqlQuerySets.add(getQuerySetInFour(graphName, "CL", "MONDO", "RS", "GS"));
+        // CS - CL - MONDO - CHEMBL - GS
+        aqlQuerySets.add(getQuerySetInFour(graphName, "CL", "MONDO", "CHEMBL", "GS"));
+        // CS - CL - MONDO - CHEMBL - PR
+        aqlQuerySets.add(getQuerySetInFour(graphName, "CL", "MONDO", "CHEMBL", "PR"));
+
+        // CS - CL - GS - RS - MONDO +
+        aqlQuerySets.add(getQuerySetInFourWithHierarchy(graphName,
+                "CL",
+                "GS",
+                "RS",
+                "MONDO",
+                "MONDO-MONDO",
+                "SUB_CLASS_OF"));
+        // CS - CL - GS - CHEMBL - MONDO +
+        aqlQuerySets.add(getQuerySetInFourWithHierarchy(graphName,
+                "CL",
+                "GS",
+                "CHEMBL",
+                "MONDO",
+                "MONDO-MONDO",
+                "SUB_CLASS_OF"));
+        // CS - CL - GS - PR - GO +
+        aqlQuerySets.add(getQuerySetInFourWithHierarchy(graphName, "CL", "GS", "PR", "GO", "GO-GO", "SUB_CLASS_OF"));
+        // CS - BMC - GS - RS - MONDO +
+        aqlQuerySets.add(getQuerySetInFourWithHierarchy(graphName,
+                "BMC",
+                "GS",
+                "RS",
+                "MONDO",
+                "MONDO-MONDO",
+                "SUB_CLASS_OF"));
+        // CS - BMC - GS - CHEMBL - MONDO +
+        aqlQuerySets.add(getQuerySetInFourWithHierarchy(graphName,
+                "BMC",
+                "GS",
+                "CHEMBL",
+                "MONDO",
+                "MONDO-MONDO",
+                "SUB_CLASS_OF"));
+        // CS - BMC - GS - PR - GO +
+        aqlQuerySets.add(getQuerySetInFourWithHierarchy(graphName, "BMC", "GS", "PR", "GO", "GO-GO", "SUB_CLASS_OF"));
+        // CS - CL - PR - GS - MONDO +
+        aqlQuerySets.add(getQuerySetInFourWithHierarchy(graphName,
+                "CL",
+                "PR",
+                "GS",
+                "MONDO",
+                "MONDO-MONDO",
+                "SUB_CLASS_OF"));
+        // CS - CL - PR - CHEMBL - MONDO +
+        aqlQuerySets.add(getQuerySetInFourWithHierarchy(graphName,
+                "CL",
+                "PR",
+                "CHEMBL",
+                "MONDO",
+                "MONDO-MONDO",
+                "SUB_CLASS_OF"));
 
         ArangoDatabase db = arangoDbUtilities.createOrGetDatabase(databaseName);
         AqlQueryOptions queryOpts = new AqlQueryOptions();
@@ -101,8 +226,8 @@ public class PhenotypeGraphBuilder {
             System.out.println(aqlQuerySet.queryStr().lines().collect(Collectors.joining()).replaceAll("\\s+", " "));
             System.out.println(aqlQuerySet.bindVars());
             long startTime = System.nanoTime();
-            @SuppressWarnings("unchecked")
-            List<Map<String, Object>> queryPaths = (List<Map<String, Object>>) (List<?>) db.query(aqlQuerySet.queryStr(),
+            @SuppressWarnings("unchecked") List<Map<String, Object>> queryPaths = (List<Map<String, Object>>) (List<?>) db.query(
+                    aqlQuerySet.queryStr(),
                     Map.class,
                     aqlQuerySet.bindVars(),
                     queryOpts).asListRemaining();
