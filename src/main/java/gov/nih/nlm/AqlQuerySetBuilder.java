@@ -37,6 +37,55 @@ public class AqlQuerySetBuilder {
     }
 
     /**
+     * Get AQL query set to identify a path with one edge, including paths outbound from the last node in ontologies.
+     *
+     * @param graph          Graph name
+     * @param nodeOne        Node one name
+     * @param edgeCollection Edge collection name, usually "nodeTwo-nodeTwo"
+     * @param edgeLabel      Edge label, usually "SUB_CLASS_OF", or "PART_OF"
+     * @return Query set
+     */
+    public static AqlQuerySet getQuerySetInOneWithHierarchy(String graph,
+                                                            String nodeOne,
+                                                            String edgeCollection,
+                                                            String edgeLabel) {
+        Map<String, Object> bindVars = new HashMap<>();
+        bindVars.put("graph", graph);
+        bindVars.put("nodeOne", nodeOne);
+        bindVars.put("edgeCollection", edgeCollection);
+        bindVars.put("edgeLabel", edgeLabel);
+        String queryStr = """
+                FOR cs IN CS
+                  FOR n, e, p IN 2 ANY cs GRAPH @graph
+                    FILTER
+                    IS_SAME_COLLECTION(@nodeOne, p.vertices[1])
+                    LET l = FIRST(
+                      FOR n1, e1, p1 IN 1..64 OUTBOUND p.vertices[2] @edgeCollection
+                      PRUNE e1 != null AND e1.Label NOT IN [@edgeLabel]
+                      FILTER p1.edges[*].Label ALL IN [@edgeLabel]
+                      SORT LENGTH(p1.edges) DESC
+                      LIMIT 1
+                      RETURN p1
+                    )
+                RETURN {
+                  vertices: FLATTEN(
+                    [
+                      p.vertices,
+                      l ? l.vertices : []
+                    ]
+                  ),
+                  edges: FLATTEN(
+                    [
+                      p.edges,
+                      l ? l.edges : []
+                    ]
+                  )
+                }
+                """;
+        return new AqlQuerySet(bindVars, queryStr);
+    }
+
+    /**
      * Get AQL query set to identify a path with two edges.
      *
      * @param graph   Graph name
@@ -343,6 +392,75 @@ public class AqlQuerySetBuilder {
                     AND
                     IS_SAME_COLLECTION(@nodeFive, p.vertices[5])
                 RETURN p
+                """;
+        return new AqlQuerySet(bindVars, queryStr);
+    }
+
+    /**
+     * Get AQL query set to identify a path with five edges, including paths outbound from the last node in ontologies.
+     *
+     * @param graph          Graph name
+     * @param nodeOne        Node one name
+     * @param nodeTwo        Node two name
+     * @param nodeThree      Node three name
+     * @param nodeFour       Node four name
+     * @param nodeFive       Node five name
+     * @param edgeCollection Edge collection name, usually "nodeTwo-nodeTwo"
+     * @param edgeLabel      Edge label, usually "SUB_CLASS_OF", or "PART_OF"
+     * @return Query set
+     */
+    public static AqlQuerySet getQuerySetInFiveWithHierarchy(String graph,
+                                                             String nodeOne,
+                                                             String nodeTwo,
+                                                             String nodeThree,
+                                                             String nodeFour,
+                                                             String nodeFive,
+                                                             String edgeCollection,
+                                                             String edgeLabel) {
+        Map<String, Object> bindVars = new HashMap<>();
+        bindVars.put("graph", graph);
+        bindVars.put("nodeOne", nodeOne);
+        bindVars.put("nodeTwo", nodeTwo);
+        bindVars.put("nodeThree", nodeThree);
+        bindVars.put("nodeFour", nodeFour);
+        bindVars.put("nodeFive", nodeFive);
+        bindVars.put("edgeCollection", edgeCollection);
+        bindVars.put("edgeLabel", edgeLabel);
+        String queryStr = """
+                FOR cs IN CS
+                  FOR n, e, p IN 4 ANY cs GRAPH @graph
+                    FILTER
+                    IS_SAME_COLLECTION(@nodeOne, p.vertices[1])
+                    AND
+                    IS_SAME_COLLECTION(@nodeTwo, p.vertices[2])
+                    AND
+                    IS_SAME_COLLECTION(@nodeThree, p.vertices[3])
+                    AND
+                    IS_SAME_COLLECTION(@nodeFour, p.vertices[4])
+                    AND
+                    IS_SAME_COLLECTION(@nodeFive, p.vertices[5])
+                    LET l = FIRST(
+                      FOR n1, e1, p1 IN 1..64 OUTBOUND p.vertices[4] @edgeCollection
+                        PRUNE e1 != null AND e1.Label NOT IN [@edgeLabel]
+                        FILTER p1.edges[*].Label ALL IN [@edgeLabel]
+                        SORT LENGTH(p1.edges) DESC
+                        LIMIT 1
+                        RETURN p1
+                    )
+                RETURN {
+                  vertices: FLATTEN(
+                    [
+                      p.vertices,
+                      l ? l.vertices : []
+                    ]
+                  ),
+                  edges: FLATTEN(
+                    [
+                      p.edges,
+                      l ? l.edges : []
+                    ]
+                  )
+                }
                 """;
         return new AqlQuerySet(bindVars, queryStr);
     }
