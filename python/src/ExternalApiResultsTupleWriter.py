@@ -33,7 +33,8 @@ from LoaderUtilities import (
 )
 
 TUPLES_DIRPATH = Path(__file__).parents[2] / "data" / "tuples"
-VALID_PHASES = ["PHASE_3", "PHASE_4"]
+# "APPROVAL", "EARLY_PHASE_1", "IND", "PHASE_1_2", "PHASE_1", "PHASE_2_3", "PHASE_2", "PHASE_3", "PREAPPROVAL", "UNKNOWN"
+VALID_PHASES = ["PHASE_3", "APPROVAL"]
 
 
 def get_mondo_term(disease_id, efo2mondo):
