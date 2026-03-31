@@ -6,6 +6,7 @@ import com.arangodb.ArangoGraph;
 import com.arangodb.ArangoVertexCollection;
 import com.arangodb.entity.BaseDocument;
 import com.arangodb.entity.BaseEdgeDocument;
+import gov.nih.nlm.OntologyGraphBuilder.PTuple;
 import org.apache.jena.graph.Node;
 import org.apache.jena.graph.NodeFactory;
 import org.json.JSONArray;
@@ -49,10 +50,11 @@ public class ResultsGraphBuilder {
     private static final int TRIPLE_OBJECT_IDX = 2;
 
     // Assign quadruple indices
-    private static final int QUADRUPLE_SUBJECT_IDX = 0;
-    private static final int QUADRUPLE_OBJECT_IDX = 1;
-    private static final int QUADRUPLE_PREDICATE_IDX = 2;
-    private static final int QUADRUPLE_LITERAL_IDX = 3;
+    private static final int QUINTUPLE_SUBJECT_IDX = 0;
+    private static final int QUINTUPLE_PREDICATE_IDX = 1;
+    private static final int QUINTUPLE_OBJECT_IDX = 2;
+    private static final int QUINTUPLE_ATTRIBUTE_IDX = 3;
+    private static final int QUINTUPLE_VALUE_IDX = 4;
 
     /**
      * Read a JSON file containing tuples, parsing each element as a URI or literal node, and validating the resulting
@@ -95,10 +97,11 @@ public class ResultsGraphBuilder {
                     TRIPLE_OBJECT_IDX).isLiteral()))) {
                 throw new IOException("Invalid triple " + tupleArrayList);
             }
-            if (tupleArrayList.size() == 4 && !(tupleArrayList.get(QUADRUPLE_SUBJECT_IDX).isURI() && tupleArrayList.get(
-                    QUADRUPLE_OBJECT_IDX).isURI() && tupleArrayList.get(QUADRUPLE_PREDICATE_IDX).isURI() && tupleArrayList.get(
-                    QUADRUPLE_LITERAL_IDX).isLiteral())) {
-                throw new IOException("Invalid quadruple " + tupleArrayList);
+            if (tupleArrayList.size() == 5 && !(tupleArrayList.get(QUINTUPLE_SUBJECT_IDX).isURI() && tupleArrayList.get(
+                    QUINTUPLE_PREDICATE_IDX).isURI() && (tupleArrayList.get(QUINTUPLE_OBJECT_IDX).isURI() || tupleArrayList.get(
+                    QUINTUPLE_OBJECT_IDX).isLiteral()) && (tupleArrayList.get(QUINTUPLE_ATTRIBUTE_IDX).isURI() || tupleArrayList.get(
+                    QUINTUPLE_ATTRIBUTE_IDX).isLiteral()) && tupleArrayList.get(QUINTUPLE_VALUE_IDX).isLiteral())) {
+                throw new IOException("Invalid triple " + tupleArrayList);
             }
             tuplesArrayList.add(tupleArrayList);
         }
@@ -189,7 +192,7 @@ public class ResultsGraphBuilder {
             if (!vtuple.isValidVertex()) continue;
 
             // Parse the predicate
-            String attribute = parsePredicate(ontologyElementMaps, tupleArrayList.get(TRIPLE_PREDICATE_IDX));
+            String attribute = parsePredicate(ontologyElementMaps, tupleArrayList.get(TRIPLE_PREDICATE_IDX)).label();
 
             // Update the corresponding vertex
             if (!vertexDocuments.get(vtuple.id()).containsKey(vtuple.number()))
@@ -241,8 +244,10 @@ public class ResultsGraphBuilder {
             if (!objectVTuple.isValidVertex()) continue;
 
             // Parse the predicate
-            String label = normalizeEdgeLabel(parsePredicate(ontologyElementMaps,
-                    tupleArrayList.get(TRIPLE_PREDICATE_IDX)));
+            PTuple pTuple = parsePredicate(ontologyElementMaps, tupleArrayList.get(TRIPLE_PREDICATE_IDX));
+            if (pTuple.label() == null) {
+                continue;
+            }
 
             // Create an edge collection, if needed
             String idPair = subjectVTuple.id() + "-" + objectVTuple.id();
@@ -254,16 +259,20 @@ public class ResultsGraphBuilder {
             }
 
             // Construct the edge, if needed
-            String key = subjectVTuple.number() + "-" + objectVTuple.number();
+            String key = subjectVTuple.number() + "-" + pTuple.curie() + "-" + objectVTuple.number();
+            BaseEdgeDocument doc;
             if (!edgeKeys.get(idPair).contains(key)) {
                 nEdges++;
-                BaseEdgeDocument doc = new BaseEdgeDocument(key,
+                doc = new BaseEdgeDocument(key,
                         subjectVTuple.id() + "/" + subjectVTuple.number(),
                         objectVTuple.id() + "/" + objectVTuple.number());
-                doc.addAttribute("Label", label);
                 edgeDocuments.get(idPair).put(key, doc);
                 edgeKeys.get(idPair).add(key);
+            } else {
+                doc = edgeDocuments.get(idPair).get(key);
             }
+            // Always assign the last label
+            doc.updateAttribute("Label", normalizeEdgeLabel(pTuple.label()));
         }
         long stopTime = System.nanoTime();
         System.out.println("Constructed " + nEdges + " edges using " + tuplesArrayList.size() + " tuples in " + (stopTime - startTime) / 1e9 + " s");
@@ -286,34 +295,37 @@ public class ResultsGraphBuilder {
         long startTime = System.nanoTime();
         for (ArrayList<Node> tupleArrayList : tuplesArrayList) {
 
-            // Only update edges using quadruples
-            if (tupleArrayList.size() != 4) continue;
+            // Only update edges using quintuples
+            if (tupleArrayList.size() != 5) continue;
 
             // Ensure the subject contains a valid ontology ID
-            OntologyGraphBuilder.VTuple subjectVTuple = createVTuple(tupleArrayList.get(QUADRUPLE_SUBJECT_IDX));
+            OntologyGraphBuilder.VTuple subjectVTuple = createVTuple(tupleArrayList.get(QUINTUPLE_SUBJECT_IDX));
             if (!subjectVTuple.isValidVertex()) continue;
 
             // Ensure the object contains a valid ontology ID
-            OntologyGraphBuilder.VTuple objectVTuple = createVTuple(tupleArrayList.get(QUADRUPLE_OBJECT_IDX));
+            OntologyGraphBuilder.VTuple objectVTuple = createVTuple(tupleArrayList.get(QUINTUPLE_OBJECT_IDX));
             if (!objectVTuple.isValidVertex()) continue;
 
             // Parse the predicate
-            String attribute = parsePredicate(ontologyElementMaps, tupleArrayList.get(QUADRUPLE_PREDICATE_IDX));
+            PTuple pTuple = parsePredicate(ontologyElementMaps, tupleArrayList.get(QUINTUPLE_PREDICATE_IDX));
 
-            // Parse the literal
-            String literal = tupleArrayList.get(QUADRUPLE_LITERAL_IDX).getLiteralValue().toString();
+            // Parse the attribute
+            String attribute = parsePredicate(ontologyElementMaps, tupleArrayList.get(QUINTUPLE_ATTRIBUTE_IDX)).label();
+
+            // Parse the value
+            String value = tupleArrayList.get(QUINTUPLE_VALUE_IDX).getLiteralValue().toString();
 
             // Update the corresponding edge
             String idPair = subjectVTuple.id() + "-" + objectVTuple.id();
-            String key = subjectVTuple.number() + "-" + objectVTuple.number();
+            String key = subjectVTuple.number() + "-" + pTuple.curie() + "-" + objectVTuple.number();
             if (!edgeDocuments.get(idPair).containsKey(key))
                 throw new RuntimeException("Invalid edge in collection " + idPair + " with key " + key);
             updatedEdges.add(subjectVTuple.id() + "/" + subjectVTuple.number() + "-" + objectVTuple.id() + "/" + objectVTuple.number());
             BaseEdgeDocument doc = edgeDocuments.get(idPair).get(key);
             if (doc.getAttribute(attribute) == null) {
-                doc.addAttribute(attribute, literal);
+                doc.addAttribute(attribute, value);
             } else {
-                doc.updateAttribute(attribute, literal);
+                doc.updateAttribute(attribute, value);
             }
         }
         long stopTime = System.nanoTime();

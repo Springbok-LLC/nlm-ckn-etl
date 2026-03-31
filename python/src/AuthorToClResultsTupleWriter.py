@@ -76,6 +76,7 @@ def create_tuples_from_author_to_cl(
         tuples.append(
             (
                 URIRef(f"{PURLBASE}/{cl_term}"),
+                URIRef(f"{PURLBASE}/BFO_0000050"),
                 URIRef(f"{PURLBASE}/{uberon_term}"),
                 URIRef(f"{RDFSBASE}#Source"),
                 Literal("Manual Mapping"),
@@ -95,6 +96,7 @@ def create_tuples_from_author_to_cl(
         tuples.append(
             (
                 URIRef(f"{PURLBASE}/{cs_term}"),
+                URIRef(f"{PURLBASE}/RO_0001000"),
                 URIRef(f"{PURLBASE}/{uberon_term}"),
                 URIRef(f"{RDFSBASE}#Source"),
                 Literal("Manual Mapping"),
@@ -116,6 +118,7 @@ def create_tuples_from_author_to_cl(
             tuples.append(
                 (
                     URIRef(f"{PURLBASE}/{cl_term}"),
+                    URIRef(f"{PURLBASE}/RO_0015001"),
                     URIRef(f"{PURLBASE}/{csd_term}"),
                     URIRef(f"{RDFSBASE}#Source"),
                     Literal("Manual Mapping"),
@@ -134,6 +137,7 @@ def create_tuples_from_author_to_cl(
         tuples.append(
             (
                 URIRef(f"{PURLBASE}/{cs_term}"),
+                URIRef(f"{PURLBASE}/RO_0002473"),
                 URIRef(f"{PURLBASE}/{cl_term}"),
                 URIRef(f"{RDFSBASE}#Source"),
                 Literal("Manual Mapping"),
@@ -151,6 +155,7 @@ def create_tuples_from_author_to_cl(
         tuples.append(
             (
                 URIRef(f"{PURLBASE}/{cs_term}"),
+                URIRef(f"{PURLBASE}/RO_0002292"),
                 URIRef(f"{PURLBASE}/{bgs_term}"),
                 URIRef(f"{RDFSBASE}#Source"),
                 Literal("NSForest"),
@@ -171,6 +176,7 @@ def create_tuples_from_author_to_cl(
         # tuples.append(
         #     (
         #         URIRef(f"{PURLBASE}/{bmc_term}"),
+        #         URIRef(f"{PURLBASE}/RO_0015004"),
         #         URIRef(f"{PURLBASE}/{cl_term}"),
         #         URIRef(f"{RDFSBASE}#Source"),
         #         Literal("Manual Mapping"),
@@ -214,6 +220,7 @@ def create_tuples_from_author_to_cl(
         tuples.append(
             (
                 URIRef(f"{PURLBASE}/{cs_term}"),
+                URIRef(f"{PURLBASE}/RO_0002473"),
                 URIRef(f"{PURLBASE}/{cl_term}"),
                 URIRef(f"{RDFSBASE}#Match"),
                 Literal(row["match"]),
@@ -222,6 +229,7 @@ def create_tuples_from_author_to_cl(
         tuples.append(
             (
                 URIRef(f"{PURLBASE}/{cs_term}"),
+                URIRef(f"{PURLBASE}/RO_0002473"),
                 URIRef(f"{PURLBASE}/{cl_term}"),
                 URIRef(f"{RDFSBASE}#Mapping_method"),
                 Literal(row["mapping_method"]),
@@ -245,6 +253,7 @@ def create_tuples_from_author_to_cl(
             tuples.append(
                 (
                     URIRef(f"{PURLBASE}/{gs_term}"),
+                    URIRef(f"{PURLBASE}/BFO_0000050"),
                     URIRef(f"{PURLBASE}/{cl_term}"),
                     URIRef(f"{RDFSBASE}#Source"),
                     Literal("NSForest"),
@@ -258,17 +267,18 @@ def create_tuples_from_author_to_cl(
 
             # Cell_type_Class, SELECTIVELY EXPRESS, Gene_Class
             # TODO: Update and use RO term
-            # CL:0000000, RO:0002292, SO:0000704
+            # CL:0000000, RO:0002294, SO:0000704
             tuples.append(
                 (
                     URIRef(f"{PURLBASE}/{cl_term}"),
-                    URIRef(f"{RDFSBASE}#SELECTIVELY_EXPRESS"),
+                    URIRef(f"{RDFSBASE}#RO_0002294"),
                     URIRef(f"{PURLBASE}/{gs_term}"),
                 )
             )
             tuples.append(
                 (
                     URIRef(f"{PURLBASE}/{cl_term}"),
+                    URIRef(f"{RDFSBASE}#RO_0002294"),
                     URIRef(f"{PURLBASE}/{gs_term}"),
                     URIRef(f"{RDFSBASE}#Source"),
                     Literal("Manual Mapping"),
@@ -287,6 +297,7 @@ def create_tuples_from_author_to_cl(
             tuples.append(
                 (
                     URIRef(f"{PURLBASE}/{gs_term}"),
+                    URIRef(f"{PURLBASE}/BFO_0000050"),
                     URIRef(f"{PURLBASE}/{cl_term}"),
                     URIRef(f"{RDFSBASE}#Source"),
                     Literal("NSForest"),
@@ -306,6 +317,7 @@ def create_tuples_from_author_to_cl(
             # tuples.append(
             #     (
             #         URIRef(f"{PURLBASE}/{gs_term}"),
+            #         URIRef(f"{PURLBASE}/RO_0002206"),
             #         URIRef(f"{PURLBASE}/{uberon_term}"),
             #         URIRef(f"{RDFSBASE}#Source"),
             #         Literal("Manual Mapping"),
