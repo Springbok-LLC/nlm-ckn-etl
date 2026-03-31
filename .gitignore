@@ -68,3 +68,5 @@ obo.tar.gz
 obo-*.tar.gz
 CLAUDE.md
 .prompt
+*.csv
+*.xlsx
