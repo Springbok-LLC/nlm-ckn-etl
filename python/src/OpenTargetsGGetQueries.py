@@ -31,27 +31,16 @@ query target($ensemblId: String!) {
         }
       }
     }
-    knownDrugs {
+    drugAndClinicalCandidates {
       count
       rows {
-        phase
-        status
-        drugId
-        drugType
-        diseaseId
-        approvedSymbol
-        ctIds
-        approvedName
-        mechanismOfAction
         drug {
           id
+          name
           description
-          maximumClinicalTrialPhase
-          isApproved
-          hasBeenWithdrawn
+          maximumClinicalStage
           synonyms
           tradeNames
-          name
           indications {
             count
             rows {
@@ -60,12 +49,30 @@ query target($ensemblId: String!) {
                 name
                 description
               }
-              maxPhaseForIndication
-              references {
+              maxClinicalStage
+              clinicalReports {
                 source
-                ids
+                id
               }
             }
+          }
+          drugType
+          mechanismsOfAction {
+            rows {
+              mechanismOfAction
+              targets {
+                id
+              }
+              targetName
+            }
+          }
+          drugWarnings {
+            efoId
+            efoTerm
+            efoIdForWarningClass
+            description
+            warningType
+            year
           }
         }
       }
@@ -197,7 +204,7 @@ query diseases($ensemblId: String!) {
 """,
     },
     "drugs": {
-        "purpose": "Duplicate and extend gget opentagets -r drugs command",
+        "purpose": "Update and extend gget opentagets -r drugs command",
         "variables": {
             "ensemblId": "ENSG00000169252",
         },
@@ -205,36 +212,38 @@ query diseases($ensemblId: String!) {
 query diseases($ensemblId: String!) {
   target(ensemblId: $ensemblId) {
     id
-    knownDrugs {
+    drugAndClinicalCandidates {
       count
       rows {
-        phase
-        status
-        drugId
-        drugType
-        diseaseId
-        approvedSymbol
-        ctIds
-        approvedName
-        mechanismOfAction
         drug {
           id
           description
-          maximumClinicalTrialPhase
-          isApproved
-          hasBeenWithdrawn
+          maximumClinicalStage
           synonyms
           tradeNames
           name
           indications {
             count
             rows {
-              maxPhaseForIndication
-              references {
+              disease {
+                id
+                name
+                description
+              }
+              maxClinicalStage
+              clinicalReports {
                 source
-                ids
+                id
               }
             }
+          }
+          drugWarnings {
+            efoId
+            efoTerm
+            efoIdForWarningClass
+            description
+            warningType
+            year
           }
         }
       }
