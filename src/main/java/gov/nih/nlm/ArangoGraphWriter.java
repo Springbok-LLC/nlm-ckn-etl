@@ -9,79 +9,89 @@ import gov.nih.nlm.model.ArangoVertex;
 import org.jgrapht.graph.DirectedPseudograph;
 
 import java.util.ArrayList;
-import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.stream.Collectors;
 
 public class ArangoGraphWriter {
 
     private final ArangoDatabase db;
 
+    /**
+     * Creates a writer for the given ArangoDB database.
+     *
+     * @param db the target ArangoDB database connection to write graphs to
+     */
     public ArangoGraphWriter(ArangoDatabase db) {
         this.db = db;
     }
 
+    /**
+     * Write the induced subgraph to the target database, preserving
+     * original vertex and edge collection names.
+     *
+     * @param induced      the induced subgraph to write
+     * @param subgraphName the name for the new named graph
+     */
     public void write(DirectedPseudograph<ArangoVertex, ArangoEdge> induced, String subgraphName) {
 
-        // Step 1 — Discover original collections from vertex IDs
-        Map<String, String> vertexColMap = induced.vertexSet().stream().map(ArangoVertex::collection).distinct().collect(
-                Collectors.toMap(col -> col, col -> subgraphName + "_" + col));
+        // Discover vertex collections
+        Set<String> vertexCollections = induced.vertexSet().stream()
+                .map(ArangoVertex::collection)
+                .collect(Collectors.toSet());
 
-        String newEdgeCol = subgraphName + "_edges";
+        // Discover edge collections
+        Set<String> edgeCollections = induced.edgeSet().stream()
+                .map(ArangoEdge::collection)
+                .collect(Collectors.toSet());
 
-        // Step 2 — Drop and recreate collections
-        for (String newCol : vertexColMap.values()) {
-            var col = db.collection(newCol);
-            if (col.exists()) col.drop();
-            db.createCollection(newCol);
+        // Create vertex collections
+        System.out.println("Creating collections...");
+        for (String col : vertexCollections) {
+            db.createCollection(col);
         }
 
-        var edgeCollection = db.collection(newEdgeCol);
-        if (edgeCollection.exists()) edgeCollection.drop();
-        db.createCollection(newEdgeCol, new CollectionCreateOptions().type(CollectionType.EDGES));
+        // Create edge collections
+        for (String col : edgeCollections) {
+            db.createCollection(col, new CollectionCreateOptions().type(CollectionType.EDGES));
+        }
 
-        // Step 3 — Insert vertices into their respective new collections
+        // Insert vertices
+        System.out.println("Inserting vertices...");
         for (ArangoVertex vertex : induced.vertexSet()) {
-            String newCol = vertexColMap.get(vertex.collection());
             Map<String, Object> doc = new HashMap<>(vertex.properties());
             doc.put("_key", vertex.key());
-            db.collection(newCol).insertDocument(doc);
+            db.collection(vertex.collection()).insertDocument(doc);
         }
 
-        // Step 4 — Insert edges, rewriting _from/_to to new collections
+        // Insert edges
+        System.out.println("Inserting edges...");
         for (ArangoEdge edge : induced.edgeSet()) {
-            String fromCol = edge.from().split("/")[0];
-            String fromKey = edge.from().split("/")[1];
-            String toCol = edge.to().split("/")[0];
-            String toKey = edge.to().split("/")[1];
-
-            String newFrom = vertexColMap.get(fromCol) + "/" + fromKey;
-            String newTo = vertexColMap.get(toCol) + "/" + toKey;
-
             Map<String, Object> doc = new HashMap<>(edge.properties());
             doc.put("_key", edge.key());
-            doc.put("_from", newFrom);
-            doc.put("_to", newTo);
-
-            db.collection(newEdgeCol).insertDocument(doc);
+            doc.put("_from", edge.from());
+            doc.put("_to", edge.to());
+            db.collection(edge.collection()).insertDocument(doc);
         }
 
-        // Step 5 — Register as a named graph
-        List<String> newVertexCols = new ArrayList<>(vertexColMap.values());
+        // Register as a named graph
+        System.out.println("Registering named graph...");
+        List<String> allVertexCols = new ArrayList<>(vertexCollections);
+        List<EdgeDefinition> edgeDefs = new ArrayList<>();
 
-        if (db.graph(subgraphName).exists()) {
-            db.graph(subgraphName).drop();
+        for (String edgeCol : edgeCollections) {
+            edgeDefs.add(new EdgeDefinition()
+                    .collection(edgeCol)
+                    .from(allVertexCols.toArray(new String[0]))
+                    .to(allVertexCols.toArray(new String[0])));
         }
 
-        EdgeDefinition edgeDef = new EdgeDefinition().collection(newEdgeCol).from(newVertexCols.toArray(new String[0])).to(
-                newVertexCols.toArray(new String[0]));
+        db.createGraph(subgraphName, edgeDefs);
 
-        db.createGraph(subgraphName, Collections.singletonList(edgeDef));
-
-        System.out.println("Named graph '" + subgraphName + "' created.");
-        System.out.println("  Vertex collections: " + newVertexCols);
-        System.out.println("  Edge collection:    " + newEdgeCol);
+        System.out.println("Named graph '" + subgraphName + "' created in database '" + db.name() + "'.");
+        System.out.println("  Vertex collections: " + allVertexCols);
+        System.out.println("  Edge collections:   " + edgeCollections);
     }
 }

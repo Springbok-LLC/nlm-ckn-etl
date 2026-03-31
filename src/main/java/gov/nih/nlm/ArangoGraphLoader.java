@@ -19,15 +19,26 @@ public class ArangoGraphLoader {
     private final ArangoDatabase db;
     private final ObjectMapper mapper = new ObjectMapper();
 
+    /**
+     * Creates a loader for the given ArangoDB database.
+     *
+     * @param db the ArangoDB database connection to load graphs from
+     */
     public ArangoGraphLoader(ArangoDatabase db) {
         this.db = db;
     }
 
+    /**
+     * Load a named graph from ArangoDB into a JGraphT directed pseudograph.
+     *
+     * @param graphName the name of the ArangoDB named graph to load
+     * @return the graph as a JGraphT {@link DirectedPseudograph}
+     */
     public DirectedPseudograph<ArangoVertex, ArangoEdge> load(String graphName) {
 
         DirectedPseudograph<ArangoVertex, ArangoEdge> graph = new DirectedPseudograph<>(ArangoEdge.class);
 
-        // Step 1 — Get all vertex and edge collections from the named graph
+        // Get all vertex and edge collections from the named graph
         var graphInfo = db.graph(graphName).getInfo();
         var edgeDefs = graphInfo.getEdgeDefinitions();
 
@@ -40,11 +51,11 @@ public class ArangoGraphLoader {
             vertexCollections.addAll(ed.getTo());
         }
 
-        // Step 2 — Load all vertices, keyed by _id for edge lookup
+        // Load all vertices, keyed by _id for edge lookup
         Map<String, ArangoVertex> vertexIndex = new HashMap<>();
 
         for (String col : vertexCollections) {
-            String aql = "FOR v IN %s RETURN v".formatted(col);
+            String aql = "FOR v IN `%s` RETURN v".formatted(col);
 
             db.query(aql, RawJson.class).forEach(raw -> {
                 try {
@@ -67,9 +78,9 @@ public class ArangoGraphLoader {
             });
         }
 
-        // Step 3 — Load all edges
+        // Load all edges
         for (String col : edgeCollections) {
-            String aql = "FOR e IN %s RETURN e".formatted(col);
+            String aql = "FOR e IN `%s` RETURN e".formatted(col);
 
             db.query(aql, RawJson.class).forEach(raw -> {
                 try {
@@ -86,7 +97,7 @@ public class ArangoGraphLoader {
                     if (fromVertex == null || toVertex == null) return;
 
                     Map<String, Object> props = stripSystemFields(doc);
-                    ArangoEdge edge = new ArangoEdge(key, from, to, props);
+                    ArangoEdge edge = new ArangoEdge(key, from, to, col, props);
                     graph.addEdge(fromVertex, toVertex, edge);
 
                 } catch (Exception e) {
