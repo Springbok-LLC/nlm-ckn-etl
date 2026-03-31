@@ -6,6 +6,26 @@ import nx_arangodb as nxadb
 from arango import ArangoClient
 
 
+MAX_DEPTH = 5
+
+# Ontology hierarchy traversal configuration
+# "all": include entire vertex and edge collection (CL special case)
+# "walk": BFS walk following edges with the given Label to root
+HIERARCHY_CONFIG = {
+    "CL": {"strategy": "all"},
+    "GO": {"strategy": "walk", "label": "SUB_CLASS_OF"},
+    "MONDO": {"strategy": "walk", "label": "SUB_CLASS_OF"},
+    "HP": {"strategy": "walk", "label": "SUB_CLASS_OF"},
+    "PATO": {"strategy": "walk", "label": "SUB_CLASS_OF"},
+    "HsapDv": {"strategy": "walk", "label": "SUB_CLASS_OF"},
+    "NCBITaxon": {"strategy": "walk", "label": "SUB_CLASS_OF"},
+    "Orphanet": {"strategy": "walk", "label": "SUB_CLASS_OF"},
+    "PR": {"strategy": "walk", "label": "SUB_CLASS_OF"},
+    "CHEBI": {"strategy": "walk", "label": "SUB_CLASS_OF"},
+    "UBERON": {"strategy": "walk", "label": "PART_OF"},
+}
+
+
 def descendants_at_depth(G, source, max_depth):
     """BFS traversal from source up to max_depth.
 
@@ -37,38 +57,18 @@ def descendants_at_depth(G, source, max_depth):
     return visited
 
 
-MAX_DEPTH = 5
-
-# Ontology hierarchy traversal configuration
-# "all": include entire vertex and edge collection (CL special case)
-# "walk": BFS walk following edges with the given Label to root
-HIERARCHY_CONFIG = {
-    "CL": {"strategy": "all"},
-    "GO": {"strategy": "walk", "label": "SUB_CLASS_OF"},
-    "MONDO": {"strategy": "walk", "label": "SUB_CLASS_OF"},
-    "HP": {"strategy": "walk", "label": "SUB_CLASS_OF"},
-    "PATO": {"strategy": "walk", "label": "SUB_CLASS_OF"},
-    "HsapDv": {"strategy": "walk", "label": "SUB_CLASS_OF"},
-    "NCBITaxon": {"strategy": "walk", "label": "SUB_CLASS_OF"},
-    "Orphanet": {"strategy": "walk", "label": "SUB_CLASS_OF"},
-    "PR": {"strategy": "walk", "label": "SUB_CLASS_OF"},
-    "CHEBI": {"strategy": "walk", "label": "SUB_CLASS_OF"},
-    "UBERON": {"strategy": "walk", "label": "PART_OF"},
-}
-
-
 def get_vertex_collection(node_id: str) -> str:
     """Extract the collection name from a vertex ID like 'GO/0008150'.
 
     Parameters
     ----------
     node_id : str
-        A vertex ID in the form "CollectionName/key".
+        A vertex ID in the form "CollectionName/_key"
 
     Returns
     -------
     str
-        The collection name prefix.
+        The collection name prefix
     """
     return node_id.split("/", 1)[0]
 
@@ -86,19 +86,19 @@ def walk_hierarchy_to_root(
     Parameters
     ----------
     G : nx.MultiDiGraph
-        The full source graph.
+        The full source graph
     start_node : str
-        The vertex ID to start walking from.
+        The vertex ID to start walking from
     ontology_prefix : str
-        The ontology collection name (e.g., "GO", "UBERON").
+        The ontology collection name (e.g., "GO", "UBERON")
     label_filter : str
-        The edge Label value to follow (e.g., "SUB_CLASS_OF", "PART_OF").
+        The edge Label value to follow (e.g., "SUB_CLASS_OF", "PART_OF")
 
     Returns
     -------
     tuple[set, set]
         A tuple of (ancestor_nodes, hierarchy_edges) where hierarchy_edges
-        is a set of (u, v, key) tuples.
+        is a set of (u, v, key) tuples
     """
     edge_collection = f"{ontology_prefix}-{ontology_prefix}"
     ancestor_nodes = set()
@@ -138,15 +138,15 @@ def collect_all_ontology_nodes_and_edges(
     Parameters
     ----------
     G : nx.MultiDiGraph
-        The full source graph.
+        The full source graph
     ontology_prefix : str
-        The ontology collection name (e.g., "CL").
+        The ontology collection name (e.g., "CL")
 
     Returns
     -------
     tuple[set, set]
         A tuple of (all_nodes, all_edges) where all_edges is a set of
-        (u, v, key) tuples.
+        (u, v, key) tuples
     """
     edge_collection = f"{ontology_prefix}-{ontology_prefix}"
     all_nodes = {v for v in G.nodes if v.startswith(f"{ontology_prefix}/")}
@@ -172,14 +172,14 @@ def add_ontology_hierarchy_paths(
     Parameters
     ----------
     G : nx.MultiDiGraph
-        The full source graph.
+        The full source graph
     induced : nx.MultiDiGraph
-        The induced subgraph to enrich with hierarchy paths.
+        The induced subgraph to enrich with hierarchy paths
 
     Returns
     -------
     nx.MultiDiGraph
-        The enriched induced subgraph.
+        The enriched induced subgraph
     """
     ontology_prefixes_present = set()
     for node in induced.nodes:
@@ -200,9 +200,7 @@ def add_ontology_hierarchy_paths(
             edges_to_add.update(new_edges)
 
         elif config["strategy"] == "walk":
-            ontology_vertices = [
-                v for v in induced.nodes if v.startswith(f"{prefix}/")
-            ]
+            ontology_vertices = [v for v in induced.nodes if v.startswith(f"{prefix}/")]
             for vertex in ontology_vertices:
                 ancestors, hier_edges = walk_hierarchy_to_root(
                     G, vertex, prefix, config["label"]
@@ -218,7 +216,7 @@ def add_ontology_hierarchy_paths(
         if not induced.has_edge(u, v, key=key):
             induced.add_edge(u, v, key=key, **G[u][v][key])
 
-    print(f"After hierarchy enrichment:")
+    print("After hierarchy enrichment:")
     print(f"  Vertices: {induced.number_of_nodes()}")
     print(f"  Edges:    {induced.number_of_edges()}")
 
@@ -226,7 +224,7 @@ def add_ontology_hierarchy_paths(
 
 
 def build_induced_subgraph(
-    db, graph_name: str, source_collection: str, target_db, subgraph_name: str
+    source_db, graph_name: str, source_collection: str, target_db, subgraph_name: str
 ) -> None:
     """
     Build a named graph in target_db containing the induced subgraph of all
@@ -235,21 +233,21 @@ def build_induced_subgraph(
 
     Parameters
     ----------
-    db : arango.database.StandardDatabase
-        The source ArangoDB database connection.
+    source_db : arango.database.StandardDatabase
+        The source ArangoDB database connection
     graph_name : str
-        The name of the source named graph.
+        The name of the source named graph
     source_collection : str
-        The vertex collection to start BFS from (e.g., "CS").
+        The vertex collection to start BFS from (e.g., "CS")
     target_db : arango.database.StandardDatabase
-        The target ArangoDB database connection for the induced subgraph.
+        The target ArangoDB database connection for the induced subgraph
     subgraph_name : str
-        The name for the new named graph in target_db.
+        The name for the new named graph in target_db
     """
 
     # Load the full graph via the NetworkX adapter
     print("Loading full graph via NetworkX adapter...")
-    G_arango = nxadb.MultiDiGraph(name=graph_name, db=db)
+    G_arango = nxadb.MultiDiGraph(name=graph_name, db=source_db)
     G = nx.MultiDiGraph(G_arango)
 
     # Find all vertices reachable from any source vertex
@@ -289,20 +287,11 @@ def build_induced_subgraph(
     vertex_col_map = {col: col for col in original_collections}
     edge_col_map = {col: col for col in original_edge_collections}
 
-    # Drop and recreate all collections in target_db. Drop the graph first
-    # so that the collections can be dropped.
-    print("Dropping and recreating collections in target database...")
-    if target_db.has_graph(subgraph_name):
-        target_db.delete_graph(subgraph_name)
-
+    # Create collections in target_db
+    print("Creating collections...")
     for col in vertex_col_map.values():
-        if target_db.has_collection(col):
-            target_db.delete_collection(col)
         target_db.create_collection(col)
-
     for col in edge_col_map.values():
-        if target_db.has_collection(col):
-            target_db.delete_collection(col)
         target_db.create_collection(col, edge=True)
 
     # Insert vertices into their respective collections in target_db
@@ -362,31 +351,35 @@ def build_induced_subgraph(
 if __name__ == "__main__":
     ARANGO_DB_HOST = os.getenv("ARANGO_DB_HOST", "")
     ARANGO_DB_PORT = os.getenv("ARANGO_DB_PORT", "")
-
     ARANGO_DB_USER = os.getenv("ARANGO_DB_USER", "")
     ARANGO_DB_PASSWORD = os.getenv("ARANGO_DB_PASSWORD", "")
-
-    ARANGO_DB_NAME = os.getenv("ARANGO_DB_NAME", "")
-
-    ARANGO_PGRAPH_DB_NAME = os.getenv("ARANGO_PGRAPH_DB_NAME", "")
-
-    ARANGO_OGRAPH_NAME = os.getenv("ARANGO_OGRAPH_NAME", "")
-    ARANGO_PGRAPH_NAME = os.getenv("ARANGO_PGRAPH_NAME", "")
+    ARANGO_ONTOLOGY_DB_NAME = os.getenv("ARANGO_ONTOLOGY_DB_NAME", "")
+    ARANGO_PHENOTYPE_DB_NAME = os.getenv("ARANGO_PHENOTYPE_DB_NAME", "")
+    ARANGO_ONTOLOGY_GRAPH_NAME = os.getenv("ARANGO_ONTOLOGY_GRAPH_NAME", "")
+    ARANGO_PHENOTYPE_GRAPH_NAME = os.getenv("ARANGO_PHENOTYPE_GRAPH_NAME", "")
 
     client = ArangoClient(hosts=f"http://{ARANGO_DB_HOST}:{ARANGO_DB_PORT}")
-    db = client.db(ARANGO_DB_NAME, username=ARANGO_DB_USER, password=ARANGO_DB_PASSWORD)
 
     sys_db = client.db("_system", username=ARANGO_DB_USER, password=ARANGO_DB_PASSWORD)
-    if not sys_db.has_database(ARANGO_PGRAPH_DB_NAME):
-        sys_db.create_database(ARANGO_PGRAPH_DB_NAME)
+
+    source_db = client.db(
+        ARANGO_ONTOLOGY_DB_NAME, username=ARANGO_DB_USER, password=ARANGO_DB_PASSWORD
+    )
+    if sys_db.has_database(ARANGO_PHENOTYPE_DB_NAME):
+        sys_db.delete_database(ARANGO_PHENOTYPE_DB_NAME)
+    sys_db.create_database(ARANGO_PHENOTYPE_DB_NAME)
+
     target_db = client.db(
-        ARANGO_PGRAPH_DB_NAME, username=ARANGO_DB_USER, password=ARANGO_DB_PASSWORD
+        ARANGO_PHENOTYPE_DB_NAME, username=ARANGO_DB_USER, password=ARANGO_DB_PASSWORD
     )
 
+    if target_db.has_graph(ARANGO_PHENOTYPE_GRAPH_NAME):
+        target_db.delete_graph(ARANGO_PHENOTYPE_GRAPH_NAME)
+
     build_induced_subgraph(
-        db=db,
-        graph_name=ARANGO_OGRAPH_NAME,
+        source_db=source_db,
+        graph_name=ARANGO_ONTOLOGY_GRAPH_NAME,
         source_collection="CS",
         target_db=target_db,
-        subgraph_name=ARANGO_PGRAPH_NAME,
+        subgraph_name=ARANGO_PHENOTYPE_GRAPH_NAME,
     )
