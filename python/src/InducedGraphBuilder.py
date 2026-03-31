@@ -274,36 +274,34 @@ def build_induced_subgraph(
     print(f"  Edge collections:   {list(edge_col_map.values())}")
 
 
-# Usage
+if __name__ == "__main__":
+    ARANGO_DB_HOST = os.getenv("ARANGO_DB_HOST", "")
+    ARANGO_DB_PORT = os.getenv("ARANGO_DB_PORT", "")
 
-ARANGO_DB_HOST = os.getenv("ARANGO_DB_HOST", "")
-ARANGO_DB_PORT = os.getenv("ARANGO_DB_PORT", "")
+    ARANGO_DB_USER = os.getenv("ARANGO_DB_USER", "")
+    ARANGO_DB_PASSWORD = os.getenv("ARANGO_DB_PASSWORD", "")
 
-ARANGO_DB_USER = os.getenv("ARANGO_DB_USER", "")
-ARANGO_DB_PASSWORD = os.getenv("ARANGO_DB_PASSWORD", "")
+    ARANGO_DB_NAME = os.getenv("ARANGO_DB_NAME", "")
 
-ARANGO_DB_NAME = os.getenv("ARANGO_DB_NAME", "")
+    ARANGO_PGRAPH_DB_NAME = os.getenv("ARANGO_PGRAPH_DB_NAME", "")
 
-ARANGO_PGRAPH_DB_NAME = os.getenv("ARANGO_PGRAPH_DB_NAME", "")
-ARANGO_PGRAPH_DB_NAME = "Induced"
+    ARANGO_OGRAPH_NAME = os.getenv("ARANGO_OGRAPH_NAME", "")
+    ARANGO_PGRAPH_NAME = os.getenv("ARANGO_PGRAPH_NAME", "")
 
-ARANGO_OGRAPH_NAME = os.getenv("ARANGO_OGRAPH_NAME", "")
-ARANGO_PGRAPH_NAME = os.getenv("ARANGO_PGRAPH_NAME", "")
+    client = ArangoClient(hosts=f"http://{ARANGO_DB_HOST}:{ARANGO_DB_PORT}")
+    db = client.db(ARANGO_DB_NAME, username=ARANGO_DB_USER, password=ARANGO_DB_PASSWORD)
 
-client = ArangoClient(hosts=f"http://{ARANGO_DB_HOST}:{ARANGO_DB_PORT}")
-db = client.db(ARANGO_DB_NAME, username=ARANGO_DB_USER, password=ARANGO_DB_PASSWORD)
+    sys_db = client.db("_system", username=ARANGO_DB_USER, password=ARANGO_DB_PASSWORD)
+    if not sys_db.has_database(ARANGO_PGRAPH_DB_NAME):
+        sys_db.create_database(ARANGO_PGRAPH_DB_NAME)
+    target_db = client.db(
+        ARANGO_PGRAPH_DB_NAME, username=ARANGO_DB_USER, password=ARANGO_DB_PASSWORD
+    )
 
-sys_db = client.db("_system", username=ARANGO_DB_USER, password=ARANGO_DB_PASSWORD)
-if not sys_db.has_database(ARANGO_PGRAPH_DB_NAME):
-    sys_db.create_database(ARANGO_PGRAPH_DB_NAME)
-target_db = client.db(
-    ARANGO_PGRAPH_DB_NAME, username=ARANGO_DB_USER, password=ARANGO_DB_PASSWORD
-)
-
-build_induced_subgraph(
-    db=db,
-    graph_name=ARANGO_OGRAPH_NAME,
-    source_collection="CS",
-    target_db=target_db,
-    subgraph_name=ARANGO_PGRAPH_NAME,
-)
+    build_induced_subgraph(
+        db=db,
+        graph_name=ARANGO_OGRAPH_NAME,
+        source_collection="CS",
+        target_db=target_db,
+        subgraph_name=ARANGO_PGRAPH_NAME,
+    )
