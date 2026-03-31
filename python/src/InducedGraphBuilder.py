@@ -7,7 +7,22 @@ from arango import ArangoClient
 
 
 def descendants_at_depth(G, source, max_depth):
-    """BFS traversal from source up to max_depth."""
+    """BFS traversal from source up to max_depth.
+
+    Parameters
+    ----------
+    G : nx.MultiDiGraph
+        The graph to traverse.
+    source : str
+        The starting vertex ID.
+    max_depth : int
+        Maximum traversal depth.
+
+    Returns
+    -------
+    set
+        All vertices reachable from source within max_depth.
+    """
     visited = {source}
     queue = deque([(source, 0)])
 
@@ -22,8 +37,7 @@ def descendants_at_depth(G, source, max_depth):
     return visited
 
 
-# Replace the reachability section in build_induced_subgraph
-MAX_DEPTH = 5  # adjust to your domain knowledge
+MAX_DEPTH = 5
 
 # Ontology hierarchy traversal configuration
 # "all": include entire vertex and edge collection (CL special case)
@@ -44,7 +58,18 @@ HIERARCHY_CONFIG = {
 
 
 def get_vertex_collection(node_id: str) -> str:
-    """Extract the collection name from a vertex ID like 'GO/0008150'."""
+    """Extract the collection name from a vertex ID like 'GO/0008150'.
+
+    Parameters
+    ----------
+    node_id : str
+        A vertex ID in the form "CollectionName/key".
+
+    Returns
+    -------
+    str
+        The collection name prefix.
+    """
     return node_id.split("/", 1)[0]
 
 
@@ -58,8 +83,22 @@ def walk_hierarchy_to_root(
     BFS walk from start_node to root, following only self-referential
     edges (e.g., GO-GO) with the specified Label.
 
-    Returns (ancestor_nodes, hierarchy_edges) where hierarchy_edges
-    is a set of (u, v, key) tuples.
+    Parameters
+    ----------
+    G : nx.MultiDiGraph
+        The full source graph.
+    start_node : str
+        The vertex ID to start walking from.
+    ontology_prefix : str
+        The ontology collection name (e.g., "GO", "UBERON").
+    label_filter : str
+        The edge Label value to follow (e.g., "SUB_CLASS_OF", "PART_OF").
+
+    Returns
+    -------
+    tuple[set, set]
+        A tuple of (ancestor_nodes, hierarchy_edges) where hierarchy_edges
+        is a set of (u, v, key) tuples.
     """
     edge_collection = f"{ontology_prefix}-{ontology_prefix}"
     ancestor_nodes = set()
@@ -96,7 +135,18 @@ def collect_all_ontology_nodes_and_edges(
     Collect ALL vertices with the given prefix and ALL edges in the
     self-referential edge collection (e.g., CL-CL).
 
-    Returns (all_nodes, all_edges) where all_edges is a set of (u, v, key).
+    Parameters
+    ----------
+    G : nx.MultiDiGraph
+        The full source graph.
+    ontology_prefix : str
+        The ontology collection name (e.g., "CL").
+
+    Returns
+    -------
+    tuple[set, set]
+        A tuple of (all_nodes, all_edges) where all_edges is a set of
+        (u, v, key) tuples.
     """
     edge_collection = f"{ontology_prefix}-{ontology_prefix}"
     all_nodes = {v for v in G.nodes if v.startswith(f"{ontology_prefix}/")}
@@ -118,6 +168,18 @@ def add_ontology_hierarchy_paths(
     """
     For every ontology vertex in the induced subgraph, add hierarchy
     paths (child->parent to root) based on HIERARCHY_CONFIG rules.
+
+    Parameters
+    ----------
+    G : nx.MultiDiGraph
+        The full source graph.
+    induced : nx.MultiDiGraph
+        The induced subgraph to enrich with hierarchy paths.
+
+    Returns
+    -------
+    nx.MultiDiGraph
+        The enriched induced subgraph.
     """
     ontology_prefixes_present = set()
     for node in induced.nodes:
@@ -170,13 +232,28 @@ def build_induced_subgraph(
     Build a named graph in target_db containing the induced subgraph of all
     vertices reachable from any vertex in source_collection, preserving multiple
     vertex and edge collections.
+
+    Parameters
+    ----------
+    db : arango.database.StandardDatabase
+        The source ArangoDB database connection.
+    graph_name : str
+        The name of the source named graph.
+    source_collection : str
+        The vertex collection to start BFS from (e.g., "CS").
+    target_db : arango.database.StandardDatabase
+        The target ArangoDB database connection for the induced subgraph.
+    subgraph_name : str
+        The name for the new named graph in target_db.
     """
 
-    # Step 1 — Load the full graph via the NetworkX adapter
+    # Load the full graph via the NetworkX adapter
+    print("Loading full graph via NetworkX adapter...")
     G_arango = nxadb.MultiDiGraph(name=graph_name, db=db)
     G = nx.MultiDiGraph(G_arango)
 
-    # Step 2 — Find all vertices reachable from any source vertex
+    # Find all vertices reachable from any source vertex
+    print("Finding all reachable vertices...")
     source_vertices = {v for v in G.nodes if v.startswith(f"{source_collection}/")}
     print(f"Source vertices: {len(source_vertices)}")
 
@@ -188,17 +265,19 @@ def build_induced_subgraph(
     # Include source vertices themselves
     reachable.update(source_vertices)
 
-    # Step 3 — Extract induced subgraph
+    # Extract induced subgraph
+    print("Extracting induced subgraph...")
     induced = G.subgraph(reachable).copy()
 
     print(f"Reachable vertices: {induced.number_of_nodes()}")
     print(f"Induced edges:      {induced.number_of_edges()}")
 
-    # Step 3b — Add ontology hierarchy paths
+    # Add ontology hierarchy paths
+    print("Adding ontology hierarchy paths...")
     induced = add_ontology_hierarchy_paths(G, induced)
 
-    # Step 4 — Identify which original vertex and edge collections are represented
-    # Vertex and edge IDs are of the form "collectionName/key"
+    # Identify which original vertex and edge collections are represented
+    print("Identifying vertex and edge collections...")
     original_collections = {v.split("/")[0] for v in induced.nodes}
     original_edge_collections = {
         data["_id"].split("/")[0]
@@ -206,12 +285,13 @@ def build_induced_subgraph(
         if "_id" in data
     }
 
-    # Step 5 — Collection names are unchanged since the subgraph is in its own database
+    # Collection names are unchanged since the subgraph is in its own database
     vertex_col_map = {col: col for col in original_collections}
     edge_col_map = {col: col for col in original_edge_collections}
 
-    # Step 6 — Drop and recreate all new collections in target_db. Note that we
-    # need to drop the graph first, so that the collections can be dropped.
+    # Drop and recreate all collections in target_db. Drop the graph first
+    # so that the collections can be dropped.
+    print("Dropping and recreating collections in target database...")
     if target_db.has_graph(subgraph_name):
         target_db.delete_graph(subgraph_name)
 
@@ -225,15 +305,18 @@ def build_induced_subgraph(
             target_db.delete_collection(col)
         target_db.create_collection(col, edge=True)
 
-    # Step 7 — Insert vertices into their respective collections in target_db
+    # Insert vertices into their respective collections in target_db
+    print("Inserting vertices...")
     for node, data in induced.nodes(data=True):
         old_col, key = node.split("/", 1)
         col = vertex_col_map[old_col]
         if not target_db.collection(col).has(key):
-            target_db.collection(col).insert({**data, "_key": key})
+            doc = {k: v for k, v in data.items() if k not in ("_id", "_rev")}
+            target_db.collection(col).insert({**doc, "_key": key})
 
-    # Step 8 — Insert edges into their respective collections in target_db,
+    # Insert edges into their respective collections in target_db,
     # rewriting _from/_to to use the (unchanged) collection names
+    print("Inserting edges...")
     for u, v, data in induced.edges(data=True):
         from_col, from_key = u.split("/", 1)
         to_col, to_key = v.split("/", 1)
@@ -250,11 +333,13 @@ def build_induced_subgraph(
             continue
 
         if not target_db.collection(edge_col).has(data["_key"]):
+            doc = {k: v for k, v in data.items() if k not in ("_id", "_rev")}
             target_db.collection(edge_col).insert(
-                {**data, "_from": new_from, "_to": new_to}
+                {**doc, "_from": new_from, "_to": new_to}
             )
 
-    # Step 9 — Register as a named graph in target_db
+    # Register as a named graph in target_db
+    print("Registering named graph...")
     vertex_collections = list(vertex_col_map.values())
 
     target_db.create_graph(
