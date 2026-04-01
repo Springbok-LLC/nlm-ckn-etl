@@ -13,7 +13,7 @@
     ],
     "summary_substrs": [
       "-nsforest-results-",
-      ""
+      "-summary-data-"
     ]
   },
   {
@@ -30,7 +30,7 @@
     ],
     "summary_substrs": [
       "_results.csv",
-      "_dataset_summary.csv"
+      "_*_master_dataset_summary.csv"
     ]
   }
 ]

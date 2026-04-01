@@ -14,7 +14,8 @@
                 "Organism": "Homo sapiens",
                 "Tissue": "fovea centralis, macula lutea, macula lutea proper, peripheral region of retina",
                 "Disease_status": "normal",
-                "Zenodo/Nextflow_workflow/Notebook": "TBC"
+                "Zenodo/Nextflow_workflow/Notebook": "TBC",
+                "Citation": "Li et al. (2023) Res Sq"
             }
         },
         "opentargets": {
@@ -752,21 +753,11 @@
                 ],
                 "drugs": [
                     {
-                        "phase": 4,
-                        "status": null,
-                        "drugId": "CHEMBL2010601",
-                        "drugType": "Small molecule",
-                        "diseaseId": "EFO_0000684",
-                        "approvedSymbol": "CFTR",
-                        "ctIds": [],
-                        "approvedName": "CF transmembrane conductance regulator",
-                        "mechanismOfAction": "Cystic fibrosis transmembrane conductance regulator positive modulator",
                         "drug": {
                             "id": "CHEMBL2010601",
+                            "name": "IVACAFTOR",
                             "description": "Small molecule drug with a maximum clinical trial phase of IV (across all indications) that was first approved in 2012 and is indicated for cystic fibrosis and respiratory system disease and has 6 investigational indications.",
-                            "maximumClinicalTrialPhase": 4,
-                            "isApproved": true,
-                            "hasBeenWithdrawn": false,
+                            "maximumClinicalStage": "PHASE_4",
                             "synonyms": [
                                 "Ivacaftor",
                                 "VX-770"
@@ -777,7 +768,6 @@
                                 "Ivacaftor component of trikafta",
                                 "Kalydeco"
                             ],
-                            "name": "IVACAFTOR",
                             "indications": {
                                 "count": 8,
                                 "rows": [
@@ -787,13 +777,11 @@
                                             "name": "sinusitis",
                                             "description": "An acute or chronic inflammatory process affecting the mucous membranes of any sinus cavity."
                                         },
-                                        "maxPhaseForIndication": 0.5,
-                                        "references": [
+                                        "maxClinicalStage": "PHASE_0",
+                                        "clinicalReports": [
                                             {
-                                                "source": "ClinicalTrials",
-                                                "ids": [
-                                                    "NCT03439865"
-                                                ]
+                                                "source": "TTD",
+                                                "id": "NCT03439865"
                                             }
                                         ]
                                     },
@@ -803,13 +791,11 @@
                                             "name": "primary ciliary dyskinesia",
                                             "description": "A rare, genetically heterogeneous, primarily respiratory disorder characterized by chronic upper and lower respiratory tract disease. Approximately half of PCD patients have an organ laterality defect (situs inversus totalis or situs ambiguus/heterotaxy)."
                                         },
-                                        "maxPhaseForIndication": 2,
-                                        "references": [
+                                        "maxClinicalStage": "PHASE_2",
+                                        "clinicalReports": [
                                             {
-                                                "source": "ClinicalTrials",
-                                                "ids": [
-                                                    "NCT02871778"
-                                                ]
+                                                "source": "TTD",
+                                                "id": "NCT02871778"
                                             }
                                         ]
                                     },
@@ -819,13 +805,11 @@
                                             "name": "liver disease",
                                             "description": "Pathological processes of the LIVER."
                                         },
-                                        "maxPhaseForIndication": 1,
-                                        "references": [
+                                        "maxClinicalStage": "PHASE_1",
+                                        "clinicalReports": [
                                             {
-                                                "source": "ClinicalTrials",
-                                                "ids": [
-                                                    "NCT01888393"
-                                                ]
+                                                "source": "TTD",
+                                                "id": "NCT01888393"
                                             }
                                         ]
                                     },
@@ -835,15 +819,19 @@
                                             "name": "chronic obstructive pulmonary disease",
                                             "description": "A group of disorders affecting the bronchi and the lung parenchyma. It is characterized by chronic and irreversible obstruction of the airflow. It includes chronic bronchitis and pulmonary emphysema."
                                         },
-                                        "maxPhaseForIndication": 2,
-                                        "references": [
+                                        "maxClinicalStage": "PHASE_2",
+                                        "clinicalReports": [
                                             {
-                                                "source": "ClinicalTrials",
-                                                "ids": [
-                                                    "NCT02135432",
-                                                    "NCT03085485",
-                                                    "NCT04066751"
-                                                ]
+                                                "source": "TTD",
+                                                "id": "NCT02135432"
+                                            },
+                                            {
+                                                "source": "TTD",
+                                                "id": "NCT03085485"
+                                            },
+                                            {
+                                                "source": "TTD",
+                                                "id": "NCT04066751"
                                             }
                                         ]
                                     },
@@ -853,29 +841,19 @@
                                             "name": "cystic fibrosis",
                                             "description": "Cystic fibrosis (CF) is a genetic disorder characterized by the production of sweat with a high salt content and mucus secretions with an abnormal viscosity."
                                         },
-                                        "maxPhaseForIndication": 3,
-                                        "references": [
+                                        "maxClinicalStage": "PHASE_3",
+                                        "clinicalReports": [
                                             {
-                                                "source": "USAN",
-                                                "ids": [
-                                                    "DEUTIVACAFTOR"
-                                                ]
+                                                "source": "TTD",
+                                                "id": "DEUTIVACAFTOR"
                                             },
                                             {
-                                                "source": "ClinicalTrials",
-                                                "ids": [
-                                                    "NCT02971839",
-                                                    "NCT03224351",
-                                                    "NCT03227471",
-                                                    "NCT03911713",
-                                                    "NCT03912233",
-                                                    "NCT05033080",
-                                                    "NCT05076149",
-                                                    "NCT05422222",
-                                                    "NCT05437120",
-                                                    "NCT05444257",
-                                                    "NCT05535959"
-                                                ]
+                                                "source": "TTD",
+                                                "id": "NCT02971839"
+                                            },
+                                            {
+                                                "source": "TTD",
+                                                "id": "NCT03224351"
                                             }
                                         ]
                                     },
@@ -885,136 +863,19 @@
                                             "name": "cystic fibrosis",
                                             "description": "Cystic fibrosis (CF) is a genetic disorder characterized by the production of sweat with a high salt content and mucus secretions with an abnormal viscosity."
                                         },
-                                        "maxPhaseForIndication": 4,
-                                        "references": [
+                                        "maxClinicalStage": "PHASE_4",
+                                        "clinicalReports": [
                                             {
-                                                "source": "FDA",
-                                                "ids": [
-                                                    "label/2018/210491lbl.pdf"
-                                                ]
+                                                "source": "TTD",
+                                                "id": "label/2018/210491lbl.pdf"
                                             },
                                             {
-                                                "source": "EMA",
-                                                "ids": [
-                                                    "EMEA/H/C/002494"
-                                                ]
+                                                "source": "TTD",
+                                                "id": "EMEA/H/C/002494"
                                             },
                                             {
-                                                "source": "DailyMed",
-                                                "ids": [
-                                                    "3fc1c40e-cfac-47a1-9e1a-61ead3570600",
-                                                    "f354423a-85c2-41c3-a9db-0f3aee135d8d",
-                                                    "302ae804-37db-44fd-ac2f-3dbdeda9aa4b",
-                                                    "0ab0c9f8-3eee-4e0f-9f3f-c1e16aaffe25"
-                                                ]
-                                            },
-                                            {
-                                                "source": "ClinicalTrials",
-                                                "ids": [
-                                                    "NCT00457821",
-                                                    "NCT00909532",
-                                                    "NCT00909727",
-                                                    "NCT00953706",
-                                                    "NCT00966602",
-                                                    "NCT01018368",
-                                                    "NCT01060566",
-                                                    "NCT01117012",
-                                                    "NCT01153542",
-                                                    "NCT01161537",
-                                                    "NCT01208285",
-                                                    "NCT01216046",
-                                                    "NCT01225211",
-                                                    "NCT01262352",
-                                                    "NCT01531673",
-                                                    "NCT01614457",
-                                                    "NCT01614470",
-                                                    "NCT01685801",
-                                                    "NCT01705145",
-                                                    "NCT01707290",
-                                                    "NCT01768663",
-                                                    "NCT01807923",
-                                                    "NCT01807949",
-                                                    "NCT01897233",
-                                                    "NCT01899105",
-                                                    "NCT01910415",
-                                                    "NCT01931839",
-                                                    "NCT01937325",
-                                                    "NCT01946412",
-                                                    "NCT02015507",
-                                                    "NCT02070744",
-                                                    "NCT02347657",
-                                                    "NCT02392234",
-                                                    "NCT02412111",
-                                                    "NCT02508207",
-                                                    "NCT02514473",
-                                                    "NCT02516410",
-                                                    "NCT02544451",
-                                                    "NCT02565914",
-                                                    "NCT02709109",
-                                                    "NCT02725567",
-                                                    "NCT02730208",
-                                                    "NCT02742519",
-                                                    "NCT02797132",
-                                                    "NCT02823470",
-                                                    "NCT02875366",
-                                                    "NCT02934698",
-                                                    "NCT02951182",
-                                                    "NCT02951195",
-                                                    "NCT02953314",
-                                                    "NCT02971839",
-                                                    "NCT03029455",
-                                                    "NCT03061331",
-                                                    "NCT03068312",
-                                                    "NCT03125395",
-                                                    "NCT03150719",
-                                                    "NCT03224351",
-                                                    "NCT03227471",
-                                                    "NCT03277196",
-                                                    "NCT03447249",
-                                                    "NCT03447262",
-                                                    "NCT03460990",
-                                                    "NCT03486236",
-                                                    "NCT03525444",
-                                                    "NCT03525548",
-                                                    "NCT03525574",
-                                                    "NCT03537651",
-                                                    "NCT03559062",
-                                                    "NCT03601637",
-                                                    "NCT03624101",
-                                                    "NCT03625466",
-                                                    "NCT03633526",
-                                                    "NCT03691779",
-                                                    "NCT03768089",
-                                                    "NCT03911713",
-                                                    "NCT03912233",
-                                                    "NCT03956589",
-                                                    "NCT04043806",
-                                                    "NCT04058353",
-                                                    "NCT04058366",
-                                                    "NCT04105972",
-                                                    "NCT04126473",
-                                                    "NCT04135495",
-                                                    "NCT04183790",
-                                                    "NCT04235140",
-                                                    "NCT04353817",
-                                                    "NCT04362761",
-                                                    "NCT04537793",
-                                                    "NCT04545515",
-                                                    "NCT04599465",
-                                                    "NCT04969224",
-                                                    "NCT05033080",
-                                                    "NCT05076149",
-                                                    "NCT05111145",
-                                                    "NCT05153317",
-                                                    "NCT05274269",
-                                                    "NCT05331183",
-                                                    "NCT05668741",
-                                                    "NCT05844449",
-                                                    "NCT05882357",
-                                                    "NCT06299696",
-                                                    "NCT06299709",
-                                                    "NCT06460506"
-                                                ]
+                                                "source": "TTD",
+                                                "id": "3fc1c40e-cfac-47a1-9e1a-61ead3570600"
                                             }
                                         ]
                                     },
@@ -1024,13 +885,11 @@
                                             "name": "chronic bronchitis",
                                             "description": "A type of chronic obstructive pulmonary disease characterized by chronic inflammation in the bronchial tree that results in edema, mucus production, obstruction, and reduced airflow to and from the lung alveoli. The most common cause is tobacco smoking. Signs and symptoms include coughing with excessive mucus production, and shortness of breath."
                                         },
-                                        "maxPhaseForIndication": 2,
-                                        "references": [
+                                        "maxClinicalStage": "PHASE_2",
+                                        "clinicalReports": [
                                             {
-                                                "source": "ClinicalTrials",
-                                                "ids": [
-                                                    "NCT03085485"
-                                                ]
+                                                "source": "TTD",
+                                                "id": "NCT03085485"
                                             }
                                         ]
                                     },
@@ -1040,36 +899,38 @@
                                             "name": "respiratory system disease",
                                             "description": "A non-neoplastic or neoplastic disorder that affects the respiratory system. Representative examples include pneumonia, chronic obstructive pulmonary disease, pulmonary failure, lung adenoma, lung carcinoma, and tracheal carcinoma."
                                         },
-                                        "maxPhaseForIndication": 4,
-                                        "references": [
+                                        "maxClinicalStage": "PHASE_4",
+                                        "clinicalReports": [
                                             {
-                                                "source": "ATC",
-                                                "ids": [
-                                                    "R07AX02"
-                                                ]
+                                                "source": "TTD",
+                                                "id": "R07AX02"
                                             }
                                         ]
                                     }
                                 ]
-                            }
+                            },
+                            "drugType": "Small molecule",
+                            "mechanismsOfAction": {
+                                "rows": [
+                                    {
+                                        "mechanismOfAction": "Cystic fibrosis transmembrane conductance regulator positive modulator",
+                                        "targets": [
+                                            {
+                                                "id": "ENSG00000001626"
+                                            }
+                                        ]
+                                    }
+                                ]
+                            },
+                            "drugWarnings": []
                         }
                     },
                     {
-                        "phase": 4,
-                        "status": null,
-                        "drugId": "CHEMBL2108184",
-                        "drugType": "Small molecule",
-                        "diseaseId": "HP_0002014",
-                        "approvedSymbol": "CFTR",
-                        "ctIds": [],
-                        "approvedName": "CF transmembrane conductance regulator",
-                        "mechanismOfAction": "Cystic fibrosis transmembrane conductance regulator inhibitor",
                         "drug": {
                             "id": "CHEMBL2108184",
                             "description": "Small molecule drug with a maximum clinical trial phase of IV (across all indications) that was first approved in 2012 and is indicated for diarrhea and has 2 investigational indications.",
-                            "maximumClinicalTrialPhase": 4,
-                            "isApproved": true,
-                            "hasBeenWithdrawn": false,
+                            "name": "CROFELEMER",
+                            "maximumClinicalStage": "PHASE_4",
                             "synonyms": [
                                 "Crofelemer",
                                 "NP-303",
@@ -1082,7 +943,6 @@
                                 "Provir",
                                 "Virend"
                             ],
-                            "name": "CROFELEMER",
                             "indications": {
                                 "count": 3,
                                 "rows": [
@@ -1092,27 +952,27 @@
                                             "name": "Diarrhea",
                                             "description": "Abnormally increased frequency (usually defined as three or more) loose or watery bowel movements a day."
                                         },
-                                        "maxPhaseForIndication": 4,
-                                        "references": [
+                                        "maxClinicalStage": "PHASE_4",
+                                        "clinicalReports": [
                                             {
-                                                "source": "ClinicalTrials",
-                                                "ids": [
-                                                    "NCT00002408",
-                                                    "NCT00547898",
-                                                    "NCT04486326"
-                                                ]
+                                                "source": "TTD",
+                                                "id": "NCT00002408"
                                             },
                                             {
-                                                "source": "FDA",
-                                                "ids": [
-                                                    "label/2012/202292s000lbl.pdf"
-                                                ]
+                                                "source": "TTD",
+                                                "id": "NCT00547898"
                                             },
                                             {
-                                                "source": "DailyMed",
-                                                "ids": [
-                                                    "45584fba-8081-4cd1-a21e-3ea8237f62ff"
-                                                ]
+                                                "source": "TTD",
+                                                "id": "NCT04486326"
+                                            },
+                                            {
+                                                "source": "TTD",
+                                                "id": "label/2012/202292s000lbl.pdf"
+                                            },
+                                            {
+                                                "source": "TTD",
+                                                "id": "45584fba-8081-4cd1-a21e-3ea8237f62ff"
                                             }
                                         ]
                                     },
@@ -1122,13 +982,11 @@
                                             "name": "irritable bowel syndrome",
                                             "description": "Irritable bowel syndrome (IBS) is a chronic functional condition of the lower gastrointestinal (GI) tract characterized by abdominal pain or discomfort and disordered bowel habit (diarrhea, constipation, or fluctuation between the two)."
                                         },
-                                        "maxPhaseForIndication": 2,
-                                        "references": [
+                                        "maxClinicalStage": "PHASE_2",
+                                        "clinicalReports": [
                                             {
-                                                "source": "ClinicalTrials",
-                                                "ids": [
-                                                    "NCT00461526"
-                                                ]
+                                                "source": "TTD",
+                                                "id": "NCT00461526"
                                             }
                                         ]
                                     },
@@ -1138,38 +996,38 @@
                                             "name": "breast cancer",
                                             "description": "A primary or metastatic malignant neoplasm involving the breast. The vast majority of cases are carcinomas arising from the breast parenchyma or the nipple. Malignant breast neoplasms occur more frequently in females than in males."
                                         },
-                                        "maxPhaseForIndication": 2,
-                                        "references": [
+                                        "maxClinicalStage": "PHASE_2",
+                                        "clinicalReports": [
                                             {
-                                                "source": "ClinicalTrials",
-                                                "ids": [
-                                                    "NCT02910219"
-                                                ]
+                                                "source": "TTD",
+                                                "id": "NCT02910219"
                                             }
                                         ]
                                     }
                                 ]
-                            }
+                            },
+                            "drugType": "Small molecule",
+                            "mechanismsOfAction": {
+                                "rows": [
+                                    {
+                                        "mechanismOfAction": "Cystic fibrosis transmembrane conductance regulator inhibitor",
+                                        "targets": [
+                                            {
+                                                "id": "ENSG00000001626"
+                                            }
+                                        ]
+                                    }
+                                ]
+                            },
+                            "drugWarnings": []
                         }
                     },
                     {
-                        "phase": 4,
-                        "status": "Terminated",
-                        "drugId": "CHEMBL2108184",
-                        "drugType": "Small molecule",
-                        "diseaseId": "HP_0002014",
-                        "approvedSymbol": "CFTR",
-                        "ctIds": [
-                            "NCT04486326"
-                        ],
-                        "approvedName": "CF transmembrane conductance regulator",
-                        "mechanismOfAction": "Cystic fibrosis transmembrane conductance regulator inhibitor",
                         "drug": {
                             "id": "CHEMBL2108184",
                             "description": "Small molecule drug with a maximum clinical trial phase of IV (across all indications) that was first approved in 2012 and is indicated for diarrhea and has 2 investigational indications.",
-                            "maximumClinicalTrialPhase": 4,
-                            "isApproved": true,
-                            "hasBeenWithdrawn": false,
+                            "name": "CROFELEMER",
+                            "maximumClinicalStage": "PHASE_4",
                             "synonyms": [
                                 "Crofelemer",
                                 "NP-303",
@@ -1182,7 +1040,6 @@
                                 "Provir",
                                 "Virend"
                             ],
-                            "name": "CROFELEMER",
                             "indications": {
                                 "count": 3,
                                 "rows": [
@@ -1192,27 +1049,27 @@
                                             "name": "Diarrhea",
                                             "description": "Abnormally increased frequency (usually defined as three or more) loose or watery bowel movements a day."
                                         },
-                                        "maxPhaseForIndication": 4,
-                                        "references": [
+                                        "maxClinicalStage": "PHASE_4",
+                                        "clinicalReports": [
                                             {
-                                                "source": "ClinicalTrials",
-                                                "ids": [
-                                                    "NCT00002408",
-                                                    "NCT00547898",
-                                                    "NCT04486326"
-                                                ]
+                                                "source": "TTD",
+                                                "id": "NCT00002408"
                                             },
                                             {
-                                                "source": "FDA",
-                                                "ids": [
-                                                    "label/2012/202292s000lbl.pdf"
-                                                ]
+                                                "source": "TTD",
+                                                "id": "NCT00547898"
                                             },
                                             {
-                                                "source": "DailyMed",
-                                                "ids": [
-                                                    "45584fba-8081-4cd1-a21e-3ea8237f62ff"
-                                                ]
+                                                "source": "TTD",
+                                                "id": "NCT04486326"
+                                            },
+                                            {
+                                                "source": "TTD",
+                                                "id": "label/2012/202292s000lbl.pdf"
+                                            },
+                                            {
+                                                "source": "TTD",
+                                                "id": "45584fba-8081-4cd1-a21e-3ea8237f62ff"
                                             }
                                         ]
                                     },
@@ -1222,13 +1079,11 @@
                                             "name": "irritable bowel syndrome",
                                             "description": "Irritable bowel syndrome (IBS) is a chronic functional condition of the lower gastrointestinal (GI) tract characterized by abdominal pain or discomfort and disordered bowel habit (diarrhea, constipation, or fluctuation between the two)."
                                         },
-                                        "maxPhaseForIndication": 2,
-                                        "references": [
+                                        "maxClinicalStage": "PHASE_2",
+                                        "clinicalReports": [
                                             {
-                                                "source": "ClinicalTrials",
-                                                "ids": [
-                                                    "NCT00461526"
-                                                ]
+                                                "source": "TTD",
+                                                "id": "NCT00461526"
                                             }
                                         ]
                                     },
@@ -1238,18 +1093,30 @@
                                             "name": "breast cancer",
                                             "description": "A primary or metastatic malignant neoplasm involving the breast. The vast majority of cases are carcinomas arising from the breast parenchyma or the nipple. Malignant breast neoplasms occur more frequently in females than in males."
                                         },
-                                        "maxPhaseForIndication": 2,
-                                        "references": [
+                                        "maxClinicalStage": "PHASE_2",
+                                        "clinicalReports": [
                                             {
-                                                "source": "ClinicalTrials",
-                                                "ids": [
-                                                    "NCT02910219"
-                                                ]
+                                                "source": "TTD",
+                                                "id": "NCT02910219"
                                             }
                                         ]
                                     }
                                 ]
-                            }
+                            },
+                            "drugType": "Small molecule",
+                            "mechanismsOfAction": {
+                                "rows": [
+                                    {
+                                        "mechanismOfAction": "Cystic fibrosis transmembrane conductance regulator inhibitor",
+                                        "targets": [
+                                            {
+                                                "id": "ENSG00000001626"
+                                            }
+                                        ]
+                                    }
+                                ]
+                            },
+                            "drugWarnings": []
                         }
                     }
                 ],
@@ -3347,9 +3214,30 @@
             ],
             [
                 "http://purl.obolibrary.org/obo/CSD_2e910e62-7eaf-4c06-80cb-8918e3eea16e",
+                "http://www.w3.org/1999/02/22-rdf-syntax-ns/dc#Source",
                 "http://purl.obolibrary.org/obo/PUB_2e910e62-7eaf-4c06-80cb-8918e3eea16e",
                 "http://www.w3.org/1999/02/22-rdf-syntax-ns#Source",
-                "Manual Mapping"
+                "CELLxGENE"
+            ],
+            [
+                "http://purl.obolibrary.org/obo/PUB_2e910e62-7eaf-4c06-80cb-8918e3eea16e",
+                "http://www.w3.org/1999/02/22-rdf-syntax-ns#Citation",
+                "Li et al. (2023) Res Sq"
+            ],
+            [
+                "http://purl.obolibrary.org/obo/PUB_2e910e62-7eaf-4c06-80cb-8918e3eea16e",
+                "http://www.w3.org/1999/02/22-rdf-syntax-ns#Link_to_publication",
+                "doi.org/10.1101/2023.11.07.566105"
+            ],
+            [
+                "http://purl.obolibrary.org/obo/PUB_2e910e62-7eaf-4c06-80cb-8918e3eea16e",
+                "http://www.w3.org/1999/02/22-rdf-syntax-ns#Link_to_CELLxGENE_collection",
+                "cellxgene.cziscience.com/collections/4c6eaf5c-6d57-4c76-b1e9-60df8c655f1e"
+            ],
+            [
+                "http://purl.obolibrary.org/obo/CSD_2e910e62-7eaf-4c06-80cb-8918e3eea16e",
+                "http://www.w3.org/1999/02/22-rdf-syntax-ns#Citation",
+                "Li et al. (2023) Res Sq"
             ],
             [
                 "http://purl.obolibrary.org/obo/CSD_2e910e62-7eaf-4c06-80cb-8918e3eea16e",
@@ -3410,21 +3298,17 @@
                 "http://purl.obolibrary.org/obo/CSD_2e910e62-7eaf-4c06-80cb-8918e3eea16e",
                 "http://www.w3.org/1999/02/22-rdf-syntax-ns#Dataset_version_ID",
                 "2e910e62-7eaf-4c06-80cb-8918e3eea16e"
-            ],
-            [
-                "http://purl.obolibrary.org/obo/CSD_2e910e62-7eaf-4c06-80cb-8918e3eea16e",
-                "http://www.w3.org/1999/02/22-rdf-syntax-ns#Zenodo/Nextflow_workflow/Notebook",
-                "TBC"
             ]
         ],
         "opentargets": [
             [
                 "http://purl.obolibrary.org/obo/GS_CFTR",
-                "http://www.w3.org/1999/02/22-rdf-syntax-ns#GENETIC_BASIS_FOR",
+                "http://www.w3.org/1999/02/22-rdf-syntax-ns#RO_0004010",
                 "http://purl.obolibrary.org/obo/MONDO_0009061"
             ],
             [
                 "http://purl.obolibrary.org/obo/GS_CFTR",
+                "http://www.w3.org/1999/02/22-rdf-syntax-ns#RO_0004010",
                 "http://purl.obolibrary.org/obo/MONDO_0009061",
                 "http://www.w3.org/1999/02/22-rdf-syntax-ns#Source",
                 "Open Targets"
@@ -3441,17 +3325,19 @@
             ],
             [
                 "http://purl.obolibrary.org/obo/GS_CFTR",
+                "http://www.w3.org/1999/02/22-rdf-syntax-ns#RO_0004010",
                 "http://purl.obolibrary.org/obo/MONDO_0009061",
                 "http://www.w3.org/1999/02/22-rdf-syntax-ns#Score",
                 "0.9133828749078997"
             ],
             [
                 "http://purl.obolibrary.org/obo/GS_CFTR",
-                "http://www.w3.org/1999/02/22-rdf-syntax-ns#GENETIC_BASIS_FOR",
+                "http://www.w3.org/1999/02/22-rdf-syntax-ns#RO_0004010",
                 "http://purl.obolibrary.org/obo/MONDO_0010178"
             ],
             [
                 "http://purl.obolibrary.org/obo/GS_CFTR",
+                "http://www.w3.org/1999/02/22-rdf-syntax-ns#RO_0004010",
                 "http://purl.obolibrary.org/obo/MONDO_0010178",
                 "http://www.w3.org/1999/02/22-rdf-syntax-ns#Source",
                 "Open Targets"
@@ -3468,17 +3354,19 @@
             ],
             [
                 "http://purl.obolibrary.org/obo/GS_CFTR",
+                "http://www.w3.org/1999/02/22-rdf-syntax-ns#RO_0004010",
                 "http://purl.obolibrary.org/obo/MONDO_0010178",
                 "http://www.w3.org/1999/02/22-rdf-syntax-ns#Score",
                 "0.8280873105191738"
             ],
             [
                 "http://purl.obolibrary.org/obo/GS_CFTR",
-                "http://www.w3.org/1999/02/22-rdf-syntax-ns#GENETIC_BASIS_FOR",
+                "http://www.w3.org/1999/02/22-rdf-syntax-ns#RO_0004010",
                 "http://purl.obolibrary.org/obo/MONDO_0008185"
             ],
             [
                 "http://purl.obolibrary.org/obo/GS_CFTR",
+                "http://www.w3.org/1999/02/22-rdf-syntax-ns#RO_0004010",
                 "http://purl.obolibrary.org/obo/MONDO_0008185",
                 "http://www.w3.org/1999/02/22-rdf-syntax-ns#Source",
                 "Open Targets"
@@ -3495,41 +3383,63 @@
             ],
             [
                 "http://purl.obolibrary.org/obo/GS_CFTR",
+                "http://www.w3.org/1999/02/22-rdf-syntax-ns#RO_0004010",
                 "http://purl.obolibrary.org/obo/MONDO_0008185",
                 "http://www.w3.org/1999/02/22-rdf-syntax-ns#Score",
                 "0.7114693090823111"
             ],
             [
                 "http://purl.obolibrary.org/obo/CHEMBL_2010601",
-                "http://www.w3.org/1999/02/22-rdf-syntax-ns#IS_SUBSTANCE_THAT_TREATS",
-                "http://purl.obolibrary.org/obo/MONDO_0005087"
-            ],
-            [
-                "http://purl.obolibrary.org/obo/CHEMBL_2010601",
-                "http://purl.obolibrary.org/obo/MONDO_0005087",
-                "http://www.w3.org/1999/02/22-rdf-syntax-ns#Source",
-                "Open Targets"
-            ],
-            [
-                "http://purl.obolibrary.org/obo/CHEMBL_2010601",
-                "http://www.w3.org/1999/02/22-rdf-syntax-ns#MOLECULARLY_INTERACTS_WITH",
+                "http://www.w3.org/1999/02/22-rdf-syntax-ns#RO_0002436",
                 "http://purl.obolibrary.org/obo/PR_P13569"
             ],
             [
                 "http://purl.obolibrary.org/obo/CHEMBL_2010601",
+                "http://www.w3.org/1999/02/22-rdf-syntax-ns#RO_0002436",
                 "http://purl.obolibrary.org/obo/PR_P13569",
                 "http://www.w3.org/1999/02/22-rdf-syntax-ns#Source",
                 "Open Targets and UniProt"
             ],
             [
                 "http://purl.obolibrary.org/obo/CHEMBL_2010601",
-                "http://www.w3.org/1999/02/22-rdf-syntax-ns#Indications",
-                "MONDO_0009061"
+                "http://www.w3.org/1999/02/22-rdf-syntax-ns#RO_0002606",
+                "http://purl.obolibrary.org/obo/MONDO_0009061"
+            ],
+            [
+                "http://purl.obolibrary.org/obo/CHEMBL_2010601",
+                "http://www.w3.org/1999/02/22-rdf-syntax-ns#RO_0002606",
+                "http://purl.obolibrary.org/obo/MONDO_0009061",
+                "http://www.w3.org/1999/02/22-rdf-syntax-ns#Source",
+                "Open Targets"
+            ],
+            [
+                "http://purl.obolibrary.org/obo/CHEMBL_2010601",
+                "http://www.w3.org/1999/02/22-rdf-syntax-ns#RO_0002606",
+                "http://purl.obolibrary.org/obo/MONDO_0009061"
+            ],
+            [
+                "http://purl.obolibrary.org/obo/CHEMBL_2010601",
+                "http://www.w3.org/1999/02/22-rdf-syntax-ns#RO_0002606",
+                "http://purl.obolibrary.org/obo/MONDO_0009061",
+                "http://www.w3.org/1999/02/22-rdf-syntax-ns#Source",
+                "Open Targets"
+            ],
+            [
+                "http://purl.obolibrary.org/obo/CHEMBL_2010601",
+                "http://www.w3.org/1999/02/22-rdf-syntax-ns#RO_0002606",
+                "http://purl.obolibrary.org/obo/MONDO_0005087"
+            ],
+            [
+                "http://purl.obolibrary.org/obo/CHEMBL_2010601",
+                "http://www.w3.org/1999/02/22-rdf-syntax-ns#RO_0002606",
+                "http://purl.obolibrary.org/obo/MONDO_0005087",
+                "http://www.w3.org/1999/02/22-rdf-syntax-ns#Source",
+                "Open Targets"
             ],
             [
                 "http://purl.obolibrary.org/obo/CHEMBL_2010601",
                 "http://www.w3.org/1999/02/22-rdf-syntax-ns#Indications",
-                "MONDO_0005087"
+                "['MONDO_0009061', 'MONDO_0009061', 'MONDO_0005087']"
             ],
             [
                 "http://purl.obolibrary.org/obo/CHEMBL_2010601",
@@ -3540,16 +3450,6 @@
                 "http://purl.obolibrary.org/obo/CHEMBL_2010601",
                 "http://www.w3.org/1999/02/22-rdf-syntax-ns#Target",
                 "CFTR"
-            ],
-            [
-                "http://purl.obolibrary.org/obo/CHEMBL_2010601",
-                "http://www.w3.org/1999/02/22-rdf-syntax-ns#Type",
-                "Small molecule"
-            ],
-            [
-                "http://purl.obolibrary.org/obo/CHEMBL_2010601",
-                "http://www.w3.org/1999/02/22-rdf-syntax-ns#Mechanism_of_action",
-                "Cystic fibrosis transmembrane conductance regulator positive modulator"
             ],
             [
                 "http://purl.obolibrary.org/obo/CHEMBL_2010601",
@@ -3568,13 +3468,13 @@
             ],
             [
                 "http://purl.obolibrary.org/obo/CHEMBL_2010601",
-                "http://www.w3.org/1999/02/22-rdf-syntax-ns#Approved",
-                "True"
+                "http://www.w3.org/1999/02/22-rdf-syntax-ns#Type",
+                "Small molecule"
             ],
             [
                 "http://purl.obolibrary.org/obo/CHEMBL_2010601",
-                "http://www.w3.org/1999/02/22-rdf-syntax-ns#Withdrawn",
-                "False"
+                "http://www.w3.org/1999/02/22-rdf-syntax-ns#Mechanism_of_action",
+                "Cystic fibrosis transmembrane conductance regulator positive modulator"
             ],
             [
                 "http://purl.obolibrary.org/obo/CHEMBL_2010601",
@@ -3587,34 +3487,151 @@
                 "www.uniprot.org/uniprot/P13569"
             ],
             [
+                "http://purl.obolibrary.org/obo/CHEMBL_2108184",
+                "http://www.w3.org/1999/02/22-rdf-syntax-ns#RO_0002436",
+                "http://purl.obolibrary.org/obo/PR_P13569"
+            ],
+            [
+                "http://purl.obolibrary.org/obo/CHEMBL_2108184",
+                "http://www.w3.org/1999/02/22-rdf-syntax-ns#RO_0002436",
+                "http://purl.obolibrary.org/obo/PR_P13569",
+                "http://www.w3.org/1999/02/22-rdf-syntax-ns#Source",
+                "Open Targets and UniProt"
+            ],
+            [
+                "http://purl.obolibrary.org/obo/CHEMBL_2108184",
+                "http://www.w3.org/1999/02/22-rdf-syntax-ns#Indications",
+                "[]"
+            ],
+            [
+                "http://purl.obolibrary.org/obo/CHEMBL_2108184",
+                "http://www.w3.org/1999/02/22-rdf-syntax-ns#Name",
+                "CROFELEMER"
+            ],
+            [
+                "http://purl.obolibrary.org/obo/CHEMBL_2108184",
+                "http://www.w3.org/1999/02/22-rdf-syntax-ns#Target",
+                "CFTR"
+            ],
+            [
+                "http://purl.obolibrary.org/obo/CHEMBL_2108184",
+                "http://www.w3.org/1999/02/22-rdf-syntax-ns#Description",
+                "Small molecule drug with a maximum clinical trial phase of IV (across all indications) that was first approved in 2012 and is indicated for diarrhea and has 2 investigational indications."
+            ],
+            [
+                "http://purl.obolibrary.org/obo/CHEMBL_2108184",
+                "http://www.w3.org/1999/02/22-rdf-syntax-ns#Synonyms",
+                "['Crofelemer', 'NP-303', 'SP-303', 'TRN-002']"
+            ],
+            [
+                "http://purl.obolibrary.org/obo/CHEMBL_2108184",
+                "http://www.w3.org/1999/02/22-rdf-syntax-ns#Trade_names",
+                "['Fulyzaq', 'Mytesi', 'Provir', 'Virend']"
+            ],
+            [
+                "http://purl.obolibrary.org/obo/CHEMBL_2108184",
+                "http://www.w3.org/1999/02/22-rdf-syntax-ns#Type",
+                "Small molecule"
+            ],
+            [
+                "http://purl.obolibrary.org/obo/CHEMBL_2108184",
+                "http://www.w3.org/1999/02/22-rdf-syntax-ns#Mechanism_of_action",
+                "Cystic fibrosis transmembrane conductance regulator inhibitor"
+            ],
+            [
+                "http://purl.obolibrary.org/obo/CHEMBL_2108184",
+                "http://www.w3.org/1999/02/22-rdf-syntax-ns#Link_to_UniProt_ID",
+                "www.uniprot.org/uniprot/P13569"
+            ],
+            [
+                "http://purl.obolibrary.org/obo/CHEMBL_2108184",
+                "http://www.w3.org/1999/02/22-rdf-syntax-ns#RO_0002436",
+                "http://purl.obolibrary.org/obo/PR_P13569"
+            ],
+            [
+                "http://purl.obolibrary.org/obo/CHEMBL_2108184",
+                "http://www.w3.org/1999/02/22-rdf-syntax-ns#RO_0002436",
+                "http://purl.obolibrary.org/obo/PR_P13569",
+                "http://www.w3.org/1999/02/22-rdf-syntax-ns#Source",
+                "Open Targets and UniProt"
+            ],
+            [
+                "http://purl.obolibrary.org/obo/CHEMBL_2108184",
+                "http://www.w3.org/1999/02/22-rdf-syntax-ns#Indications",
+                "[]"
+            ],
+            [
+                "http://purl.obolibrary.org/obo/CHEMBL_2108184",
+                "http://www.w3.org/1999/02/22-rdf-syntax-ns#Name",
+                "CROFELEMER"
+            ],
+            [
+                "http://purl.obolibrary.org/obo/CHEMBL_2108184",
+                "http://www.w3.org/1999/02/22-rdf-syntax-ns#Target",
+                "CFTR"
+            ],
+            [
+                "http://purl.obolibrary.org/obo/CHEMBL_2108184",
+                "http://www.w3.org/1999/02/22-rdf-syntax-ns#Description",
+                "Small molecule drug with a maximum clinical trial phase of IV (across all indications) that was first approved in 2012 and is indicated for diarrhea and has 2 investigational indications."
+            ],
+            [
+                "http://purl.obolibrary.org/obo/CHEMBL_2108184",
+                "http://www.w3.org/1999/02/22-rdf-syntax-ns#Synonyms",
+                "['Crofelemer', 'NP-303', 'SP-303', 'TRN-002']"
+            ],
+            [
+                "http://purl.obolibrary.org/obo/CHEMBL_2108184",
+                "http://www.w3.org/1999/02/22-rdf-syntax-ns#Trade_names",
+                "['Fulyzaq', 'Mytesi', 'Provir', 'Virend']"
+            ],
+            [
+                "http://purl.obolibrary.org/obo/CHEMBL_2108184",
+                "http://www.w3.org/1999/02/22-rdf-syntax-ns#Type",
+                "Small molecule"
+            ],
+            [
+                "http://purl.obolibrary.org/obo/CHEMBL_2108184",
+                "http://www.w3.org/1999/02/22-rdf-syntax-ns#Mechanism_of_action",
+                "Cystic fibrosis transmembrane conductance regulator inhibitor"
+            ],
+            [
+                "http://purl.obolibrary.org/obo/CHEMBL_2108184",
+                "http://www.w3.org/1999/02/22-rdf-syntax-ns#Link_to_UniProt_ID",
+                "www.uniprot.org/uniprot/P13569"
+            ],
+            [
                 "http://purl.obolibrary.org/obo/GS_CFTR",
-                "http://www.w3.org/1999/02/22-rdf-syntax-ns#HAS_QUALITY",
+                "http://www.w3.org/1999/02/22-rdf-syntax-ns#RO_0000086",
                 "http://purl.obolibrary.org/obo/RS_368505753"
             ],
             [
                 "http://purl.obolibrary.org/obo/GS_CFTR",
+                "http://www.w3.org/1999/02/22-rdf-syntax-ns#RO_0000086",
                 "http://purl.obolibrary.org/obo/RS_368505753",
                 "http://www.w3.org/1999/02/22-rdf-syntax-ns#Source",
                 "Open Targets"
             ],
             [
                 "http://purl.obolibrary.org/obo/RS_368505753",
-                "http://www.w3.org/1999/02/22-rdf-syntax-ns#INVOLVED_IN",
+                "http://www.w3.org/1999/02/22-rdf-syntax-ns#RO_0002331",
                 "http://purl.obolibrary.org/obo/SO_0002073"
             ],
             [
                 "http://purl.obolibrary.org/obo/RS_368505753",
+                "http://www.w3.org/1999/02/22-rdf-syntax-ns#RO_0002331",
                 "http://purl.obolibrary.org/obo/SO_0002073",
                 "http://www.w3.org/1999/02/22-rdf-syntax-ns#Source",
                 "Open Targets"
             ],
             [
                 "http://purl.obolibrary.org/obo/RS_368505753",
-                "http://www.w3.org/1999/02/22-rdf-syntax-ns#HAS_PHARMACOLOGICAL_EFFECT",
+                "http://www.w3.org/1999/02/22-rdf-syntax-ns#RO_0002027",
                 "http://purl.obolibrary.org/obo/CHEMBL_2010601"
             ],
             [
                 "http://purl.obolibrary.org/obo/RS_368505753",
+                "http://www.w3.org/1999/02/22-rdf-syntax-ns#RO_0002027",
                 "http://purl.obolibrary.org/obo/CHEMBL_2010601",
                 "http://www.w3.org/1999/02/22-rdf-syntax-ns#Source",
                 "Open Targets"
@@ -3661,33 +3678,36 @@
             ],
             [
                 "http://purl.obolibrary.org/obo/GS_CFTR",
-                "http://www.w3.org/1999/02/22-rdf-syntax-ns#HAS_QUALITY",
+                "http://www.w3.org/1999/02/22-rdf-syntax-ns#RO_0000086",
                 "http://purl.obolibrary.org/obo/RS_397508537"
             ],
             [
                 "http://purl.obolibrary.org/obo/GS_CFTR",
+                "http://www.w3.org/1999/02/22-rdf-syntax-ns#RO_0000086",
                 "http://purl.obolibrary.org/obo/RS_397508537",
                 "http://www.w3.org/1999/02/22-rdf-syntax-ns#Source",
                 "Open Targets"
             ],
             [
                 "http://purl.obolibrary.org/obo/RS_397508537",
-                "http://www.w3.org/1999/02/22-rdf-syntax-ns#INVOLVED_IN",
+                "http://www.w3.org/1999/02/22-rdf-syntax-ns#RO_0002331",
                 "http://purl.obolibrary.org/obo/SO_0001583"
             ],
             [
                 "http://purl.obolibrary.org/obo/RS_397508537",
+                "http://www.w3.org/1999/02/22-rdf-syntax-ns#RO_0002331",
                 "http://purl.obolibrary.org/obo/SO_0001583",
                 "http://www.w3.org/1999/02/22-rdf-syntax-ns#Source",
                 "Open Targets"
             ],
             [
                 "http://purl.obolibrary.org/obo/RS_397508537",
-                "http://www.w3.org/1999/02/22-rdf-syntax-ns#HAS_PHARMACOLOGICAL_EFFECT",
+                "http://www.w3.org/1999/02/22-rdf-syntax-ns#RO_0002027",
                 "http://purl.obolibrary.org/obo/CHEMBL_2010601"
             ],
             [
                 "http://purl.obolibrary.org/obo/RS_397508537",
+                "http://www.w3.org/1999/02/22-rdf-syntax-ns#RO_0002027",
                 "http://purl.obolibrary.org/obo/CHEMBL_2010601",
                 "http://www.w3.org/1999/02/22-rdf-syntax-ns#Source",
                 "Open Targets"
@@ -3734,33 +3754,36 @@
             ],
             [
                 "http://purl.obolibrary.org/obo/GS_CFTR",
-                "http://www.w3.org/1999/02/22-rdf-syntax-ns#HAS_QUALITY",
+                "http://www.w3.org/1999/02/22-rdf-syntax-ns#RO_0000086",
                 "http://purl.obolibrary.org/obo/RS_77834169"
             ],
             [
                 "http://purl.obolibrary.org/obo/GS_CFTR",
+                "http://www.w3.org/1999/02/22-rdf-syntax-ns#RO_0000086",
                 "http://purl.obolibrary.org/obo/RS_77834169",
                 "http://www.w3.org/1999/02/22-rdf-syntax-ns#Source",
                 "Open Targets"
             ],
             [
                 "http://purl.obolibrary.org/obo/RS_77834169",
-                "http://www.w3.org/1999/02/22-rdf-syntax-ns#INVOLVED_IN",
+                "http://www.w3.org/1999/02/22-rdf-syntax-ns#RO_0002331",
                 "http://purl.obolibrary.org/obo/SO_0001583"
             ],
             [
                 "http://purl.obolibrary.org/obo/RS_77834169",
+                "http://www.w3.org/1999/02/22-rdf-syntax-ns#RO_0002331",
                 "http://purl.obolibrary.org/obo/SO_0001583",
                 "http://www.w3.org/1999/02/22-rdf-syntax-ns#Source",
                 "Open Targets"
             ],
             [
                 "http://purl.obolibrary.org/obo/RS_77834169",
-                "http://www.w3.org/1999/02/22-rdf-syntax-ns#HAS_PHARMACOLOGICAL_EFFECT",
+                "http://www.w3.org/1999/02/22-rdf-syntax-ns#RO_0002027",
                 "http://purl.obolibrary.org/obo/CHEMBL_2010601"
             ],
             [
                 "http://purl.obolibrary.org/obo/RS_77834169",
+                "http://www.w3.org/1999/02/22-rdf-syntax-ns#RO_0002027",
                 "http://purl.obolibrary.org/obo/CHEMBL_2010601",
                 "http://www.w3.org/1999/02/22-rdf-syntax-ns#Source",
                 "Open Targets"
@@ -3846,11 +3869,12 @@
         "gene": [
             [
                 "http://purl.obolibrary.org/obo/GS_CDH2",
-                "http://www.w3.org/1999/02/22-rdf-syntax-ns#PRODUCES",
+                "http://www.w3.org/1999/02/22-rdf-syntax-ns#RO_0003000",
                 "http://purl.obolibrary.org/obo/PR_P19022"
             ],
             [
                 "http://purl.obolibrary.org/obo/GS_CDH2",
+                "http://www.w3.org/1999/02/22-rdf-syntax-ns#RO_0003000",
                 "http://purl.obolibrary.org/obo/PR_P19022",
                 "http://www.w3.org/1999/02/22-rdf-syntax-ns#Source",
                 "UniProt"

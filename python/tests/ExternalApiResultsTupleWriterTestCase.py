@@ -148,13 +148,12 @@ class CreateTuplesFromCellxgeneTestCase(unittest.TestCase):
         self.assertIn("dc#Source", first[1])
         self.assertIn("PUB_", first[2])
 
-    def test_last_tuple_is_zenodo_annotation(self):
-        """Last tuple is a CSD Zenodo/Nextflow_workflow/Notebook annotation."""
+    def test_last_tuple_is_dataset_version_id_annotation(self):
+        """Last tuple is a CSD Dataset_version_ID annotation."""
         actual_tuples, _ = create_tuples_from_cellxgene(self.cellxgene_results)
         last = list(str(x) for x in actual_tuples[-1])
         self.assertIn("CSD_", last[0])
-        self.assertIn("Zenodo/Nextflow_workflow/Notebook", last[1])
-        self.assertEqual(last[2], "TBC")
+        self.assertIn("Dataset_version_ID", last[1])
 
 
 class CreateTuplesFromOpentargetsTestCase(unittest.TestCase):
@@ -235,11 +234,11 @@ class CreateTuplesFromOpentargetsTestCase(unittest.TestCase):
         self.assertEqual(len(actual_tuples), len(self.expected_tuples))
 
     def test_first_tuple_is_genetic_basis_for(self):
-        """First tuple is a Gene GENETIC_BASIS_FOR Disease relation."""
+        """First tuple is a Gene RO_0004010 (IS_GENETIC_BASIS_FOR_CONDITION) Disease relation."""
         actual_tuples = self._create_tuples()
         first = list(str(x) for x in actual_tuples[0])
         self.assertIn("GS_CFTR", first[0])
-        self.assertIn("GENETIC_BASIS_FOR", first[1])
+        self.assertIn("RO_0004010", first[1])
         self.assertIn("MONDO_0009061", first[2])
 
     def test_last_tuple_is_variant_consequence(self):
@@ -248,7 +247,7 @@ class CreateTuplesFromOpentargetsTestCase(unittest.TestCase):
         last = list(str(x) for x in actual_tuples[-1])
         self.assertIn("SO_0001583", last[0])
         self.assertIn("Variant_consequence_label", last[1])
-        self.assertIn("missense_variant", last[2])
+        self.assertIn("missense_variant", last[2].lower())
 
 
 class CreateTuplesFromGeneTestCase(unittest.TestCase):
@@ -288,11 +287,11 @@ class CreateTuplesFromGeneTestCase(unittest.TestCase):
         self.assertEqual(len(actual_tuples), len(self.expected_tuples))
 
     def test_first_tuple_is_produces_relation(self):
-        """First tuple is a Gene PRODUCES Protein relation."""
+        """First tuple is a Gene RO_0003000 (PRODUCES) Protein relation."""
         actual_tuples = self._create_tuples()
         first = list(str(x) for x in actual_tuples[0])
         self.assertIn("GS_CDH2", first[0])
-        self.assertIn("PRODUCES", first[1])
+        self.assertIn("RO_0003000", first[1])
         self.assertIn("PR_P19022", first[2])
 
     def test_last_tuple_is_mrna_sequences(self):
@@ -370,18 +369,19 @@ class CreateTuplesFromHubmapTestCase(unittest.TestCase):
         self.assertEqual(len(actual_tuples), len(self.expected_tuples))
 
     def test_first_tuple_is_brain_part_of_body_proper(self):
-        """First tuple is Brain PART_OF Body_proper relation."""
+        """First tuple is Brain BFO_0000050 (PART_OF) Body_proper relation."""
         actual_tuples, _ = create_tuples_from_hubmap(self.hubmap_data, self.cl_terms)
         first = list(str(x) for x in actual_tuples[0])
         self.assertIn("UBERON_0000955", first[0])
-        self.assertIn("PART_OF", first[1])
+        self.assertIn("BFO_0000050", first[1])
         self.assertIn("UBERON_0013702", first[2])
 
     def test_last_tuple_is_b_cell_part_of_brain_source(self):
-        """Last tuple is B cell PART_OF Brain Source is HuBMAP edge annotation."""
+        """Last tuple is B cell BFO_0000050 (PART_OF) Brain Source HuBMAP edge annotation."""
         actual_tuples, _ = create_tuples_from_hubmap(self.hubmap_data, self.cl_terms)
         last = list(str(x) for x in actual_tuples[-1])
         self.assertIn("CL_0000236", last[0])
-        self.assertIn("UBERON_0000955", last[1])
-        self.assertIn("Source", last[2])
-        self.assertEqual(last[3], "HuBMAP")
+        self.assertIn("BFO_0000050", last[1])
+        self.assertIn("UBERON_0000955", last[2])
+        self.assertIn("Source", last[3])
+        self.assertEqual(last[4], "HuBMAP")

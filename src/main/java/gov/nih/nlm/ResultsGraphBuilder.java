@@ -271,8 +271,8 @@ public class ResultsGraphBuilder {
             } else {
                 doc = edgeDocuments.get(idPair).get(key);
             }
-            // Always assign the last label
-            doc.updateAttribute("Label", normalizeEdgeLabel(pTuple.label()));
+            // Always assign the last label (add overwrites)
+            doc.addAttribute("Label", normalizeEdgeLabel(pTuple.label()));
         }
         long stopTime = System.nanoTime();
         System.out.println("Constructed " + nEdges + " edges using " + tuplesArrayList.size() + " tuples in " + (stopTime - startTime) / 1e9 + " s");

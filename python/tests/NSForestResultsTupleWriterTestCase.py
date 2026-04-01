@@ -21,16 +21,17 @@ class CreateTuplesFromNSForestTestCase(unittest.TestCase):
     """Tests for create_tuples_from_nsforest using summary fixture."""
 
     def setUp(self):
-        summary_path = SUMMARIES_DIRPATH / "cell-kn-mvp-nsforest-results-li-2023.json"
+        summary_path = SUMMARIES_DIRPATH / "nlm-ckn-nsforest-results-li-2023.json"
         with open(summary_path, "r") as fp:
             self.summary = json.load(fp)
         self.results_df = pd.DataFrame(self.summary["results"])
         self.dataset_version_ids = self.summary["dataset_version_ids"]
+        self.summary_data = pd.DataFrame(self.summary["summary_data"])
         self.expected_tuples = self.summary["tuples"]
 
     def _create_tuples(self):
         return create_tuples_from_nsforest(
-            self.results_df, self.dataset_version_ids, {}
+            self.results_df, self.summary_data, self.dataset_version_ids, {}
         )
 
     def test_create_tuples_from_nsforest(self):
@@ -44,10 +45,27 @@ class CreateTuplesFromNSForestTestCase(unittest.TestCase):
         actual_tuples = self._create_tuples()
         self.assertEqual(len(actual_tuples), len(self.expected_tuples))
 
-    def test_contains_bmc_type_tuple(self):
-        """First tuple is a BMC INSTANCE_OF Sequence_collection relation."""
+    def test_first_tuple_is_cs_derives_from_uberon(self):
+        """First tuple is a CS DERIVES_FROM UBERON relation."""
         actual_tuples = self._create_tuples()
         first = list(str(x) for x in actual_tuples[0])
+        self.assertIn("CS_", first[0])
+        self.assertIn("RO_0001000", first[1])
+        self.assertIn("UBERON_", first[2])
+
+    def test_contains_bmc_type_tuple(self):
+        """Tuples contain a BMC INSTANCE_OF Sequence_collection relation."""
+        actual_tuples = self._create_tuples()
+        bmc_type_tuples = [
+            list(str(x) for x in t)
+            for t in actual_tuples
+            if len(t) == 3
+            and "BMC_" in str(t[0])
+            and "rdf#type" in str(t[1])
+            and "SO_0001260" in str(t[2])
+        ]
+        self.assertTrue(len(bmc_type_tuples) > 0)
+        first = bmc_type_tuples[0]
         self.assertIn("BMC_", first[0])
         self.assertIn("rdf#type", first[1])
         self.assertIn("SO_0001260", first[2])
@@ -63,6 +81,7 @@ class CreateTuplesFromNSForestTestCase(unittest.TestCase):
         self.assertTrue(len(marker_count_tuples) > 0)
         first_match = marker_count_tuples[0]
         self.assertIn("CS_", first_match[0])
-        self.assertIn("BMC_", first_match[1])
-        self.assertIn("Marker_count", first_match[2])
-        self.assertEqual(first_match[3], "2")
+        self.assertIn("RO_0015004", first_match[1])
+        self.assertIn("BMC_", first_match[2])
+        self.assertIn("Marker_count", first_match[3])
+        self.assertEqual(first_match[4], "2")

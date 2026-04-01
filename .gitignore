@@ -57,8 +57,8 @@ log/
 data/arangodb/
 data/external*/
 data/obo/
-data/results-*/
-data/scores-*/
+data/results*/
+data/scores*/
 data/tuples*/
 python/tests/arangodb/
 # archives
@@ -66,3 +66,7 @@ arangodb.tar.gz
 arangodb-*.tar.gz
 obo.tar.gz
 obo-*.tar.gz
+CLAUDE.md
+.prompt
+*.csv
+*.xlsx
