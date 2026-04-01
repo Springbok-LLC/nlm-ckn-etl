@@ -36,10 +36,10 @@ build/
 
 ### Dev ###
 *~
+*.csv
+*.xlsx
 .arangodb-password
 .built
-.built-ontology
-.built-results
 .ai
 .archived
 .poetry/
@@ -68,3 +68,5 @@ obo.tar.gz
 obo-*.tar.gz
 CLAUDE.md
 .prompt
+*.csv
+*.xlsx
