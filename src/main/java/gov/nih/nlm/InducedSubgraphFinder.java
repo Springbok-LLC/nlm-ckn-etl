@@ -208,6 +208,12 @@ public class InducedSubgraphFinder {
                         queue.add(Map.entry(neighbor, depth + 1));
                     }
                 }
+                for (ArangoEdge edge : graph.incomingEdgesOf(node)) {
+                    ArangoVertex neighbor = graph.getEdgeSource(edge);
+                    if (visited.add(neighbor)) {
+                        queue.add(Map.entry(neighbor, depth + 1));
+                    }
+                }
             }
         }
 

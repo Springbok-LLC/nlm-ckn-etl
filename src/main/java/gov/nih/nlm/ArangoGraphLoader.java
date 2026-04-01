@@ -106,6 +106,9 @@ public class ArangoGraphLoader {
             });
         }
 
+        System.out.println("Full graph vertices: " + graph.vertexSet().size());
+        System.out.println("Full graph edges: " + graph.edgeSet().size());
+
         return graph;
     }
 
