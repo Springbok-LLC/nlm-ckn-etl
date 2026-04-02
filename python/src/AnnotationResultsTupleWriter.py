@@ -213,7 +213,7 @@ def create_tuples_from_annotation(annotation_results):
             continue
 
         s = URIRef(f"{PURLBASE}/{subject}")
-        p = URIRef(f"{RDFSBASE}#{predicate}")
+        p = URIRef(f"{PURLBASE}#{predicate}")
         o = URIRef(f"{PURLBASE}/{object}")
         tuples.append((s, p, o))
 
