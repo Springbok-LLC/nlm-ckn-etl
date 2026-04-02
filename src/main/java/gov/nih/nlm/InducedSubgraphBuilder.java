@@ -10,7 +10,7 @@ import java.util.Map;
 
 public class InducedSubgraphBuilder {
 
-    private static final int MAX_DEPTH = 5;
+    private static final int MAX_DEPTH = 10;
 
     private final ArangoDatabase sourceDb;
     private final ArangoDatabase targetDb;

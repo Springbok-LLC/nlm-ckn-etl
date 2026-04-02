@@ -19,6 +19,9 @@ public class InducedSubgraphFinder {
     // "walk": BFS walk following edges with the given Label to root
     private record HierarchyConfig(String strategy, String label) {}
 
+    // Collections to skip during BFS traversal
+    private static final Set<String> IGNORED_COLLECTIONS = Set.of("CHEBI", "NCT");
+
     private static final Map<String, HierarchyConfig> HIERARCHY_CONFIG = Map.ofEntries(
             Map.entry("CL", new HierarchyConfig("all", null)),
             Map.entry("GO", new HierarchyConfig("walk", "SUB_CLASS_OF")),
@@ -187,6 +190,17 @@ public class InducedSubgraphFinder {
         return new HierarchyResult(allNodes, allEdges);
     }
 
+    /**
+     * Returns true if the edge connects two vertices in the same ontology collection
+     * (e.g., CL-CL, GO-GO). These are skipped during BFS since hierarchy enrichment
+     * handles them separately.
+     */
+    private boolean isSelfReferentialEdge(ArangoEdge edge) {
+        String col = edge.collection();
+        int dash = col.indexOf('-');
+        return dash > 0 && col.substring(0, dash).equals(col.substring(dash + 1));
+    }
+
     private Set<ArangoVertex> multiBfs(DirectedPseudograph<ArangoVertex, ArangoEdge> graph,
                                        Set<ArangoVertex> sources,
                                        int maxDepth) {
@@ -203,14 +217,16 @@ public class InducedSubgraphFinder {
 
             if (depth < maxDepth) {
                 for (ArangoEdge edge : graph.outgoingEdgesOf(node)) {
+                    if (isSelfReferentialEdge(edge)) continue;
                     ArangoVertex neighbor = graph.getEdgeTarget(edge);
-                    if (visited.add(neighbor)) {
+                    if (!IGNORED_COLLECTIONS.contains(neighbor.collection()) && visited.add(neighbor)) {
                         queue.add(Map.entry(neighbor, depth + 1));
                     }
                 }
                 for (ArangoEdge edge : graph.incomingEdgesOf(node)) {
+                    if (isSelfReferentialEdge(edge)) continue;
                     ArangoVertex neighbor = graph.getEdgeSource(edge);
-                    if (visited.add(neighbor)) {
+                    if (!IGNORED_COLLECTIONS.contains(neighbor.collection()) && visited.add(neighbor)) {
                         queue.add(Map.entry(neighbor, depth + 1));
                     }
                 }

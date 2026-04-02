@@ -6,7 +6,10 @@ import nx_arangodb as nxadb
 from arango import ArangoClient
 
 
-MAX_DEPTH = 5
+MAX_DEPTH = 10
+
+# Collections to skip during BFS traversal
+IGNORED_COLLECTIONS = {"CHEBI", "NCT"}
 
 # Ontology hierarchy traversal configuration
 # "all": include entire vertex and edge collection (CL special case)
@@ -26,8 +29,20 @@ HIERARCHY_CONFIG = {
 }
 
 
+def _is_self_referential_edge(edge_id: str) -> bool:
+    """Return True if the edge connects two vertices in the same ontology
+    collection (e.g., CL-CL, GO-GO). These are skipped during BFS since
+    hierarchy enrichment handles them separately."""
+    col = edge_id.split("/")[0] if edge_id else ""
+    dash = col.find("-")
+    return dash > 0 and col[:dash] == col[dash + 1:]
+
+
 def descendants_at_depth(G, source, max_depth):
-    """BFS traversal from source up to max_depth.
+    """Bidirectional BFS traversal from source up to max_depth.
+
+    Follows both outgoing and incoming edges, skipping ignored collections
+    and self-referential ontology edges.
 
     Parameters
     ----------
@@ -41,7 +56,7 @@ def descendants_at_depth(G, source, max_depth):
     Returns
     -------
     set
-        All vertices reachable from source within max_depth.
+        All vertices connected to source within max_depth.
     """
     visited = {source}
     queue = deque([(source, 0)])
@@ -49,10 +64,35 @@ def descendants_at_depth(G, source, max_depth):
     while queue:
         node, depth = queue.popleft()
         if depth < max_depth:
+            # Follow outgoing edges
             for neighbor in G.successors(node):
-                if neighbor not in visited:
-                    visited.add(neighbor)
-                    queue.append((neighbor, depth + 1))
+                if neighbor in visited:
+                    continue
+                if get_vertex_collection(neighbor) in IGNORED_COLLECTIONS:
+                    continue
+                # Check if all edges to this neighbor are self-referential
+                all_self_ref = all(
+                    _is_self_referential_edge(data.get("_id", ""))
+                    for data in G[node][neighbor].values()
+                )
+                if all_self_ref:
+                    continue
+                visited.add(neighbor)
+                queue.append((neighbor, depth + 1))
+            # Follow incoming edges
+            for neighbor in G.predecessors(node):
+                if neighbor in visited:
+                    continue
+                if get_vertex_collection(neighbor) in IGNORED_COLLECTIONS:
+                    continue
+                all_self_ref = all(
+                    _is_self_referential_edge(data.get("_id", ""))
+                    for data in G[neighbor][node].values()
+                )
+                if all_self_ref:
+                    continue
+                visited.add(neighbor)
+                queue.append((neighbor, depth + 1))
 
     return visited
 
@@ -249,6 +289,9 @@ def build_induced_subgraph(
     print("Loading full graph via NetworkX adapter...")
     G_arango = nxadb.MultiDiGraph(name=graph_name, db=source_db)
     G = nx.MultiDiGraph(G_arango)
+
+    print(f"Full graph vertices: {G.number_of_nodes()}")
+    print(f"Full graph edges: {G.number_of_edges()}")
 
     # Find all vertices reachable from any source vertex
     print("Finding all reachable vertices...")

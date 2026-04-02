@@ -121,7 +121,7 @@ public class OntologyGraphBuilder {
             if (fragment == null) {
                 curie = term.replace("_", ":");
                 if (ontologyElementMaps.get("ro").getTerms().containsKey(term)) {
-                    label = ontologyElementMaps.get("ro").getTerms().get(term).label().replace(" ", "-");
+                    label = ontologyElementMaps.get("ro").getTerms().get(term).label();
                 }
             } else {
                 curie = term.replace("rdf-schema", "rdfs") + ":" + fragment;
