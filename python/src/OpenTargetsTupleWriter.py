@@ -82,6 +82,7 @@ def create_tuples(opentargets_results: dict, gene_results: dict) -> list[tuple]:
     chembl2pubchem = get_chembl_to_pubchem_map()
 
     gene_ensembl_ids = opentargets_results.get("gene_ensembl_ids", [])
+    annotated = set()
 
     for gene_ensembl_id in gene_ensembl_ids:
         gene_name = map_gene_ensembl_id_to_names(
@@ -127,7 +128,7 @@ def create_tuples(opentargets_results: dict, gene_results: dict) -> list[tuple]:
                 predicate="is_genetic_basis_for_condition",
                 object=disease_entity,
             )
-            tuples.extend(association_to_tuples(assoc, source="Open Targets"))
+            tuples.extend(association_to_tuples(assoc, source="Open Targets", annotated_terms=annotated))
 
             # Edge annotation: score
             gs_term = f"GS_{gene_name}"
@@ -206,7 +207,7 @@ def create_tuples(opentargets_results: dict, gene_results: dict) -> list[tuple]:
                     predicate="molecularly_interacts_with",
                     object=protein_entity,
                 )
-                tuples.extend(association_to_tuples(assoc, ctx, source="Open Targets and UniProt"))
+                tuples.extend(association_to_tuples(assoc, ctx, source="Open Targets and UniProt", annotated_terms=annotated))
 
             # Drug is_substance_that_treats Disease (from indications)
             if drug["drug"].get("indications"):
@@ -228,7 +229,7 @@ def create_tuples(opentargets_results: dict, gene_results: dict) -> list[tuple]:
                         predicate="is_substance_that_treats",
                         object=disease_entity,
                     )
-                    tuples.extend(association_to_tuples(assoc, ctx, source="Open Targets"))
+                    tuples.extend(association_to_tuples(assoc, ctx, source="Open Targets", annotated_terms=annotated))
 
                     # Drug evaluated_in ClinicalTrial
                     for clinical_report in indication.get("clinicalReports", []):
@@ -242,7 +243,7 @@ def create_tuples(opentargets_results: dict, gene_results: dict) -> list[tuple]:
                             object=ct_entity,
                         )
                         tuples.extend(
-                            association_to_tuples(assoc, ctx, source="Open Targets")
+                            association_to_tuples(assoc, ctx, source="Open Targets", annotated_terms=annotated)
                         )
 
         # --- Drug ↔ Gene (symmetric) ---
@@ -266,7 +267,7 @@ def create_tuples(opentargets_results: dict, gene_results: dict) -> list[tuple]:
                 predicate="molecularly_interacts_with",
                 object=drug_entity_sym,
             )
-            tuples.extend(association_to_tuples(assoc, ctx_sym, source="Open Targets"))
+            tuples.extend(association_to_tuples(assoc, ctx_sym, source="Open Targets", annotated_terms=annotated))
 
             # Drug molecularly_interacts_with Gene
             assoc = ASSOCIATION_CLASSES["DrugMolecularlyInteractsWithGene"](
@@ -274,7 +275,7 @@ def create_tuples(opentargets_results: dict, gene_results: dict) -> list[tuple]:
                 predicate="molecularly_interacts_with",
                 object=gene_entity,
             )
-            tuples.extend(association_to_tuples(assoc, ctx_sym, source="Open Targets"))
+            tuples.extend(association_to_tuples(assoc, ctx_sym, source="Open Targets", annotated_terms=annotated))
 
         # --- Interactions (Gene ↔ Gene) ---
         for interaction in ot_data.get("interactions", []):
@@ -290,7 +291,7 @@ def create_tuples(opentargets_results: dict, gene_results: dict) -> list[tuple]:
                 predicate="genetically_interacts_with",
                 object=gene_b_entity,
             )
-            tuples.extend(association_to_tuples(assoc, source="Open Targets"))
+            tuples.extend(association_to_tuples(assoc, source="Open Targets", annotated_terms=annotated))
 
         # --- Pharmacogenetics ---
         for pg in ot_data.get("pharmacogenetics", []):
@@ -319,7 +320,7 @@ def create_tuples(opentargets_results: dict, gene_results: dict) -> list[tuple]:
                 predicate="has_quality",
                 object=mutation_entity,
             )
-            tuples.extend(association_to_tuples(assoc, source="Open Targets"))
+            tuples.extend(association_to_tuples(assoc, source="Open Targets", annotated_terms=annotated))
 
             # VariantConsequence annotation (manual — no association class for
             # Mutation→VariantConsequence in the schema yet)
@@ -365,7 +366,8 @@ def create_tuples(opentargets_results: dict, gene_results: dict) -> list[tuple]:
                 )
                 tuples.extend(
                     association_to_tuples(
-                        assoc, {"chembl_id": pg_chembl_id}, source="Open Targets"
+                        assoc, {"chembl_id": pg_chembl_id}, source="Open Targets",
+                        annotated_terms=annotated,
                     )
                 )
 

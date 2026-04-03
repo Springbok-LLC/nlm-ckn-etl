@@ -53,6 +53,7 @@ PREDICATE_MAP: dict[str, str] = {
     "develops_from": "RO_0002202",
     "composed_primarily_of": "RO_0002473",
     "expresses": "RO_0002292",
+    "selectively_expresses": "RO_0002294",
     "has_characterizing_marker_set": "RO_0015004",
     "has_exemplar_data": "RO_0015001",
     "subcluster_of": "RO_0015003",
@@ -72,7 +73,7 @@ PREDICATE_MAP: dict[str, str] = {
     "involved_in": "RO_0002331",
     "located_in": "RO_0001025",
     "exact_match": "SKOS_exactMatch",
-    "evaluated_in": "OPMI_0000437",
+    "evaluated_in": "RO_0020325",
 }
 
 # Maps Pydantic field names to annotation attribute names where the
@@ -349,12 +350,27 @@ def association_to_tuples(
     association: Association,
     context: dict[str, Any] | None = None,
     source: str | None = None,
+    annotated_terms: set[str] | None = None,
 ) -> list[tuple]:
     """Convert an Association instance to a list of RDF tuples.
 
     Generates the core relationship triple, a source quintuple if
-    source is provided, vertex annotation triples for subject/object,
-    and edge annotation quintuples from EDGE_ANNOTATION_FIELDS.
+    source is provided, vertex annotation triples for subject/object
+    (skipping terms already in annotated_terms), and edge annotation
+    quintuples from EDGE_ANNOTATION_FIELDS.
+
+    Parameters
+    ----------
+    association : Association
+        A Pydantic Association subclass instance.
+    context : dict, optional
+        Context dict with external identifiers (uuid, chembl_id, etc.).
+    source : str, optional
+        Source label for the source quintuple.
+    annotated_terms : set[str], optional
+        Set of entity terms that have already been annotated. Terms
+        annotated by this call are added to the set. Pass a shared
+        set across multiple calls to avoid duplicate vertex annotations.
     """
     ctx = context or {}
     tuples = []
@@ -388,9 +404,16 @@ def association_to_tuples(
     subj_edge_fields = edge_mapping.get("subject", set())
     obj_edge_fields = edge_mapping.get("object", set())
 
-    # Vertex annotation triples
-    tuples.extend(entity_to_annotation_triples(subj, s_term, subj_edge_fields))
-    tuples.extend(entity_to_annotation_triples(obj, o_term, obj_edge_fields))
+    # Vertex annotation triples (skip already-annotated terms)
+    if annotated_terms is None or s_term not in annotated_terms:
+        tuples.extend(entity_to_annotation_triples(subj, s_term, subj_edge_fields))
+        if annotated_terms is not None:
+            annotated_terms.add(s_term)
+
+    if annotated_terms is None or o_term not in annotated_terms:
+        tuples.extend(entity_to_annotation_triples(obj, o_term, obj_edge_fields))
+        if annotated_terms is not None:
+            annotated_terms.add(o_term)
 
     # Edge annotation quintuples from entity fields
     tuples.extend(_extract_edge_annotations(association, s_uri, pred_uri, o_uri))

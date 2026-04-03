@@ -92,18 +92,19 @@ def create_tuples(
             ),
         )
         ctx = {"uuid": uuid}
+        annotated = set()
 
         # CellType part_of AnatomicalStructure
         assoc = ASSOCIATION_CLASSES["CellTypePartOfAnatomicalStructure"](
             subject=cell_type, predicate="part_of", object=anat,
         )
-        tuples.extend(association_to_tuples(assoc, ctx, source="Manual Mapping"))
+        tuples.extend(association_to_tuples(assoc, ctx, source="Manual Mapping", annotated_terms=annotated))
 
         # CellSet composed_primarily_of CellType
         assoc = ASSOCIATION_CLASSES["CellSetComposedPrimarilyOfCellType"](
             subject=cell_set, predicate="composed_primarily_of", object=cell_type,
         )
-        tuples.extend(association_to_tuples(assoc, ctx, source="Manual Mapping"))
+        tuples.extend(association_to_tuples(assoc, ctx, source="Manual Mapping", annotated_terms=annotated))
 
         # Edge annotations on CS→CellType: Match and Mapping_method
         cs_uri = URIRef(f"{PURLBASE}/CS_{author_cell_set}-{uuid}")
@@ -149,7 +150,7 @@ def create_tuples(
                 subject=cell_type, predicate="has_exemplar_data", object=csd,
             )
             tuples.extend(
-                association_to_tuples(assoc, ctx, source="Manual Mapping")
+                association_to_tuples(assoc, ctx, source="Manual Mapping", annotated_terms=annotated)
             )
 
             # CellSetDataset source Publication
@@ -159,17 +160,17 @@ def create_tuples(
                     subject=csd, predicate="source", object=pub,
                 )
                 tuples.extend(
-                    association_to_tuples(assoc, ctx, source="Manual Mapping")
+                    association_to_tuples(assoc, ctx, source="Manual Mapping", annotated_terms=annotated)
                 )
 
         # CellType expresses Gene (for each marker and binary gene)
         for gene_symbol in markers + binary_genes:
             gene = make_gene(gene_symbol)
             assoc = ASSOCIATION_CLASSES["CellTypeExpressesGene"](
-                subject=cell_type, predicate="expresses", object=gene,
+                subject=cell_type, predicate="selectively_expresses", object=gene,
             )
             tuples.extend(
-                association_to_tuples(assoc, ctx, source="Manual Mapping")
+                association_to_tuples(assoc, ctx, source="Manual Mapping", annotated_terms=annotated)
             )
 
     return tuples

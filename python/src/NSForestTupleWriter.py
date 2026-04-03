@@ -100,6 +100,7 @@ def create_tuples(
             ),
         )
         ctx = {"uuid": uuid}
+        annotated = set()
 
         # CellSet derives_from AnatomicalStructure
         for uberon_term in uberon_terms:
@@ -107,13 +108,13 @@ def create_tuples(
             assoc = ASSOCIATION_CLASSES["CellSetDerivesFromAnatomicalStructure"](
                 subject=cell_set, predicate="derives_from", object=anat,
             )
-            tuples.extend(association_to_tuples(assoc, ctx, source="NSForest"))
+            tuples.extend(association_to_tuples(assoc, ctx, source="NSForest", annotated_terms=annotated))
 
         # CellSet expresses BinaryGeneSet
         assoc = ASSOCIATION_CLASSES["CellSetExpressesBinaryGeneSet"](
             subject=cell_set, predicate="expresses", object=bgs,
         )
-        tuples.extend(association_to_tuples(assoc, ctx, source="NSForest"))
+        tuples.extend(association_to_tuples(assoc, ctx, source="NSForest", annotated_terms=annotated))
 
         # CellSet has_characterizing_marker_set BiomarkerCombination
         assoc = ASSOCIATION_CLASSES[
@@ -121,7 +122,7 @@ def create_tuples(
         ](
             subject=cell_set, predicate="has_characterizing_marker_set", object=bmc,
         )
-        tuples.extend(association_to_tuples(assoc, ctx, source="NSForest"))
+        tuples.extend(association_to_tuples(assoc, ctx, source="NSForest", annotated_terms=annotated))
 
         # Extra edge annotations from raw data columns on CS→BMC edge
         cs_uri = URIRef(f"{PURLBASE}/CS_{cluster_name}-{uuid}")
@@ -156,7 +157,7 @@ def create_tuples(
             assoc = ASSOCIATION_CLASSES["CellSetHasSourceCellSetDataset"](
                 subject=cell_set, predicate="source", object=csd,
             )
-            tuples.extend(association_to_tuples(assoc, ctx, source="NSForest"))
+            tuples.extend(association_to_tuples(assoc, ctx, source="NSForest", annotated_terms=annotated))
 
         # Gene part_of BiomarkerCombination (for each marker)
         for gene_symbol in markers:
@@ -164,13 +165,13 @@ def create_tuples(
             assoc = ASSOCIATION_CLASSES["GenePartOfBiomarkerCombination"](
                 subject=gene, predicate="part_of", object=bmc,
             )
-            tuples.extend(association_to_tuples(assoc, ctx, source="NSForest"))
+            tuples.extend(association_to_tuples(assoc, ctx, source="NSForest", annotated_terms=annotated))
 
         # BiomarkerCombination subcluster_of BinaryGeneSet
         assoc = ASSOCIATION_CLASSES["BiomarkerCombinationSubclusterOfBinaryGeneSet"](
             subject=bmc, predicate="subcluster_of", object=bgs,
         )
-        tuples.extend(association_to_tuples(assoc, ctx, source="NSForest"))
+        tuples.extend(association_to_tuples(assoc, ctx, source="NSForest", annotated_terms=annotated))
 
     return tuples
 
