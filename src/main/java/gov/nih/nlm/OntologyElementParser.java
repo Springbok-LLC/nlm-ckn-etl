@@ -12,6 +12,7 @@ import javax.xml.parsers.ParserConfigurationException;
 import java.io.File;
 import java.io.IOException;
 import java.net.URI;
+import java.net.URISyntaxException;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.HashMap;
@@ -24,10 +25,9 @@ import static gov.nih.nlm.PathUtilities.OBO_DIR;
 import static gov.nih.nlm.PathUtilities.listFilesMatchingPattern;
 
 /**
- * Identifies ontology files in the data/obo directory, parses each file to
- * produce unique term ids, and a mapping of ontology term to ontology term
- * PURLs and labels for all elements with a non-empty "about" attribute and at
- * least one "label" element.
+ * Identifies ontology files in the data/obo directory, parses each file to produce unique term ids, and a mapping of
+ * ontology term to ontology term PURLs and labels for all elements with a non-empty "about" attribute and at least one
+ * "label" element.
  */
 public class OntologyElementParser {
 
@@ -65,8 +65,7 @@ public class OntologyElementParser {
     }
 
     /**
-     * Create a URI from a string, handling the provisional cell ontology as special
-     * cases.
+     * Create a URI from a string, handling the provisional cell ontology as special cases.
      *
      * @param uri String from which to create URI
      * @return URI created
@@ -84,9 +83,8 @@ public class OntologyElementParser {
     }
 
     /**
-     * Parse a node recursively to find all elements in the "owl" namespace which
-     * contain a non-empty "about" attribute, and at least one "label" element. Also
-     * collect resulting unique ontology term ids.
+     * Parse a node recursively to find all elements in the "owl" namespace which contain a non-empty "about" attribute,
+     * and at least one "label" element. Also collect resulting unique ontology term ids.
      *
      * @param node               A triple node
      * @param ontologyElementMap Maps terms and labels
@@ -132,13 +130,12 @@ public class OntologyElementParser {
     }
 
     /**
-     * Parse ontology files to produce ontology terms for all elements with a
-     * non-empty "about" attribute and at least one "label" element.
+     * Parse ontology files to produce ontology terms for all elements with a non-empty "about" attribute and at least
+     * one "label" element.
      *
      * @param files Paths to ontology files
-     * @return Map by ontology term containing ontology term PURLs and labels for
-     * all elements with a non-empty "about" attribute and at least one
-     * "label" element, and corresponding unique term ids.
+     * @return Map by ontology term containing ontology term PURLs and labels for all elements with a non-empty "about"
+     * attribute and at least one "label" element, and corresponding unique term ids.
      */
     public static Map<String, OntologyElementMap> parseOntologyElements(List<Path> files) throws RuntimeException {
         Map<String, OntologyElementMap> ontologyElementMaps = new HashMap<>();
@@ -177,14 +174,40 @@ public class OntologyElementParser {
             // Map maps by filename
             ontologyElementMaps.put(oboFileName.substring(0, oboFileName.lastIndexOf(".")), ontologyElementMap);
         }
-        return ontologyElementMaps;
+        return enrichOntologyElements(ontologyElementMaps);
     }
 
     /**
-     * Identify ontology files in the data/obo directory, parse each file to produce
-     * unique term ids, and a mapping of ontology term to ontology term PURLs and
-     * labels for all elements with a non-empty "about" attribute and at least one
-     * "label" element.
+     * Enrich relationship ontology with placeholder terms.
+     *
+     * @param ontologyElementMapMaps Map by ontology term containing ontology term PURLs and labels for all elements
+     *                               with a non-empty "about" attribute and at least one "label" element, and
+     *                               corresponding unique term ids.
+     * @return Input map enriched with placeholder terms
+     */
+    public static Map<String, OntologyElementMap> enrichOntologyElements(Map<String, OntologyElementMap> ontologyElementMapMaps) {
+        if (ontologyElementMapMaps.containsKey("ro")) {
+            try {
+                ontologyElementMapMaps.get("ro").getTerms().put("RO_0002027",
+                        new OntologyElementMap.OntologyTerm(new URI("http://purl.obolibrary.org/obo/RO_0002027"),
+                                "has pharmacological effect"));
+                ontologyElementMapMaps.get("ro").getTerms().put("RO_0002294",
+                        new OntologyElementMap.OntologyTerm(new URI("http://purl.obolibrary.org/obo/RO_0002294"),
+                                "selectively express"));
+                ontologyElementMapMaps.get("ro").getTerms().put("RO_0020325",
+                        new OntologyElementMap.OntologyTerm(new URI("http://purl.obolibrary.org/obo/RO_0020325"),
+                                "evaluated in"));
+            } catch (URISyntaxException e) {
+                throw new RuntimeException("Could not put RO terms");
+            }
+        }
+        return ontologyElementMapMaps;
+    }
+
+    /**
+     * Identify ontology files in the data/obo directory, parse each file to produce unique term ids, and a mapping of
+     * ontology term to ontology term PURLs and labels for all elements with a non-empty "about" attribute and at least
+     * one "label" element.
      *
      * @param args (None expected)
      */

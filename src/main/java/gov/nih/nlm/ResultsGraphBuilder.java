@@ -364,11 +364,9 @@ public class ResultsGraphBuilder {
         }
         Map<String, OntologyElementMap> ontologyElementMaps = null;
         if (oboFiles.isEmpty()) {
-            System.out.println("No OBO files found matching pattern " + oboPattern);
-            System.exit(2);
-        } else {
-            ontologyElementMaps = parseOntologyElements(oboFiles);
+            throw new RuntimeException("No OBO files found matching the pattern " + oboPattern);
         }
+        ontologyElementMaps = parseOntologyElements(oboFiles);
 
         // Create the database and graph
         String ontologyDatabaseName = "Cell-KN-Ontologies";

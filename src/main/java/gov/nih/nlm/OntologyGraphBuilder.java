@@ -12,7 +12,6 @@ import org.apache.jena.graph.Triple;
 import java.io.BufferedWriter;
 import java.io.IOException;
 import java.net.URI;
-import java.net.URISyntaxException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -540,19 +539,6 @@ public class OntologyGraphBuilder {
         // Parse Cell Ontology elements, and collect unique triples
         Map<String, OntologyElementMap> phenotypeElementMaps = parseOntologyElements(oboFiles);
         phenotypeElementMaps.put("ro", ontologyElementMaps.get("ro"));
-        try {
-            phenotypeElementMaps.get("ro").getTerms().put("RO_0002027",
-                    new OntologyElementMap.OntologyTerm(new URI("http://purl.obolibrary.org/obo/RO_0002027"),
-                            "has pharmacological effect"));
-            phenotypeElementMaps.get("ro").getTerms().put("RO_0002294",
-                    new OntologyElementMap.OntologyTerm(new URI("http://purl.obolibrary.org/obo/RO_0002294"),
-                            "selectively express"));
-            phenotypeElementMaps.get("ro").getTerms().put("RO_0020325",
-                    new OntologyElementMap.OntologyTerm(new URI("http://purl.obolibrary.org/obo/RO_0020325"),
-                            "evaluated in"));
-        } catch (URISyntaxException e) {
-            throw new RuntimeException("Could not put RO terms");
-        }
         HashSet<Triple> phenotypeTriples = collectUniqueTriples(oboFiles, false);
 
         // Initialize the phenotype database and subgraph
