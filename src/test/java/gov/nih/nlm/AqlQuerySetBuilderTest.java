@@ -6,6 +6,11 @@ import org.junit.jupiter.api.Test;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+/**
+ * @deprecated Tests for deprecated {@link AqlQuerySetBuilder}.
+ */
+@Deprecated
+@SuppressWarnings("deprecation")
 class AqlQuerySetBuilderTest {
 
     @Test
