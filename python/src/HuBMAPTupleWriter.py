@@ -9,10 +9,7 @@ import json
 from glob import glob
 from pathlib import Path
 
-from ckn_schema.pydantic.ckn_schema import (
-    AnatomicalStructure,
-    CellType,
-)
+from ckn_schema.pydantic.ckn_schema import AnatomicalStructure, CellType
 
 from ExternalApiResultsFetcher import HUBMAP_DIRPATH
 
@@ -37,6 +34,24 @@ def create_tuples(hubmap_data: dict, cl_terms: set[str]) -> list[tuple]:
     Produces:
     - AnatomicalStructurePartOfAnatomicalStructure
     - CellTypePartOfAnatomicalStructure
+
+    Parameters
+    ----------
+    hubmap_data : dict
+        Dictionary containing HuBMAP CCF data with 'data' key
+        containing 'anatomical_structures' and 'cell_types' arrays.
+        Each anatomical structure has 'id', 'ccf_pref_label', and
+        'ccf_part_of'. Each cell type has 'id', 'ccf_pref_label',
+        and 'ccf_located_in'.
+    cl_terms : set[str]
+        Set of CL terms (e.g., 'CL_0000235') from author-to-CL
+        mapping files. Only cell types with terms in this set are
+        included.
+
+    Returns
+    -------
+    list[tuple]
+        List of 3-element and 5-element RDF tuples.
     """
     tuples = []
 
@@ -51,9 +66,8 @@ def create_tuples(hubmap_data: dict, cl_terms: set[str]) -> list[tuple]:
         if s_uberon_term in DEPRECATED_TERMS:
             print(f"Warning: UBERON term {s_uberon_term} deprecated")
 
-        s_curie = anat_struct["id"]
         subject = AnatomicalStructure(
-            ontology_purl=s_curie,
+            ontology_purl=anat_struct["id"],
             label=anat_struct.get("ccf_pref_label"),
         )
 
@@ -106,7 +120,12 @@ def create_tuples(hubmap_data: dict, cl_terms: set[str]) -> list[tuple]:
 
 
 def main():
-    """Run HuBMAP tuple writer."""
+    """Run HuBMAP tuple writer.
+
+    Loads CL terms from mapping files, then creates tuples from each
+    HuBMAP JSON data file. Writes one JSON tuple file per HuBMAP
+    source file.
+    """
     if not HUBMAP_DIRPATH.exists():
         print(f"HuBMAP data not found at {HUBMAP_DIRPATH}")
         return

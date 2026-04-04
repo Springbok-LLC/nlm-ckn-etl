@@ -8,9 +8,12 @@ import pandas as pd
 from rdflib.term import Literal, URIRef
 
 from ckn_schema.pydantic.ckn_schema import (
+    AnatomicalStructure,
     BinaryGeneSet,
     BiomarkerCombination,
     CellSet,
+    CellSetDataset,
+    Gene,
 )
 
 from LoaderUtilities import (
@@ -29,9 +32,7 @@ from TupleWriterUtilities import (
     ASSOCIATION_CLASSES,
     TUPLES_DIRPATH,
     association_to_tuples,
-    make_cell_set_dataset,
-    make_gene,
-    make_anatomical_structure_from_term,
+    build_cell_set_dataset,
     parse_string_list,
     write_tuples,
 )
@@ -63,6 +64,26 @@ def create_tuples(
     - CellSetHasSourceCellSetDataset
     - GenePartOfBiomarkerCombination (for each marker)
     - BiomarkerCombinationSubclusterOfBinaryGeneSet
+
+    Parameters
+    ----------
+    nsforest_results : pd.DataFrame
+        DataFrame containing NSForest results with columns: clusterName,
+        clusterSize, f_score, precision, NSForest_markers, binary_genes,
+        uuid. May include a 'median' column from merged silhouette scores.
+    summary_data : pd.DataFrame
+        DataFrame containing dataset summary with a
+        tissue_ontology_term_id column.
+    dataset_version_ids : list[str]
+        List of dataset version identifiers for CellSetDataset creation.
+    harvester_data : pd.DataFrame, optional
+        DataFrame containing CELLxGENE harvester metadata for enriching
+        CellSetDataset entities.
+
+    Returns
+    -------
+    list[tuple]
+        List of 3-element and 5-element RDF tuples.
     """
     tuples = []
 
@@ -104,7 +125,7 @@ def create_tuples(
 
         # CellSet derives_from AnatomicalStructure
         for uberon_term in uberon_terms:
-            anat = make_anatomical_structure_from_term(uberon_term)
+            anat = AnatomicalStructure(ontology_purl=uberon_term.replace("_", ":"))
             assoc = ASSOCIATION_CLASSES["CellSetDerivesFromAnatomicalStructure"](
                 subject=cell_set, predicate="derives_from", object=anat,
             )
@@ -149,11 +170,7 @@ def create_tuples(
                 if not match.empty:
                     harvester_row = match.iloc[0]
 
-            csd = make_cell_set_dataset(
-                dvid,
-                summary_data=summary_data,
-                harvester_row=harvester_row,
-            )
+            csd = build_cell_set_dataset(dvid, summary_data, harvester_row)
             assoc = ASSOCIATION_CLASSES["CellSetHasSourceCellSetDataset"](
                 subject=cell_set, predicate="source", object=csd,
             )
@@ -161,7 +178,7 @@ def create_tuples(
 
         # Gene part_of BiomarkerCombination (for each marker)
         for gene_symbol in markers:
-            gene = make_gene(gene_symbol)
+            gene = Gene(gene_symbol=gene_symbol)
             assoc = ASSOCIATION_CLASSES["GenePartOfBiomarkerCombination"](
                 subject=gene, predicate="part_of", object=bmc,
             )
@@ -177,7 +194,12 @@ def create_tuples(
 
 
 def main():
-    """Run NSForest tuple writer for all datasets."""
+    """Run NSForest tuple writer for all datasets.
+
+    Loads results sources, resolves file paths, and creates tuples
+    for each NSForest results file. Writes one JSON tuple file per
+    dataset.
+    """
     results_sources = get_results_sources()
     harvester_data = get_cellxgene_harvester_data(results_sources)
     file_paths = get_dataset_file_paths(results_sources)

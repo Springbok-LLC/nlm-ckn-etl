@@ -10,7 +10,9 @@ from lxml import etree
 import pandas as pd
 import scanpy as sc
 
-from OntologyParserLoader import parse_term
+from rdflib.term import BNode
+from urllib.parse import urlparse
+
 from UniProtIdMapper import (
     submit_id_mapping,
     check_id_mapping_results_ready,
@@ -36,6 +38,72 @@ with open(DATA_DIRPATH / "obo" / "deprecated_terms.txt", "r") as fp:
     DEPRECATED_TERMS = fp.read().splitlines()
 
 MIN_CLUSTER_SIZE = 10
+
+URIREF_PATTERN = re.compile(r"/obo/([A-Za-z]*)_([A-Za-z0-9-+]*)")
+
+
+def parse_term(term, ro=None):
+    """Parse an rdflib term first as an URIRef that identifies a
+    class, including relationship classes, then a predicate, BNode, or
+    Literal.
+
+    Parameters
+    ----------
+    term : rdflib.term.BNode|Literal|URIRef | str
+        An rdflib term: BNode, Literal, or URIRef, or equivalent string
+    ro : None | dict
+        A dictionary mapping relationship ontology terms to labels
+
+    Returns
+    -------
+    tuple
+        Contains ontology identifier, number, and term, label or
+        literal value, and type ('class', 'predicate', or 'literal'),
+        in which any element of the tuple may also be None
+    """
+    # Parse then match as URL
+    path = urlparse(term).path
+    fragment = urlparse(term).fragment
+    match = URIREF_PATTERN.match(path)
+    if match is not None:
+        # Matched as URL
+        oid = match.group(1)
+        if oid == "GOREL":
+            # Identifier not found in the Ontology Lookup Service
+            print(f"Invalid Ontology ID: 'GOREL' for term: {term}")
+            return None, None, None, None, None
+
+        number = match.group(2)
+        if len(oid) == 0 or len(number) == 0:
+            print(f"Did not match ontology id or number for term: {term}")
+            return None, None, None, None, None
+
+        term = f"{oid}_{number}"
+
+        if ro is not None and term in ro:
+            # Lookup label for relationship ontology term
+            return oid, number, term, ro[term], "class"
+
+        else:
+            return oid, number, term, None, "class"
+
+    elif fragment != "":
+        # Parsed as URL with a fragment, so assume fragment is a
+        # predicate
+        return None, None, None, fragment, "predicate"
+
+    elif isinstance(term, BNode):
+        # Create pseudo ontology identifier, number, and term for a
+        # BNode
+        oid = "BNode"
+        number = Path(path).stem
+        term = f"{oid}_{number}"
+        return oid, number, term, None, "class"
+
+    else:
+        # Parsed as URL without a fragment, so assume stem is a
+        # literal
+        return None, None, None, Path(path).stem, "literal"
 
 
 def get_results_sources(results_sources_path=RESULTS_SOURCES_PATH):
@@ -336,8 +404,8 @@ def hyphenate(iname):
 
 
 def get_gene_names_and_ensembl_and_entrez_ids():
-    """Query BioMart to get gene names, and Ensembl and Entrez
-    ids. Write the mapping to a file if needed.
+    """Get gene names, and Ensembl and Entrez ids from a cached file,
+    or query BioMart and cache the result.
 
     Parameters
     ----------
@@ -349,6 +417,12 @@ def get_gene_names_and_ensembl_and_entrez_ids():
         DataFrame with columns containing gene names, and Ensembl and
         Entrez ids
     """
+    if GENE_MAPPING_PATH.exists():
+        print(f"Loading gene mapping from {GENE_MAPPING_PATH}")
+        gene_names_and_ids = pd.read_csv(GENE_MAPPING_PATH, index_col=0)
+        gene_names_and_ids["entrezgene_id"] = gene_names_and_ids["entrezgene_id"].astype(str)
+        return gene_names_and_ids
+
     print("Getting gene names, and Ensembl and Entrez ids from BioMart")
     gene_names_and_ids = (
         sc.queries.biomart_annotations(
@@ -362,9 +436,8 @@ def get_gene_names_and_ensembl_and_entrez_ids():
     gene_names_and_ids["entrezgene_id"] = (
         gene_names_and_ids["entrezgene_id"].astype(int).astype(str)
     )
-    if not GENE_MAPPING_PATH.exists():
-        BIOMART_DIRPATH.mkdir(parents=True, exist_ok=True)
-        gene_names_and_ids.to_csv(GENE_MAPPING_PATH)
+    BIOMART_DIRPATH.mkdir(parents=True, exist_ok=True)
+    gene_names_and_ids.to_csv(GENE_MAPPING_PATH)
     return gene_names_and_ids
 
 

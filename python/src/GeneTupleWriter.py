@@ -6,10 +6,7 @@ annotations from E-Utilities gene data.
 
 import json
 
-from ckn_schema.pydantic.ckn_schema import (
-    Gene,
-    Protein,
-)
+from ckn_schema.pydantic.ckn_schema import Gene, Protein
 
 from ExternalApiResultsFetcher import GENE_PATH
 
@@ -33,6 +30,19 @@ def create_tuples(gene_results: dict) -> list[tuple]:
     Produces:
     - GeneProducesProtein
     - Gene vertex annotations
+
+    Parameters
+    ----------
+    gene_results : dict
+        Dictionary containing NCBI Gene results keyed by gene Entrez
+        id, with a 'gene_entrez_ids' key listing all ids. Each gene
+        entry contains fields such as Gene_ID, Official_full_name,
+        Gene_type, UniProt_name, Also_known_as, Summary, etc.
+
+    Returns
+    -------
+    list[tuple]
+        List of 3-element and 5-element RDF tuples.
     """
     tuples = []
 
@@ -43,9 +53,7 @@ def create_tuples(gene_results: dict) -> list[tuple]:
         if not gene_results.get(gene_entrez_id):
             continue
 
-        gene_name = map_gene_entrez_id_to_names(
-            gene_entrez_id, gene_entrez_id_to_names
-        )
+        gene_name = map_gene_entrez_id_to_names(gene_entrez_id, gene_entrez_id_to_names)
         if not gene_name:
             continue
         gene_name = gene_name[0]
@@ -54,13 +62,13 @@ def create_tuples(gene_results: dict) -> list[tuple]:
 
         also_known_as = data.get("Also_known_as")
         if isinstance(also_known_as, list):
-            also_known_as = ", ".join(str(x) for x in also_known_as)
+            also_known_as = ", ".join(str(a) for a in also_known_as)
 
-        mrna_np = data.get("mRNA_(NM)_and_protein_(NP)_sequences")
-        if isinstance(mrna_np, list):
-            mrna_np = ", ".join(str(x) for x in mrna_np)
-        elif mrna_np is not None:
-            mrna_np = str(mrna_np)
+        mrna_pro_seq = data.get("mRNA_(NM)_and_protein_(NP)_sequences")
+        if isinstance(mrna_pro_seq, list):
+            mrna_pro_seq = ", ".join(str(x) for x in mrna_pro_seq)
+        elif mrna_pro_seq is not None:
+            mrna_pro_seq = str(mrna_pro_seq)
 
         gene_entity = Gene(
             gene_symbol=gene_name,
@@ -73,7 +81,7 @@ def create_tuples(gene_results: dict) -> list[tuple]:
             reference_sequence_identifier=data.get("RefSeq_gene_ID"),
             link_to_uniprot_id=remove_protocols(data.get("Link_to_UniProt_ID")),
             species=data.get("Organism"),
-            mrna__nm__and_protein__np__sequences=mrna_np,
+            mrna__nm__and_protein__np__sequences=mrna_pro_seq,
         )
 
         # Gene produces Protein
@@ -93,6 +101,7 @@ def create_tuples(gene_results: dict) -> list[tuple]:
             # Still emit Gene annotations even without a Protein association
             from rdflib.term import Literal, URIRef
             from TupleWriterUtilities import entity_to_annotation_triples
+
             gs_term = f"GS_{gene_name}"
             tuples.extend(entity_to_annotation_triples(gene_entity, gs_term))
 
@@ -100,7 +109,12 @@ def create_tuples(gene_results: dict) -> list[tuple]:
 
 
 def main():
-    """Run Gene tuple writer."""
+    """Run Gene tuple writer.
+
+    Loads NCBI Gene results from the fetched JSON file and creates
+    Gene-to-Protein associations and Gene vertex annotations. Writes
+    output to a single JSON tuple file.
+    """
     if not GENE_PATH.exists():
         print(f"Gene results not found at {GENE_PATH}")
         return

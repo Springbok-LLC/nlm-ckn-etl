@@ -1,8 +1,7 @@
 """Shared infrastructure for schema-based tuple writers.
 
-Provides constants, helper functions, entity factories, and generic
-tuple-generation functions used by all data-source-specific tuple
-writer modules.
+Provides constants, helper functions, and generic tuple-generation
+functions used by all data-source-specific tuple writer modules.
 """
 
 import ast
@@ -37,7 +36,6 @@ from LoaderUtilities import (
     DATA_DIRPATH,
     PURLBASE,
     RDFSBASE,
-    hyphenate,
 )
 
 # ---------------------------------------------------------------------------
@@ -142,7 +140,16 @@ ASSOCIATION_CLASSES: dict[str, type] = {
 def purl_to_curie(purl: str) -> str:
     """Convert an OBO PURL to a CURIE.
 
-    "http://purl.obolibrary.org/obo/CL_0000235"  -> "CL:0000235"
+    Parameters
+    ----------
+    purl : str
+        An OBO PURL or CURIE string.
+
+    Returns
+    -------
+    str
+        A CURIE (e.g., "CL:0000235"). Returns the input unchanged if
+        it does not match the OBO PURL pattern.
     """
     m = re.match(r"https?://purl\.obolibrary\.org/obo/(\w+?)_(\d+)$", purl)
     if m:
@@ -151,7 +158,19 @@ def purl_to_curie(purl: str) -> str:
 
 
 def parse_string_list(s: str) -> list[str]:
-    """Parse a stringified Python list."""
+    """Parse a stringified Python list.
+
+    Parameters
+    ----------
+    s : str
+        A string representation of a Python list, e.g.,
+        "['SLC12A7', 'OTOGL']".
+
+    Returns
+    -------
+    list[str]
+        The parsed list of strings, or an empty list if parsing fails.
+    """
     try:
         result = ast.literal_eval(s)
         if isinstance(result, list):
@@ -162,12 +181,36 @@ def parse_string_list(s: str) -> list[str]:
 
 
 def curie_to_term(curie: str) -> str:
-    """Convert a CURIE like 'CL:0000235' to 'CL_0000235'."""
+    """Convert a CURIE to an ArangoDB-compatible underscore term.
+
+    Parameters
+    ----------
+    curie : str
+        A CURIE string (e.g., "CL:0000235").
+
+    Returns
+    -------
+    str
+        The term with colons replaced by underscores (e.g.,
+        "CL_0000235").
+    """
     return curie.replace(":", "_")
 
 
-def remove_protocols(value):
-    """Remove http:// and https:// protocols from a string value."""
+def remove_protocols(value: Any) -> Any:
+    """Remove http:// and https:// protocols from a string value.
+
+    Parameters
+    ----------
+    value : Any
+        Any value; only strings are processed.
+
+    Returns
+    -------
+    Any
+        The value with protocols removed if it was a string, otherwise
+        unchanged.
+    """
     if isinstance(value, str):
         value = value.replace("http://", "")
         value = value.replace("https://", "")
@@ -180,7 +223,24 @@ def remove_protocols(value):
 
 
 def get_predicate_uri(association: Association) -> URIRef:
-    """Extract the RO/BFO predicate URI from an Association's linkml_meta."""
+    """Extract the RO/BFO predicate URI from an Association's linkml_meta.
+
+    Parameters
+    ----------
+    association : Association
+        An Association subclass instance.
+
+    Returns
+    -------
+    URIRef
+        The predicate URI.
+
+    Raises
+    ------
+    ValueError
+        If the predicate's subproperty_of is missing or not in
+        PREDICATE_MAP.
+    """
     cls = type(association)
     meta = cls.model_fields["predicate"].json_schema_extra or {}
     linkml_meta = meta.get("linkml_meta", {})
@@ -201,7 +261,22 @@ def get_predicate_uri(association: Association) -> URIRef:
 
 
 def entity_to_term(entity: Any, context: dict[str, Any] | None = None) -> str | None:
-    """Convert a Pydantic entity instance to an ArangoDB vertex term."""
+    """Convert a Pydantic entity instance to an ArangoDB vertex term.
+
+    Parameters
+    ----------
+    entity : Any
+        A Pydantic entity instance (CellType, Gene, Drug, etc.).
+    context : dict, optional
+        Context dict with external identifiers: ``uuid`` for
+        CellSet/BMC/BGS, ``chembl_id`` for Drug.
+
+    Returns
+    -------
+    str or None
+        The ArangoDB vertex term (e.g., "CL_0000235", "GS_TP53"),
+        or None if the entity cannot be converted.
+    """
     ctx = context or {}
 
     if isinstance(entity, CellType):
@@ -270,7 +345,21 @@ def entity_to_term(entity: Any, context: dict[str, Any] | None = None) -> str | 
 
 
 def _format_field_name(field_name: str) -> str:
-    """Format a Pydantic field name as an annotation attribute name."""
+    """Format a Pydantic field name as an annotation attribute name.
+
+    Uses FIELD_NAME_MAP for special cases, otherwise capitalizes the
+    first letter and preserves underscores.
+
+    Parameters
+    ----------
+    field_name : str
+        A Pydantic field name (e.g., "f_beta_score").
+
+    Returns
+    -------
+    str
+        The formatted attribute name (e.g., "F_beta_confidence_score").
+    """
     if field_name in FIELD_NAME_MAP:
         return FIELD_NAME_MAP[field_name]
     return field_name[0].upper() + field_name[1:]
@@ -283,6 +372,20 @@ def entity_to_annotation_triples(
 ) -> list[tuple]:
     """Generate vertex annotation triples for all populated fields on
     an entity.
+
+    Parameters
+    ----------
+    entity : Any
+        A Pydantic entity instance.
+    term : str
+        The ArangoDB vertex term for this entity.
+    edge_fields : set[str], optional
+        Field names handled as edge annotations, skipped here.
+
+    Returns
+    -------
+    list[tuple]
+        List of 3-element annotation triples.
     """
     cls = type(entity)
     if not hasattr(cls, "model_fields"):
@@ -322,6 +425,22 @@ def _extract_edge_annotations(
 ) -> list[tuple]:
     """Extract edge annotation quintuples from entity fields designated
     in EDGE_ANNOTATION_FIELDS.
+
+    Parameters
+    ----------
+    association : Association
+        An Association subclass instance.
+    s_uri : URIRef
+        Subject URI.
+    pred_uri : URIRef
+        Predicate URI.
+    o_uri : URIRef
+        Object URI.
+
+    Returns
+    -------
+    list[tuple]
+        List of 5-element edge annotation quintuples.
     """
     cls_name = type(association).__name__
     mapping = EDGE_ANNOTATION_FIELDS.get(cls_name)
@@ -371,6 +490,11 @@ def association_to_tuples(
         Set of entity terms that have already been annotated. Terms
         annotated by this call are added to the set. Pass a shared
         set across multiple calls to avoid duplicate vertex annotations.
+
+    Returns
+    -------
+    list[tuple]
+        List of 3-element and 5-element RDF tuples.
     """
     ctx = context or {}
     tuples = []
@@ -422,7 +546,15 @@ def association_to_tuples(
 
 
 def write_tuples(tuples: list[tuple], output_path: Path) -> None:
-    """Serialize tuples to JSON for ResultsGraphBuilder."""
+    """Serialize tuples to JSON for ResultsGraphBuilder.
+
+    Parameters
+    ----------
+    tuples : list[tuple]
+        List of 3-element and 5-element tuples.
+    output_path : Path
+        Path to the output JSON file.
+    """
     output_path.parent.mkdir(parents=True, exist_ok=True)
     with open(output_path, "w") as f:
         json.dump({"tuples": tuples}, f, indent=4)
@@ -430,89 +562,11 @@ def write_tuples(tuples: list[tuple], output_path: Path) -> None:
 
 
 # ---------------------------------------------------------------------------
-# Entity factories
+# Data transformation helpers
 # ---------------------------------------------------------------------------
 
 
-def make_cell_type(row: pd.Series) -> CellType | None:
-    """Create a CellType from a mapping row."""
-    cl_id_raw = row.get("cell_ontology_id", "")
-    if not cl_id_raw:
-        return None
-    curie = purl_to_curie(str(cl_id_raw))
-    # CellType ontology_purl must match CL:[0-9]{7}
-    if not re.match(r"CL:\d{7}$", curie):
-        return None
-    return CellType(
-        ontology_purl=curie,
-        label=row.get("cell_ontology_term"),
-    )
-
-
-def make_anatomical_structure(row: pd.Series) -> AnatomicalStructure | None:
-    """Create an AnatomicalStructure from a mapping row."""
-    uberon_raw = row.get("uberon_entity_id", "")
-    if not uberon_raw:
-        return None
-    curie = purl_to_curie(str(uberon_raw))
-    return AnatomicalStructure(
-        ontology_purl=curie,
-        label=row.get("uberon_entity_term"),
-    )
-
-
-def make_anatomical_structure_from_term(uberon_term: str) -> AnatomicalStructure:
-    """Create an AnatomicalStructure from an underscore term like UBERON_0000966."""
-    curie = uberon_term.replace("_", ":")
-    return AnatomicalStructure(ontology_purl=curie)
-
-
-def make_cell_set(
-    row: pd.Series,
-    cell_type: CellType | None = None,
-    uberon_curie: str | None = None,
-    doi: str | None = None,
-    markers: list[str] | None = None,
-    binary_genes: list[str] | None = None,
-    dataset_name: str | None = None,
-    collection_id: str | None = None,
-    dataset_version_id: str | None = None,
-    assay: str | None = None,
-) -> CellSet:
-    """Create a CellSet from a merged data row."""
-    author_cell_term = hyphenate(str(row.get("clusterName", "")))
-    cluster_size = row.get("clusterSize")
-    f_score = row.get("f_score")
-    silhouette = row.get("median")  # from merged silhouette scores
-
-    return CellSet(
-        author_cell_term=author_cell_term,
-        assay=assay,
-        ontology_purl=cell_type,
-        anatomical_structure=uberon_curie,
-        species="Homo sapiens",
-        publication=doi,
-        dataset_name=dataset_name,
-        cell_count=int(cluster_size) if pd.notna(cluster_size) else None,
-        biomarker_combination=" ".join(markers) if markers else None,
-        binary_gene_set=" ".join(binary_genes) if binary_genes else None,
-        expressed_genes=" ".join(binary_genes) if binary_genes else None,
-        cellxgene_collection=(
-            f"cellxgene.cziscience.com/collections/{collection_id}"
-            if collection_id
-            else None
-        ),
-        cellxgene_dataset=(
-            f"datasets.cellxgene.cziscience.com/{dataset_version_id}.h5ad"
-            if dataset_version_id
-            else None
-        ),
-        f_beta_score=float(f_score) if pd.notna(f_score) else None,
-        silhouette_score=float(silhouette) if pd.notna(silhouette) else None,
-    )
-
-
-def make_cell_set_dataset(
+def build_cell_set_dataset(
     dataset_version_id: str,
     summary_data: pd.DataFrame | None = None,
     harvester_row: pd.Series | None = None,
@@ -520,7 +574,33 @@ def make_cell_set_dataset(
     collection_id: str | None = None,
     collection_version_id: str | None = None,
 ) -> CellSetDataset:
-    """Create a CellSetDataset from summary and harvester data."""
+    """Build a CellSetDataset by merging summary and harvester data.
+
+    Extracts and transforms fields from a dataset summary DataFrame
+    and/or a CELLxGENE harvester row into a CellSetDataset entity.
+    Used by both NSForestTupleWriter and MappingTupleWriter.
+
+    Parameters
+    ----------
+    dataset_version_id : str
+        Dataset version identifier (used as the CSD vertex term).
+    summary_data : pd.DataFrame, optional
+        DataFrame from dataset summary CSV.
+    harvester_row : pd.Series, optional
+        Single row from CELLxGENE harvester CSV.
+    doi : str, optional
+        Publication DOI.
+    collection_id : str, optional
+        CELLxGENE collection identifier.
+    collection_version_id : str, optional
+        CELLxGENE collection version identifier.
+
+    Returns
+    -------
+    CellSetDataset
+    """
+    from typing import Any
+
     kwargs: dict[str, Any] = {
         "dataset_identifier": dataset_version_id,
         "species": "Homo sapiens",
@@ -554,7 +634,6 @@ def make_cell_set_dataset(
         h = harvester_row
 
         def _hstr(key):
-            """Get a string value from harvester row, returning None for NaN."""
             v = h.get(key)
             return str(v) if pd.notna(v) else None
 
@@ -577,20 +656,3 @@ def make_cell_set_dataset(
                 kwargs["citation"] += f" {journal}"
 
     return CellSetDataset(**kwargs)
-
-
-def make_publication(row: pd.Series) -> Publication | None:
-    """Create a Publication from a mapping row."""
-    pmid = row.get("PMID")
-    if pd.isna(pmid):
-        return None
-    return Publication(
-        pmid=str(int(pmid)) if isinstance(pmid, float) else str(pmid),
-        pmcid=row.get("PMCID"),
-        publication_doi=row.get("DOI"),
-    )
-
-
-def make_gene(gene_symbol: str) -> Gene:
-    """Create a Gene entity from a gene symbol."""
-    return Gene(gene_symbol=gene_symbol)

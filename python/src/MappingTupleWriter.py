@@ -4,6 +4,8 @@ Produces CellType, CellSet, CellSetDataset, and Publication
 associations from manual cell type mapping data.
 """
 
+import re
+
 import pandas as pd
 from rdflib.term import Literal, URIRef
 
@@ -20,18 +22,22 @@ from LoaderUtilities import (
     load_results,
 )
 
+from ckn_schema.pydantic.ckn_schema import (
+    AnatomicalStructure,
+    CellSet,
+    CellType,
+    Gene,
+    Publication,
+)
+
 from TupleWriterUtilities import (
     ASSOCIATION_CLASSES,
     TUPLES_DIRPATH,
     association_to_tuples,
+    build_cell_set_dataset,
     curie_to_term,
-    make_anatomical_structure,
-    make_cell_set,
-    make_cell_set_dataset,
-    make_cell_type,
-    make_gene,
-    make_publication,
     parse_string_list,
+    purl_to_curie,
     write_tuples,
 )
 
@@ -49,6 +55,26 @@ def create_tuples(
     - CellTypeHasExemplarDataCellSetDataset
     - CellSetDatasetHasSourcePublication
     - CellTypeExpressesGene (for each marker + binary gene)
+
+    Parameters
+    ----------
+    author_to_cl_results : pd.DataFrame
+        DataFrame containing merged author-to-CL mapping and NSForest
+        results with columns: cell_ontology_id, cell_ontology_term,
+        uberon_entity_id, uberon_entity_term, author_cell_set,
+        clusterName, clusterSize, NSForest_markers, binary_genes,
+        uuid, PMID, PMCID, DOI, match, mapping_method, collection_id,
+        collection_version_id, dataset_version_id.
+    dataset_version_ids : list[str]
+        List of dataset version identifiers for CellSetDataset creation.
+    harvester_data : pd.DataFrame, optional
+        DataFrame containing CELLxGENE harvester metadata for enriching
+        CellSetDataset entities.
+
+    Returns
+    -------
+    list[tuple]
+        List of 3-element and 5-element RDF tuples.
     """
     tuples = []
 
@@ -58,10 +84,27 @@ def create_tuples(
         if cluster_size < MIN_CLUSTER_SIZE:
             continue
 
-        cell_type = make_cell_type(row)
-        anat = make_anatomical_structure(row)
-        if cell_type is None or anat is None:
+        # Build CellType from mapping row
+        cl_id_raw = row.get("cell_ontology_id", "")
+        if not cl_id_raw:
             continue
+        cl_curie = purl_to_curie(str(cl_id_raw))
+        if not re.match(r"CL:\d{7}$", cl_curie):
+            continue
+        cell_type = CellType(
+            ontology_purl=cl_curie,
+            label=row.get("cell_ontology_term"),
+        )
+
+        # Build AnatomicalStructure from mapping row
+        uberon_raw = row.get("uberon_entity_id", "")
+        if not uberon_raw:
+            continue
+        uberon_curie = purl_to_curie(str(uberon_raw))
+        anat = AnatomicalStructure(
+            ontology_purl=uberon_curie,
+            label=row.get("uberon_entity_term"),
+        )
 
         cl_term = curie_to_term(cell_type.ontology_purl)
         uberon_term = curie_to_term(anat.ontology_purl)
@@ -79,16 +122,25 @@ def create_tuples(
         collection_version_id = row.get("collection_version_id")
         dataset_version_id = row.get("dataset_version_id")
 
-        cell_set = make_cell_set(
-            row,
-            cell_type=cell_type,
-            uberon_curie=anat.ontology_purl,
-            doi=str(doi) if pd.notna(doi) else None,
-            markers=markers,
-            binary_genes=binary_genes,
-            collection_id=str(collection_id) if pd.notna(collection_id) else None,
-            dataset_version_id=(
-                str(dataset_version_id) if pd.notna(dataset_version_id) else None
+        cell_set = CellSet(
+            author_cell_term=author_cell_set,
+            ontology_purl=cell_type,
+            anatomical_structure=anat.ontology_purl,
+            species="Homo sapiens",
+            publication=str(doi) if pd.notna(doi) else None,
+            cell_count=int(cluster_size) if pd.notna(cluster_size) else None,
+            biomarker_combination=" ".join(markers) if markers else None,
+            binary_gene_set=" ".join(binary_genes) if binary_genes else None,
+            expressed_genes=" ".join(binary_genes) if binary_genes else None,
+            cellxgene_collection=(
+                f"cellxgene.cziscience.com/collections/{collection_id}"
+                if pd.notna(collection_id)
+                else None
+            ),
+            cellxgene_dataset=(
+                f"datasets.cellxgene.cziscience.com/{dataset_version_id}.h5ad"
+                if pd.notna(dataset_version_id)
+                else None
             ),
         )
         ctx = {"uuid": uuid}
@@ -133,7 +185,7 @@ def create_tuples(
                 if not match_df.empty:
                     harvester_row = match_df.iloc[0]
 
-            csd = make_cell_set_dataset(
+            csd = build_cell_set_dataset(
                 dvid,
                 harvester_row=harvester_row,
                 doi=str(doi) if pd.notna(doi) else None,
@@ -154,8 +206,13 @@ def create_tuples(
             )
 
             # CellSetDataset source Publication
-            pub = make_publication(row)
-            if pub is not None:
+            pmid = row.get("PMID")
+            if pd.notna(pmid):
+                pub = Publication(
+                    pmid=str(int(pmid)) if isinstance(pmid, float) else str(pmid),
+                    pmcid=row.get("PMCID"),
+                    publication_doi=row.get("DOI"),
+                )
                 assoc = ASSOCIATION_CLASSES["CellSetDatasetHasSourcePublication"](
                     subject=csd, predicate="source", object=pub,
                 )
@@ -165,7 +222,7 @@ def create_tuples(
 
         # CellType expresses Gene (for each marker and binary gene)
         for gene_symbol in markers + binary_genes:
-            gene = make_gene(gene_symbol)
+            gene = Gene(gene_symbol=gene_symbol)
             assoc = ASSOCIATION_CLASSES["CellTypeExpressesGene"](
                 subject=cell_type, predicate="selectively_expresses", object=gene,
             )
@@ -177,7 +234,13 @@ def create_tuples(
 
 
 def main():
-    """Run Mapping tuple writer for all datasets."""
+    """Run Mapping tuple writer for all datasets.
+
+    Loads results sources, resolves file paths, merges NSForest
+    results with author-to-CL mapping data, and creates tuples for
+    each dataset with a mapping file. Writes one JSON tuple file per
+    dataset.
+    """
     results_sources = get_results_sources()
     harvester_data = get_cellxgene_harvester_data(results_sources)
     file_paths = get_dataset_file_paths(results_sources)

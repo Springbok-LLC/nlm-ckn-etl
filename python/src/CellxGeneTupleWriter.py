@@ -6,10 +6,7 @@ from CELLxGENE curation API metadata.
 
 import json
 
-from ckn_schema.pydantic.ckn_schema import (
-    CellSetDataset,
-    Publication,
-)
+from ckn_schema.pydantic.ckn_schema import CellSetDataset, Publication
 
 from ExternalApiResultsFetcher import CELLXGENE_PATH
 
@@ -28,6 +25,18 @@ def create_tuples(cellxgene_results: dict) -> list[tuple]:
     Produces:
     - CellSetDatasetHasSourcePublication
     - CSD and PUB vertex annotations
+
+    Parameters
+    ----------
+    cellxgene_results : dict
+        Dictionary of CELLxGENE metadata keyed by dataset_version_id.
+        Each value contains Dataset_name, Organism, Tissue,
+        Disease_status, Number_of_cells, Citation, and link fields.
+
+    Returns
+    -------
+    list[tuple]
+        List of 3-element and 5-element RDF tuples.
     """
     tuples = []
 
@@ -52,12 +61,13 @@ def create_tuples(cellxgene_results: dict) -> list[tuple]:
             collection_id=metadata.get("Collection_ID"),
             citation=metadata.get("Citation"),
         )
-        pub = Publication(
-            pmid=dataset_version_id,
-        )
+        # TODO: Populate with data from mapping or summary file
+        pub = Publication(pmid="NA")
 
         assoc = ASSOCIATION_CLASSES["CellSetDatasetHasSourcePublication"](
-            subject=csd, predicate="source", object=pub,
+            subject=csd,
+            predicate="source",
+            object=pub,
         )
         tuples.extend(association_to_tuples(assoc, source="CELLxGENE"))
 
@@ -65,6 +75,7 @@ def create_tuples(cellxgene_results: dict) -> list[tuple]:
         pub_term = f"PUB_{dataset_version_id}"
         from rdflib.term import Literal, URIRef
         from LoaderUtilities import PURLBASE, RDFSBASE
+
         for key in ["Citation", "Link_to_publication", "Link_to_CELLxGENE_collection"]:
             value = metadata.get(key)
             if value:
@@ -80,7 +91,12 @@ def create_tuples(cellxgene_results: dict) -> list[tuple]:
 
 
 def main():
-    """Run CELLxGENE tuple writer."""
+    """Run CELLxGENE tuple writer.
+
+    Loads CELLxGENE metadata from the fetched JSON file and creates
+    CellSetDataset-to-Publication tuples with annotations. Writes
+    output to a single JSON tuple file.
+    """
     if not CELLXGENE_PATH.exists():
         print(f"CELLxGENE results not found at {CELLXGENE_PATH}")
         return

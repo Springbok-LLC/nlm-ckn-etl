@@ -7,6 +7,7 @@ results.
 
 import json
 
+import pandas as pd
 from rdflib.term import Literal, URIRef
 
 from ckn_schema.pydantic.ckn_schema import (
@@ -50,8 +51,21 @@ from TupleWriterUtilities import (
 VALID_PHASES = ["PHASE_3", "APPROVAL"]
 
 
-def get_mondo_term(disease_id: str, efo2mondo) -> str | None:
-    """Return MONDO term, mapping from EFO when necessary."""
+def get_mondo_term(disease_id: str, efo2mondo: pd.DataFrame) -> str | None:
+    """Return MONDO term, mapping from EFO when necessary.
+
+    Parameters
+    ----------
+    disease_id : str
+        Disease identifier, either a MONDO or EFO term.
+    efo2mondo : pd.DataFrame
+        DataFrame indexed by EFO term containing MONDO term mappings.
+
+    Returns
+    -------
+    str or None
+        MONDO term, or None if the term is deprecated or unmappable.
+    """
     mondo_term = None
     if "MONDO" in disease_id:
         mondo_term = disease_id
@@ -71,8 +85,26 @@ def create_tuples(opentargets_results: dict, gene_results: dict) -> list[tuple]:
     - DrugMolecularlyInteractsWithProtein
     - DrugIsSubstanceThatTreatsDisease
     - DrugEvaluatedInClinicalTrial
+    - GeneMolecularlyInteractsWithDrug
+    - DrugMolecularlyInteractsWithGene
+    - GeneGeneticallyInteractsWithGene
     - GeneHasQualityMutation
     - MutationHasPharamcologicalEffectDrug
+
+    Parameters
+    ----------
+    opentargets_results : dict
+        Dictionary containing Open Targets results keyed by gene
+        Ensembl id, with sub-keys for diseases, drugs, interactions,
+        pharmacogenetics, tractability, expression, and depmap.
+    gene_results : dict
+        Dictionary containing NCBI Gene results keyed by gene Entrez
+        id. Used to look up UniProt names for protein associations.
+
+    Returns
+    -------
+    list[tuple]
+        List of 3-element and 5-element RDF tuples.
     """
     tuples = []
 
@@ -375,7 +407,13 @@ def create_tuples(opentargets_results: dict, gene_results: dict) -> list[tuple]:
 
 
 def main():
-    """Run Open Targets tuple writer."""
+    """Run Open Targets tuple writer.
+
+    Loads Open Targets and Gene results from their fetched JSON files
+    and creates tuples for disease, drug, interaction, and
+    pharmacogenetic associations. Writes output to a single JSON
+    tuple file.
+    """
     if not OPENTARGETS_PATH.exists():
         print(f"Open Targets results not found at {OPENTARGETS_PATH}")
         return
