@@ -209,14 +209,14 @@ def create_tuples_from_author_to_cl(
             tuples.append(
                 (
                     URIRef(f"{PURLBASE}/{cl_term}"),
-                    URIRef(f"{RDFSBASE}#RO_0002294"),
+                    URIRef(f"{PURLBASE}/RO_0002294"),
                     URIRef(f"{PURLBASE}/{gs_term}"),
                 )
             )
             tuples.append(
                 (
                     URIRef(f"{PURLBASE}/{cl_term}"),
-                    URIRef(f"{RDFSBASE}#RO_0002294"),
+                    URIRef(f"{PURLBASE}/RO_0002294"),
                     URIRef(f"{PURLBASE}/{gs_term}"),
                     URIRef(f"{RDFSBASE}#Source"),
                     Literal("Manual Mapping"),
