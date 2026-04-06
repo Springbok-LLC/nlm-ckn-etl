@@ -215,7 +215,7 @@ class GetPredicateUriTestCase(unittest.TestCase):
             object=CellSetDataset(dataset_identifier="abc"),
         )
         uri = twu.get_predicate_uri(assoc)
-        self.assertIn("dc#Source", str(uri))
+        self.assertIn("dc/elements/1.1/source", str(uri))
 
 
 class AssociationToTuplesTestCase(unittest.TestCase):
