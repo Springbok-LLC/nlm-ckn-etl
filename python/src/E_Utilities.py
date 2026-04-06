@@ -157,6 +157,125 @@ def find_gene_id_for_gene_name(name, do_write=False):
     return gene_id
 
 
+def fetch_xml_for_gene_id(gene_id):
+    """Fetch raw XML from Gene using a gene id.
+
+    Parameters
+    ----------
+    gene_id : str
+        The Gene identifier to use in the fetch
+
+    Returns
+    -------
+    xml_data : str or None
+        Raw XML response text, or None if the request failed
+    """
+    print(f"Fetching XML for gene id: '{gene_id}'")
+    fetch_url = EUTILS_URL + "efetch.fcgi"
+    params = {
+        "db": "gene",
+        "id": gene_id,
+        "retmode": "xml",
+        "email": NCBI_EMAIL,
+        "api_key": NCBI_API_KEY,
+    }
+    sleep(NCBI_API_SLEEP)
+    response = requests.get(fetch_url, params=parse.urlencode(params, safe=","))
+    if response.status_code == 200:
+        return response.text
+    else:
+        print(f"Encountered error in fetching from Gene: {response.status_code}")
+        return None
+
+
+def parse_xml_for_gene_id(gene_id, xml_data):
+    """Parse raw Gene XML and extract required values.
+
+    Parameters
+    ----------
+    gene_id : str
+        The Gene identifier
+    xml_data : str
+        Raw XML response text from NCBI Gene
+
+    Returns
+    -------
+    data : dict
+        Dictionary containing the required values of the full record
+    """
+    data = {}
+
+    tags = bs4.BeautifulSoup(xml_data, "xml").find_all("Entrezgene")
+    if len(tags) > 1:
+        raise Exception("Expect a single Entrezgene element")
+    root = tags[0]
+    data["Gene_ID"] = gene_id
+    data["Official_symbol"] = find_names_or_none(
+        root,
+        [
+            "Entrezgene_gene",
+            "Gene-ref",
+            "Gene-ref_formal-name",
+            "Gene-nomenclature_symbol",
+        ],
+    )
+    data["Official_full_name"] = find_names_or_none(
+        root,
+        [
+            "Entrezgene_gene",
+            "Gene-ref",
+            "Gene-ref_formal-name",
+            "Gene-nomenclature_name",
+        ],
+    )
+    data["Gene_type"] = find_names_or_none(
+        root, ["Entrezgene_type"], attribute="value"
+    )
+    for child in root.find_all("Other-source_url"):
+        if "www.uniprot.org" in child.text:
+            data["Link_to_UniProt_ID"] = child.text
+    data["Organism"] = find_names_or_none(
+        root,
+        [
+            "Entrezgene_source",
+            "BioSource",
+            "BioSource_org",
+            "Org-ref",
+            "Org-ref_taxname",
+        ],
+    )
+    data["RefSeq_gene_ID"] = None
+    for child in root.find_all("Gene-commentary_heading"):
+        if "GCF_" in child.text:
+            m = re.search(r":\s*(GCF_.*)", child.text)
+            if m:
+                data["RefSeq_gene_ID"] = m.group(1)
+    data["Also_known_as"] = []
+    for child in root.find_all("Gene-ref_syn_E"):
+        data["Also_known_as"].append(child.text)
+    data["Summary"] = find_names_or_none(root, ["Entrezgene_summary"])
+    pr_desc = find_names_or_none(root, ["Entrezgene_prot", "Prot-ref_desc"])
+    data["UniProt_name"] = Path(
+        parse.urlparse(data["Link_to_UniProt_ID"]).path
+    ).stem
+    for product in root.find_all("Gene-commentary_products"):
+        if find_names_or_none(product, ["Gene-commentary_type"], "value") == "mRNA":
+            nm_id = None
+            np_id = None
+            for accession in product.find_all("Gene-commentary_accession"):
+                if "NM_" in accession.text:
+                    nm_id = accession.text
+                elif "NP_" in accession.text:
+                    np_id = accession.text
+            if nm_id and np_id and pr_desc:
+                data["mRNA_(NM)_and_protein_(NP)_sequences"] = (
+                    f"{nm_id} -> {np_id}, {pr_desc}"
+                )
+            break
+
+    return data
+
+
 def get_data_for_gene_id(gene_id, do_write=False):
     """Fetch from Gene using a gene id to get the full record and find
     required values.
@@ -176,97 +295,13 @@ def get_data_for_gene_id(gene_id, do_write=False):
     # Need a default return value
     data = {}
 
-    # Fetch from Gene
-    print(f"Getting data for gene id: '{gene_id}'")
-    fetch_url = EUTILS_URL + "efetch.fcgi"
-    params = {
-        "db": "gene",
-        "id": gene_id,
-        "retmode": "xml",
-        "email": NCBI_EMAIL,
-        "api_key": NCBI_API_KEY,
-    }
-    sleep(NCBI_API_SLEEP)
-    response = requests.get(fetch_url, params=parse.urlencode(params, safe=","))
-    if response.status_code == 200:
-        xml_data = response.text
+    xml_data = fetch_xml_for_gene_id(gene_id)
+    if xml_data is not None:
         if do_write:
             with open(f"{gene_id}.xml", "w") as fp:
                 fp.write(bs4.BeautifulSoup(xml_data, "xml").prettify())
 
-        # Got the page, so parse it, and search for the required values
-        tags = bs4.BeautifulSoup(xml_data, "xml").find_all("Entrezgene")
-        if len(tags) > 1:
-            raise Exception("Expect a single Entrezgene element")
-        root = tags[0]
-        data["Gene_ID"] = gene_id
-        data["Official_symbol"] = find_names_or_none(
-            root,
-            [
-                "Entrezgene_gene",
-                "Gene-ref",
-                "Gene-ref_formal-name",
-                "Gene-nomenclature_symbol",
-            ],
-        )
-        data["Official_full_name"] = find_names_or_none(
-            root,
-            [
-                "Entrezgene_gene",
-                "Gene-ref",
-                "Gene-ref_formal-name",
-                "Gene-nomenclature_name",
-            ],
-        )
-        data["Gene_type"] = find_names_or_none(
-            root, ["Entrezgene_type"], attribute="value"
-        )
-        for child in root.find_all("Other-source_url"):
-            if "www.uniprot.org" in child.text:
-                data["Link_to_UniProt_ID"] = child.text
-        data["Organism"] = find_names_or_none(
-            root,
-            [
-                "Entrezgene_source",
-                "BioSource",
-                "BioSource_org",
-                "Org-ref",
-                "Org-ref_taxname",
-            ],
-        )
-        data["RefSeq_gene_ID"] = None
-        for child in root.find_all("Gene-commentary_heading"):
-            if "GCF_" in child.text:
-                m = re.search(r":\s*(GCF_.*)", child.text)
-                if m:
-                    data["RefSeq_gene_ID"] = m.group(1)
-        data["Also_known_as"] = []
-        for child in root.find_all("Gene-ref_syn_E"):
-            data["Also_known_as"].append(child.text)
-        data["Summary"] = find_names_or_none(root, ["Entrezgene_summary"])
-        pr_desc = find_names_or_none(root, ["Entrezgene_prot", "Prot-ref_desc"])
-        data["UniProt_name"] = Path(
-            parse.urlparse(data["Link_to_UniProt_ID"]).path
-        ).stem
-        for product in root.find_all("Gene-commentary_products"):
-            if find_names_or_none(product, ["Gene-commentary_type"], "value") == "mRNA":
-                nm_id = None
-                np_id = None
-                for accession in product.find_all("Gene-commentary_accession"):
-                    if "NM_" in accession.text:
-                        nm_id = accession.text
-                    elif "NP_" in accession.text:
-                        np_id = accession.text
-                if nm_id and np_id and pr_desc:
-                    data["mRNA_(NM)_and_protein_(NP)_sequences"] = (
-                        f"{nm_id} -> {np_id}, {pr_desc}"
-                    )
-                break
-
-        return data
-
-    else:
-        print(f"Encountered error in fetching from Gene: {response.status_code}")
+        data = parse_xml_for_gene_id(gene_id, xml_data)
 
     return data
 

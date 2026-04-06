@@ -422,7 +422,9 @@ def get_gene_names_and_ensembl_and_entrez_ids():
     if GENE_MAPPING_PATH.exists():
         print(f"Loading gene mapping from {GENE_MAPPING_PATH}")
         gene_names_and_ids = pd.read_csv(GENE_MAPPING_PATH, index_col=0)
-        gene_names_and_ids["entrezgene_id"] = gene_names_and_ids["entrezgene_id"].astype(str)
+        gene_names_and_ids["entrezgene_id"] = gene_names_and_ids[
+            "entrezgene_id"
+        ].astype(str)
         return gene_names_and_ids
 
     print("Getting gene names, and Ensembl and Entrez ids from BioMart")
