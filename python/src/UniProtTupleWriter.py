@@ -7,7 +7,7 @@ import json
 
 from ckn_schema.pydantic.ckn_schema import Protein
 
-from ExternalApiResultsFetcher import UNIPROT_PATH
+from DataFetcher import UNIPROT_PATH
 
 from TupleWriterUtilities import (
     TUPLES_DIRPATH,

@@ -20,7 +20,7 @@ from ckn_schema.pydantic.ckn_schema import (
     VariantConsequence,
 )
 
-from ExternalApiResultsFetcher import (
+from DataFetcher import (
     OPENTARGETS_PATH,
     OPENTARGETS_RESOURCES,
     GENE_PATH,

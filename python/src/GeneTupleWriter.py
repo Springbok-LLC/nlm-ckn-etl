@@ -8,7 +8,7 @@ import json
 
 from ckn_schema.pydantic.ckn_schema import Gene, Protein
 
-from ExternalApiResultsFetcher import GENE_PATH
+from DataFetcher import GENE_PATH
 
 from LoaderUtilities import (
     get_gene_entrez_id_to_names_map,

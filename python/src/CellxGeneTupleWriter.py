@@ -8,7 +8,7 @@ import json
 
 from ckn_schema.pydantic.ckn_schema import CellSetDataset, Publication
 
-from ExternalApiResultsFetcher import CELLXGENE_PATH
+from DataFetcher import CELLXGENE_PATH
 
 from TupleWriterUtilities import (
     ASSOCIATION_CLASSES,
