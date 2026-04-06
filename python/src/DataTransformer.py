@@ -1,0 +1,375 @@
+import argparse
+import base64
+import gzip
+import json
+import re
+
+from E_Utilities import parse_xml_for_gene_id
+
+from LoaderUtilities import (
+    EXTERNAL_DIRPATH,
+    get_value_or_none,
+    get_values_or_none,
+)
+
+
+class BaseTransformer:
+    """Base class for transforming raw fetcher output into the shape
+    expected by downstream tuple writers. Subclasses implement
+    transform()."""
+
+    name: str
+    input_path: object  # Path to raw JSON from the corresponding fetcher
+
+    def load(self):
+        """Load raw results from disk.
+
+        Returns
+        -------
+        dict
+            Raw results as saved by the corresponding fetcher
+        """
+        print(f"[{self.name}] Loading raw results from {self.input_path}")
+        with open(self.input_path, "r") as fp:
+            return json.load(fp)
+
+    def transform(self, raw_results):
+        """Transform raw API results into the shape expected by tuple
+        writers.
+
+        Parameters
+        ----------
+        raw_results : dict
+            Raw results as returned by the corresponding fetcher
+
+        Returns
+        -------
+        dict
+            Transformed results
+        """
+        raise NotImplementedError
+
+    def run(self):
+        """Load raw results and transform them.
+
+        Returns
+        -------
+        dict
+            Transformed results (in-memory, not saved to disk)
+        """
+        raw = self.load()
+        return self.transform(raw)
+
+
+class CellxGeneTransformer(BaseTransformer):
+    """Extracts Citation, links, tissue, organism, and other metadata
+    fields from raw CELLxGENE dataset and collection JSON."""
+
+    name = "cellxgene"
+    input_path = EXTERNAL_DIRPATH / "cellxgene.json"
+
+    def transform(self, raw_results):
+        """Transform raw CELLxGENE results.
+
+        Parameters
+        ----------
+        raw_results : dict
+            Keyed by dataset_version_id, each value has
+            'dataset_json' and 'collection_json'
+
+        Returns
+        -------
+        dict
+            Keyed by dataset_version_id with extracted metadata fields
+        """
+        transformed = {}
+        for dataset_version_id, raw in raw_results.items():
+            dataset_json = raw.get("dataset_json", {})
+            collection_json = raw.get("collection_json")
+
+            if not dataset_json or not collection_json:
+                print(
+                    f"[{self.name}] Skipping dataset_version_id "
+                    f"{dataset_version_id} (missing data)"
+                )
+                continue
+
+            entry = {}
+
+            # Citation
+            first_author = collection_json["publisher_metadata"]["authors"][0]["family"]
+            published_year = collection_json["publisher_metadata"]["published_year"]
+            journal = collection_json["publisher_metadata"]["journal"]
+            entry["Citation"] = f"{first_author} ({published_year}) {journal}"
+
+            # Publication and collection links
+            entry["Link_to_publication"] = None
+            entry["Link_to_CELLxGENE_collection"] = None
+            citation = get_value_or_none(dataset_json, ["citation"])
+            if not citation:
+                citation = get_value_or_none(collection_json, ["citation"])
+            if citation:
+                m = re.search(r"Publication:\s*(\S*)\s*Dataset Version:", citation)
+                if m:
+                    entry["Link_to_publication"] = m.group(1)
+                m = re.search(r"Collection:\s*(\S*)$", citation)
+                if m:
+                    entry["Link_to_CELLxGENE_collection"] = m.group(1)
+
+            # Dataset metadata
+            entry["Link_to_CELLxGENE_dataset"] = dataset_json["assets"][0]["url"]
+            entry["Dataset_name"] = get_value_or_none(dataset_json, ["title"])
+            entry["Number_of_cells"] = get_value_or_none(dataset_json, ["cell_count"])
+            entry["Organism"] = get_values_or_none(dataset_json, "organism", ["label"])
+            entry["Tissue"] = get_values_or_none(dataset_json, "tissue", ["label"])
+            entry["Disease_status"] = get_values_or_none(
+                dataset_json, "disease", ["label"]
+            )
+
+            # IDs
+            entry["Collection_ID"] = get_value_or_none(dataset_json, ["collection_id"])
+            entry["Collection_version_ID"] = get_value_or_none(
+                dataset_json, ["collection_version_id"]
+            )
+            entry["Dataset_ID"] = get_value_or_none(dataset_json, ["dataset_id"])
+            entry["Dataset_version_ID"] = dataset_version_id
+
+            transformed[dataset_version_id] = entry
+
+        return transformed
+
+
+OPENTARGETS_RESOURCES = [
+    "diseases",
+    "drugs",
+    "interactions",
+    "pharmacogenetics",
+    "tractability",
+    "expression",
+    "depmap",
+]
+
+# Maps resource name to the GraphQL response path
+_RESOURCE_PATHS = {
+    "diseases": ("associatedDiseases", "rows"),
+    "drugs": ("drugAndClinicalCandidates", "rows"),
+    "interactions": ("interactions", "rows"),
+    "pharmacogenetics": ("pharmacogenomics", None),
+    "tractability": ("tractability", None),
+    "expression": ("expressions", None),
+    "depmap": ("depMapEssentiality", None),
+}
+
+
+class OpenTargetsTransformer(BaseTransformer):
+    """Maps nested GraphQL response to flat resource keys (diseases,
+    drugs, interactions, etc.)."""
+
+    name = "opentargets"
+    input_path = EXTERNAL_DIRPATH / "opentargets.json"
+
+    def transform(self, raw_results):
+        """Transform raw Open Targets results.
+
+        Parameters
+        ----------
+        raw_results : dict
+            Keyed by gene_ensembl_id, each value is the raw GraphQL
+            'data' dict
+
+        Returns
+        -------
+        dict
+            Keyed by gene_ensembl_id with 'target' info and flat
+            resource keys
+        """
+        transformed = {}
+        for gene_ensembl_id, data in raw_results.items():
+            if gene_ensembl_id == "gene_ensembl_ids":
+                transformed[gene_ensembl_id] = data
+                continue
+
+            entry = {}
+
+            target = data.get("target", {})
+            if target:
+                entry["target"] = {}
+                for key in [
+                    "id",
+                    "dbXrefs",
+                    "proteinIds",
+                    "transcriptIds",
+                    "approvedSymbol",
+                    "approvedName",
+                ]:
+                    entry["target"][key] = target.get(key)
+
+                for resource in OPENTARGETS_RESOURCES:
+                    gql_key, rows_key = _RESOURCE_PATHS[resource]
+                    resource_data = target.get(gql_key, {})
+                    if rows_key and isinstance(resource_data, dict):
+                        resource_data = resource_data.get(rows_key, [])
+                    entry[resource] = resource_data
+            else:
+                entry["target"] = {}
+                for resource in OPENTARGETS_RESOURCES:
+                    entry[resource] = {}
+
+            transformed[gene_ensembl_id] = entry
+
+        return transformed
+
+
+class GeneTransformer(BaseTransformer):
+    """Decompresses stored XML and extracts gene data fields using
+    E_Utilities parsing."""
+
+    name = "gene"
+    input_path = EXTERNAL_DIRPATH / "gene.json"
+
+    def transform(self, raw_results):
+        """Decompress and parse stored XML for each gene.
+
+        Parameters
+        ----------
+        raw_results : dict
+            Keyed by gene_entrez_id, each value has 'xml_gz_b64'
+            containing compressed XML
+
+        Returns
+        -------
+        dict
+            Keyed by gene_entrez_id with extracted gene data fields
+        """
+        transformed = {}
+        for gene_entrez_id, raw in raw_results.items():
+            if gene_entrez_id == "gene_entrez_ids":
+                transformed[gene_entrez_id] = raw
+                continue
+
+            if not raw or "xml_gz_b64" not in raw:
+                transformed[gene_entrez_id] = {}
+                continue
+
+            xml_data = gzip.decompress(
+                base64.b64decode(raw["xml_gz_b64"])
+            ).decode("utf-8")
+            transformed[gene_entrez_id] = parse_xml_for_gene_id(
+                gene_entrez_id, xml_data
+            )
+
+        return transformed
+
+
+class UniProtTransformer(BaseTransformer):
+    """Extracts Protein_name, Gene_name, Function, and other fields
+    from raw UniProt API responses."""
+
+    name = "uniprot"
+    input_path = EXTERNAL_DIRPATH / "uniprot.json"
+
+    def transform(self, raw_results):
+        """Transform raw UniProt results.
+
+        Parameters
+        ----------
+        raw_results : dict
+            Keyed by protein_accession, each value is the raw UniProt
+            API response
+
+        Returns
+        -------
+        dict
+            Keyed by protein_accession with extracted fields
+        """
+        transformed = {}
+        for accession, response_json in raw_results.items():
+            if accession == "protein_accessions":
+                transformed[accession] = response_json
+                continue
+
+            if not response_json:
+                transformed[accession] = {}
+                continue
+
+            data = {}
+            data["Protein_name"] = get_value_or_none(
+                response_json,
+                [
+                    "proteinDescription",
+                    "recommendedName",
+                    "fullName",
+                    "value",
+                ],
+            )
+            data["UniProt_ID"] = get_value_or_none(response_json, ["primaryAccession"])
+            data["Gene_name"] = None
+            if "genes" in response_json and len(response_json["genes"]) > 0:
+                data["Gene_name"] = get_value_or_none(
+                    response_json["genes"][0],
+                    [
+                        "geneName",
+                        "value",
+                    ],
+                )
+            data["Number_of_amino_acids"] = get_value_or_none(
+                response_json,
+                [
+                    "sequence",
+                    "length",
+                ],
+            )
+            data["Function"] = None
+            if "comments" in response_json:
+                for comment in response_json["comments"]:
+                    if (
+                        "commentType" in comment
+                        and comment["commentType"] == "FUNCTION"
+                    ):
+                        if "texts" in comment and len(comment["texts"]) > 0:
+                            data["Function"] = get_value_or_none(
+                                comment["texts"][0], ["value"]
+                            )
+            data["Annotation_score"] = get_value_or_none(
+                response_json, ["annotationScore"]
+            )
+            data["Organism"] = get_value_or_none(
+                response_json,
+                [
+                    "organism",
+                    "scientificName",
+                ],
+            )
+            transformed[accession] = data
+
+        return transformed
+
+
+TRANSFORMER_REGISTRY = [
+    CellxGeneTransformer(),
+    OpenTargetsTransformer(),
+    GeneTransformer(),
+    UniProtTransformer(),
+]
+
+
+def main():
+    """Transform raw fetcher output for all registered sources."""
+    parser = argparse.ArgumentParser(description="Transform External API Results")
+    parser.add_argument(
+        "sources",
+        nargs="*",
+        help="source names to transform (default: all)",
+    )
+    args = parser.parse_args()
+
+    source_names = args.sources or [t.name for t in TRANSFORMER_REGISTRY]
+
+    for transformer in TRANSFORMER_REGISTRY:
+        if transformer.name in source_names:
+            result = transformer.run()
+            print(f"[{transformer.name}] Transformed {len(result)} entries")
+
+
+if __name__ == "__main__":
+    main()
