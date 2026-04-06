@@ -1,0 +1,14 @@
+{
+  "O14986": {
+    "Protein_name": "Phosphatidylinositol 4-phosphate 5-kinase type-1 beta",
+    "UniProt_ID": "O14986",
+    "Gene_name": "PIP5K1B",
+    "Number_of_amino_acids": 540,
+    "Function": "Catalyzes the phosphorylation of phosphatidylinositol 4-phosphate (PtdIns(4)P/PI4P) to form phosphatidylinositol 4,5-bisphosphate (PtdIns(4,5)P2/PIP2), a lipid second messenger that regulates several cellular processes such as signal transduction, vesicle trafficking, actin cytoskeleton dynamics, cell adhesion, and cell motility (By similarity). PtdIns(4,5)P2 can directly act as a second messenger or can be utilized as a precursor to generate other second messengers: inositol 1,4,5-trisphosphate (IP3), diacylglycerol (DAG) or phosphatidylinositol-3,4,5-trisphosphate (PtdIns(3,4,5)P3/PIP3) (By similarity). Mediates RAC1-dependent reorganization of actin filaments. Contributes to the activation of phospholipase PLD2. Together with PIP5K1A, is required, after stimulation by G-protein coupled receptors, for the synthesis of IP3 that will induce stable platelet adhesion (By similarity)",
+    "Annotation_score": 5.0,
+    "Organism": "Homo sapiens"
+  },
+  "protein_accessions": [
+    "O14986"
+  ]
+}
