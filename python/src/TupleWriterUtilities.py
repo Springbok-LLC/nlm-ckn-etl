@@ -597,8 +597,6 @@ def build_cell_set_dataset(
     -------
     CellSetDataset
     """
-    from typing import Any
-
     kwargs: dict[str, Any] = {
         "dataset_identifier": dataset_version_id,
         "species": "Homo sapiens",

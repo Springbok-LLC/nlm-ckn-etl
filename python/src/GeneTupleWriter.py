@@ -19,6 +19,7 @@ from TupleWriterUtilities import (
     ASSOCIATION_CLASSES,
     TUPLES_DIRPATH,
     association_to_tuples,
+    entity_to_annotation_triples,
     remove_protocols,
     write_tuples,
 )
@@ -101,8 +102,6 @@ def create_tuples(gene_results: dict) -> list[tuple]:
             tuples.extend(association_to_tuples(assoc, source="UniProt"))
         else:
             # Still emit Gene annotations even without a Protein association
-            from TupleWriterUtilities import entity_to_annotation_triples
-
             gs_term = f"GS_{gene_name}"
             tuples.extend(entity_to_annotation_triples(gene_entity, gs_term))
 

@@ -7,8 +7,11 @@ from CELLxGENE curation API metadata.
 import json
 
 from ckn_schema.pydantic.ckn_schema import CellSetDataset, Publication
+from rdflib.term import Literal, URIRef
 
 from ExternalApiResultsFetcher import CELLXGENE_PATH
+
+from LoaderUtilities import PURLBASE, RDFSBASE
 
 from TupleWriterUtilities import (
     ASSOCIATION_CLASSES,
@@ -74,8 +77,6 @@ def create_tuples(cellxgene_results: dict) -> list[tuple]:
 
         # Additional PUB annotations not on the Publication entity
         pub_term = f"PUB_{dataset_version_id}"
-        from rdflib.term import Literal, URIRef
-        from LoaderUtilities import PURLBASE, RDFSBASE
 
         for key in ["Citation", "Link_to_publication", "Link_to_CELLxGENE_collection"]:
             value = metadata.get(key)

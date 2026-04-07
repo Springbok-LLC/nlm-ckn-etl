@@ -86,7 +86,7 @@ def create_tuples(opentargets_results: dict, gene_results: dict) -> list[tuple]:
     - DrugMolecularlyInteractsWithGene
     - GeneGeneticallyInteractsWithGene
     - GeneHasQualityMutation
-    - MutationHasPharamcologicalEffectDrug
+    - MutationHasPharmacologicalEffectDrug
 
     Parameters
     ----------
@@ -147,7 +147,7 @@ def create_tuples(opentargets_results: dict, gene_results: dict) -> list[tuple]:
                 continue
 
             disease_entity = Disease(
-                ontology_purl=mondo_term,
+                ontology_purl=mondo_term.replace("_", ":"),
                 label=disease["disease"].get("name"),
                 definition=disease["disease"].get("description"),
             )
@@ -176,6 +176,7 @@ def create_tuples(opentargets_results: dict, gene_results: dict) -> list[tuple]:
             )
 
         # --- Drugs ---
+
         for drug in ot_data.get("drugs", []):
             if drug["drug"]["maximumClinicalStage"] not in VALID_PHASES:
                 continue
@@ -260,7 +261,7 @@ def create_tuples(opentargets_results: dict, gene_results: dict) -> list[tuple]:
                         continue
 
                     disease_entity = Disease(
-                        ontology_purl=mondo_term,
+                        ontology_purl=mondo_term.replace("_", ":"),
                         label=indication["disease"].get("name"),
                         definition=indication["disease"].get("description"),
                     )
@@ -437,7 +438,7 @@ def create_tuples(opentargets_results: dict, gene_results: dict) -> list[tuple]:
                     continue
                 pg_drug_entity = Drug(drug_name=pg_drug.get("drugFromSource", drug_id))
                 pg_chembl_id = drug_id.replace("CHEMBL", "")
-                assoc = ASSOCIATION_CLASSES["MutationHasPharamcologicalEffectDrug"](
+                assoc = ASSOCIATION_CLASSES["MutationHasPharmacologicalEffectDrug"](
                     subject=mutation_entity,
                     predicate="has_pharmacological_effect",
                     object=pg_drug_entity,

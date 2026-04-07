@@ -86,10 +86,13 @@ def create_tuples(
     """
     tuples = []
 
-    uberon_terms = [
-        t.replace(":", "_").strip()
-        for t in str(summary_data.iloc[0]["tissue_ontology_term_id"]).split("|")
-    ]
+    if summary_data.empty:
+        uberon_terms = []
+    else:
+        uberon_terms = [
+            t.replace(":", "_").strip()
+            for t in str(summary_data.iloc[0]["tissue_ontology_term_id"]).split("|")
+        ]
 
     for _, row in nsforest_results.iterrows():
         uuid = row["uuid"]
@@ -171,7 +174,7 @@ def create_tuples(
                 cs_uri,
                 pred_uri,
                 bmc_uri,
-                URIRef(f"{PURLBASE}/#source_algorithm"),
+                URIRef(f"{RDFSBASE}/#source_algorithm"),
                 Literal("NSForest-v4.0_dev"),
             )
         )

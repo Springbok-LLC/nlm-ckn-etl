@@ -127,7 +127,7 @@ def create_tuples(
 
         cell_set = CellSet(
             author_cell_term=author_cell_set,
-            ontology_purl=cell_type,
+            ontology_purl=cell_type.ontology_purl,
             anatomical_structure=anat.ontology_purl,
             species="Homo sapiens",
             publication=str(doi) if pd.notna(doi) else None,
