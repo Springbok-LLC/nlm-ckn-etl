@@ -61,7 +61,7 @@ class MappingTupleWriterTestCase(unittest.TestCase):
     def test_contains_csd_source_pub(self):
         tuples = create_tuples(self._make_data(), ["dv-001"])
         preds = [str(t[1]) for t in tuples if len(t) == 3]
-        self.assertTrue(any("dc#Source" in p for p in preds))
+        self.assertTrue(any("dc/elements/1.1/source" in p for p in preds))
 
     def test_match_edge_annotation(self):
         tuples = create_tuples(self._make_data(), ["dv-001"])

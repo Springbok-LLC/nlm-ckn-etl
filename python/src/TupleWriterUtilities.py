@@ -23,13 +23,12 @@ from ckn_schema.pydantic.ckn_schema import (
     CellSetDataset,
     CellType,
     ClinicalTrial,
-    Disease,
     Drug,
     Gene,
     Mutation,
     Protein,
     Publication,
-    VariantConsequence,
+    linkml_meta as schema_meta,
 )
 
 from LoaderUtilities import (
@@ -43,36 +42,6 @@ from LoaderUtilities import (
 # ---------------------------------------------------------------------------
 
 TUPLES_DIRPATH = DATA_DIRPATH / "tuples"
-
-# Maps subproperty_of name (from Association linkml_meta) to OBO URI term.
-PREDICATE_MAP: dict[str, str] = {
-    "part_of": "BFO_0000050",
-    "derives_from": "RO_0001000",
-    "develops_from": "RO_0002202",
-    "composed_primarily_of": "RO_0002473",
-    "expresses": "RO_0002292",
-    "selectively_expresses": "RO_0002294",
-    "has_characterizing_marker_set": "RO_0015004",
-    "has_exemplar_data": "RO_0015001",
-    "subcluster_of": "RO_0015003",
-    "subclass_of": "rdfs_subClassOf",
-    "source": "dc#Source",
-    "produces": "RO_0003000",
-    "interacts_with": "RO_0002434",
-    "molecularly_interacts_with": "RO_0002436",
-    "genetically_interacts_with": "RO_0002435",
-    "is_genetic_basis_for_condition": "RO_0004010",
-    "is_substance_that_treats": "RO_0002606",
-    "has_quality": "RO_0000086",
-    "has_pharmacological_effect": "RO_0002027",
-    "has_plasma_membrane_part": "RO_0002104",
-    "lacks_plasma_membrane_part": "CL_4030046",
-    "capable_of": "RO_0002215",
-    "involved_in": "RO_0002331",
-    "located_in": "RO_0001025",
-    "exact_match": "SKOS_exactMatch",
-    "evaluated_in": "RO_0020325",
-}
 
 # Maps Pydantic field names to annotation attribute names where the
 # default capitalization convention does not match.
@@ -175,8 +144,8 @@ def parse_string_list(s: str) -> list[str]:
         result = ast.literal_eval(s)
         if isinstance(result, list):
             return [str(x) for x in result]
-    except (ValueError, SyntaxError):
-        pass
+    except (ValueError, SyntaxError) as ex:
+        print(f"Warning: Could not parse string list: {ex}")
     return []
 
 
@@ -223,7 +192,11 @@ def remove_protocols(value: Any) -> Any:
 
 
 def get_predicate_uri(association: Association) -> URIRef:
-    """Extract the RO/BFO predicate URI from an Association's linkml_meta.
+    """Extract the predicate URI from an Association's linkml_meta.
+
+    Resolves the predicate's ``subproperty_of`` slot name to a full URI
+    by looking up ``exact_mappings`` in the schema's slot definitions
+    and expanding the CURIE using the schema's prefix definitions.
 
     Parameters
     ----------
@@ -238,26 +211,45 @@ def get_predicate_uri(association: Association) -> URIRef:
     Raises
     ------
     ValueError
-        If the predicate's subproperty_of is missing or not in
-        PREDICATE_MAP.
+        If the predicate's subproperty_of is missing, the slot has no
+        exact_mappings, or the CURIE prefix is not defined in the schema.
     """
     cls = type(association)
     meta = cls.model_fields["predicate"].json_schema_extra or {}
-    linkml_meta = meta.get("linkml_meta", {})
-    subprop = linkml_meta.get("subproperty_of")
+    field_meta = meta.get("linkml_meta", {})
+    subprop = field_meta.get("subproperty_of")
     if subprop is None:
         raise ValueError(
             f"{cls.__name__} predicate has no subproperty_of in linkml_meta"
         )
-    obo_term = PREDICATE_MAP.get(subprop)
-    if obo_term is None:
+
+    # Look up exact_mappings from schema slot definitions
+    slot_meta = schema_meta.root.get("slots", {}).get(subprop)
+    if slot_meta is None:
         raise ValueError(
-            f"No PREDICATE_MAP entry for subproperty_of={subprop!r} "
+            f"No slot definition for subproperty_of={subprop!r} "
             f"(Association: {cls.__name__})"
         )
-    if subprop == "source":
-        return URIRef(f"{RDFSBASE}/dc#Source")
-    return URIRef(f"{PURLBASE}/{obo_term}")
+    mappings = slot_meta.get("exact_mappings", [])
+    curie = mappings[0] if mappings else slot_meta.get("slot_uri")
+    if curie is None:
+        raise ValueError(
+            f"No exact_mappings or slot_uri for slot {subprop!r} "
+            f"(Association: {cls.__name__})"
+        )
+
+    # Expand CURIE using schema prefix definitions
+    prefix, _, local = curie.partition(":")
+    prefix_meta = schema_meta.root.get("prefixes", {}).get(prefix)
+    if prefix_meta is None:
+        raise ValueError(
+            f"No prefix definition for {prefix!r} in CURIE {curie!r} "
+            f"(Association: {cls.__name__})"
+        )
+    uri = f"{prefix_meta['prefix_reference']}{local}"
+    # OBO PURLs conventionally use http, not https
+    uri = uri.replace("https://purl.obolibrary.org/", "http://purl.obolibrary.org/")
+    return URIRef(uri)
 
 
 def entity_to_term(entity: Any, context: dict[str, Any] | None = None) -> str | None:
@@ -460,7 +452,13 @@ def _extract_edge_annotations(
                 continue
             attr_name = _format_field_name(field_name)
             quintuples.append(
-                (s_uri, pred_uri, o_uri, URIRef(f"{RDFSBASE}#{attr_name}"), Literal(str(value)))
+                (
+                    s_uri,
+                    pred_uri,
+                    o_uri,
+                    URIRef(f"{RDFSBASE}#{attr_name}"),
+                    Literal(str(value)),
+                )
             )
     return quintuples
 
@@ -528,7 +526,7 @@ def association_to_tuples(
     subj_edge_fields = edge_mapping.get("subject", set())
     obj_edge_fields = edge_mapping.get("object", set())
 
-    # Vertex annotation triples (skip already-annotated terms)
+    # Vertex annotation triples (skip already-annotated terms, or allow duplication)
     if annotated_terms is None or s_term not in annotated_terms:
         tuples.extend(entity_to_annotation_triples(subj, s_term, subj_edge_fields))
         if annotated_terms is not None:

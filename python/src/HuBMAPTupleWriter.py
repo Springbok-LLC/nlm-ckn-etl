@@ -1,8 +1,7 @@
 """Create tuples from HuBMAP data using schema entities.
 
-Produces AnatomicalStructure → AnatomicalStructure (part_of) and
-CellType → AnatomicalStructure (part_of) associations from HuBMAP
-CCF data tables.
+Produces AnatomicalStructure part of AnatomicalStructure and CellType part of
+AnatomicalStructure associations from HuBMAP CCF data tables.
 """
 
 import json
@@ -58,6 +57,7 @@ def create_tuples(hubmap_data: dict, cl_terms: set[str]) -> list[tuple]:
     # AnatomicalStructure part_of AnatomicalStructure
     for anat_struct in hubmap_data.get("data", {}).get("anatomical_structures", []):
         if "id" not in anat_struct or "ccf_part_of" not in anat_struct:
+            print("Warning: Anatomical structure missing 'id' or 'ccf_part_of' keys")
             continue
 
         s_uberon_term = anat_struct["id"].replace(":", "_")
@@ -79,16 +79,17 @@ def create_tuples(hubmap_data: dict, cl_terms: set[str]) -> list[tuple]:
                 print(f"Warning: UBERON term {o_uberon_term} deprecated")
 
             obj = AnatomicalStructure(ontology_purl=o_id)
-            assoc = ASSOCIATION_CLASSES[
-                "AnatomicalStructurePartOfAnatomicalStructure"
-            ](
-                subject=subject, predicate="part_of", object=obj,
+            assoc = ASSOCIATION_CLASSES["AnatomicalStructurePartOfAnatomicalStructure"](
+                subject=subject,
+                predicate="part_of",
+                object=obj,
             )
             tuples.extend(association_to_tuples(assoc, source="HuBMAP"))
 
     # CellType part_of AnatomicalStructure
     for cell_type in hubmap_data.get("data", {}).get("cell_types", []):
         if "id" not in cell_type or "ccf_located_in" not in cell_type:
+            print("Warning: Cell type missing 'id' or 'ccf_located_in' keys")
             continue
 
         cl_term = cell_type["id"].replace(":", "_")
@@ -112,7 +113,9 @@ def create_tuples(hubmap_data: dict, cl_terms: set[str]) -> list[tuple]:
 
             obj = AnatomicalStructure(ontology_purl=uberon_id)
             assoc = ASSOCIATION_CLASSES["CellTypePartOfAnatomicalStructure"](
-                subject=subject, predicate="part_of", object=obj,
+                subject=subject,
+                predicate="part_of",
+                object=obj,
             )
             tuples.extend(association_to_tuples(assoc, source="HuBMAP"))
 

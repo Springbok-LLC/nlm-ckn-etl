@@ -42,6 +42,7 @@ def create_tuples(uniprot_results: dict) -> list[tuple]:
     for accession in protein_accessions:
         data = uniprot_results.get(accession)
         if not data:
+            print(f"Warning: No data for protein accession {accession}")
             continue
 
         ann_score = data.get("Annotation_score")
@@ -68,9 +69,8 @@ def create_tuples(uniprot_results: dict) -> list[tuple]:
 def main():
     """Run UniProt tuple writer.
 
-    Loads UniProt results from the fetched JSON file and creates
-    Protein vertex annotations. Writes output to a single JSON tuple
-    file.
+    Loads UniProt results from the fetched JSON file and creates tuples for
+    each protein. Writes output to a single JSON tuple file.
     """
     if not UNIPROT_PATH.exists():
         print(f"UniProt results not found at {UNIPROT_PATH}")

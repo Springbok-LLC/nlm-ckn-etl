@@ -11,7 +11,7 @@ entity classes and a shared infrastructure module (`TupleWriterUtilities.py`).
 | `NSForestResultsTupleWriter.py` | `NSForestTupleWriter.py` |
 | `AuthorToClResultsTupleWriter.py` | `MappingTupleWriter.py` |
 | `ExternalApiResultsTupleWriter.py` | `CellxGeneTupleWriter.py`, `OpenTargetsTupleWriter.py`, `GeneTupleWriter.py`, `UniProtTupleWriter.py`, `HuBMAPTupleWriter.py` |
-| `AnnotationResultsTupleWriter.py` | (functionality absorbed into the above) |
+| `AnnotationResultsTupleWriter.py` | (functionality no longer used) |
 | `SchemaBasedTupleWriter.py` | (exploratory prototype, superseded by all of the above) |
 | `SchemaTupleWriter.py` | (intermediate version, split into the above modules) |
 

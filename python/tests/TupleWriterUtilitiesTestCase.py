@@ -4,7 +4,7 @@ import unittest
 
 sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 
-from rdflib.term import Literal, URIRef
+from rdflib.term import URIRef
 
 from ckn_schema.pydantic.ckn_schema import (
     AnatomicalStructure,
@@ -215,7 +215,7 @@ class GetPredicateUriTestCase(unittest.TestCase):
             object=CellSetDataset(dataset_identifier="abc"),
         )
         uri = twu.get_predicate_uri(assoc)
-        self.assertIn("dc#Source", str(uri))
+        self.assertIn("dc/elements/1.1/source", str(uri))
 
 
 class AssociationToTuplesTestCase(unittest.TestCase):
@@ -285,7 +285,9 @@ class EntityToAnnotationTriplesTestCase(unittest.TestCase):
     """Tests for entity_to_annotation_triples."""
 
     def test_populated_fields(self):
-        gene = Gene(gene_symbol="TP53", label="tumor protein p53", gene_type="protein-coding")
+        gene = Gene(
+            gene_symbol="TP53", label="tumor protein p53", gene_type="protein-coding"
+        )
         triples = twu.entity_to_annotation_triples(gene, "GS_TP53")
         attr_names = [str(t[1]).split("#")[-1] for t in triples]
         self.assertIn("Label", attr_names)
@@ -325,6 +327,7 @@ class PurlToCurieInContextTestCase(unittest.TestCase):
 
     def test_cell_type_from_purl(self):
         from ckn_schema.pydantic.ckn_schema import CellType
+
         curie = twu.purl_to_curie("http://purl.obolibrary.org/obo/CL_0000235")
         ct = CellType(ontology_purl=curie, label="macrophage")
         self.assertEqual(ct.ontology_purl, "CL:0000235")
