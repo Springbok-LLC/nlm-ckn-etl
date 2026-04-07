@@ -145,7 +145,7 @@ def parse_string_list(s: str) -> list[str]:
         if isinstance(result, list):
             return [str(x) for x in result]
     except (ValueError, SyntaxError) as ex:
-        print(f"WARNING: Could not parse string list: {ex}")
+        print(f"Warning: Could not parse string list: {ex}")
     return []
 
 

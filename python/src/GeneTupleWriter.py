@@ -1,7 +1,7 @@
 """Create tuples from NCBI Gene data using schema entities.
 
-Produces Gene → Protein (produces) associations and Gene vertex
-annotations from E-Utilities gene data.
+Produces Gene produces Protein associations and Gene vertex annotations from
+E-Utilities gene data.
 """
 
 import json
@@ -51,10 +51,12 @@ def create_tuples(gene_results: dict) -> list[tuple]:
 
     for gene_entrez_id in gene_entrez_ids:
         if not gene_results.get(gene_entrez_id):
+            print(f"Warning: No data for gene Entrez ID {gene_entrez_id}")
             continue
 
         gene_name = map_gene_entrez_id_to_names(gene_entrez_id, gene_entrez_id_to_names)
         if not gene_name:
+            print(f"Warning: Cannot map gene Entrez ID {gene_entrez_id} to name")
             continue
         gene_name = gene_name[0]
 
@@ -99,7 +101,6 @@ def create_tuples(gene_results: dict) -> list[tuple]:
             tuples.extend(association_to_tuples(assoc, source="UniProt"))
         else:
             # Still emit Gene annotations even without a Protein association
-            from rdflib.term import Literal, URIRef
             from TupleWriterUtilities import entity_to_annotation_triples
 
             gs_term = f"GS_{gene_name}"
@@ -111,9 +112,9 @@ def create_tuples(gene_results: dict) -> list[tuple]:
 def main():
     """Run Gene tuple writer.
 
-    Loads NCBI Gene results from the fetched JSON file and creates
-    Gene-to-Protein associations and Gene vertex annotations. Writes
-    output to a single JSON tuple file.
+    Loads NCBI Gene results from the fetched JSON file and creates tuples for
+    each gene and its associated protein. Writes output to a single JSON tuple
+    file.
     """
     if not GENE_PATH.exists():
         print(f"Gene results not found at {GENE_PATH}")

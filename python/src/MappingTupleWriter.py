@@ -1,6 +1,6 @@
 """Create tuples from author-to-CL mapping results using schema entities.
 
-Produces CellType, CellSet, CellSetDataset, and Publication
+Produces AnatomicalStructure, CellSet, CellType, Gene, and Publication
 associations from manual cell type mapping data.
 """
 
@@ -87,9 +87,11 @@ def create_tuples(
         # Build CellType from mapping row
         cl_id_raw = row.get("cell_ontology_id", "")
         if not cl_id_raw:
+            print(f"Warning: No cell ontology ID for mapping row uuid={uuid}")
             continue
         cl_curie = purl_to_curie(str(cl_id_raw))
         if not re.match(r"CL:\d{7}$", cl_curie):
+            print(f"Warning: CL CURIE unexpected: {cl_curie}")
             continue
         cell_type = CellType(
             ontology_purl=cl_curie,
@@ -99,6 +101,7 @@ def create_tuples(
         # Build AnatomicalStructure from mapping row
         uberon_raw = row.get("uberon_entity_id", "")
         if not uberon_raw:
+            print("Warning: No UBERON entity id")
             continue
         uberon_curie = purl_to_curie(str(uberon_raw))
         anat = AnatomicalStructure(
@@ -148,15 +151,27 @@ def create_tuples(
 
         # CellType part_of AnatomicalStructure
         assoc = ASSOCIATION_CLASSES["CellTypePartOfAnatomicalStructure"](
-            subject=cell_type, predicate="part_of", object=anat,
+            subject=cell_type,
+            predicate="part_of",
+            object=anat,
         )
-        tuples.extend(association_to_tuples(assoc, ctx, source="Manual Mapping", annotated_terms=annotated))
+        tuples.extend(
+            association_to_tuples(
+                assoc, ctx, source="Manual Mapping", annotated_terms=annotated
+            )
+        )
 
         # CellSet composed_primarily_of CellType
         assoc = ASSOCIATION_CLASSES["CellSetComposedPrimarilyOfCellType"](
-            subject=cell_set, predicate="composed_primarily_of", object=cell_type,
+            subject=cell_set,
+            predicate="composed_primarily_of",
+            object=cell_type,
         )
-        tuples.extend(association_to_tuples(assoc, ctx, source="Manual Mapping", annotated_terms=annotated))
+        tuples.extend(
+            association_to_tuples(
+                assoc, ctx, source="Manual Mapping", annotated_terms=annotated
+            )
+        )
 
         # Edge annotations on CS→CellType: Match and Mapping_method
         cs_uri = URIRef(f"{PURLBASE}/CS_{author_cell_set}-{uuid}")
@@ -165,23 +180,31 @@ def create_tuples(
         match_val = row.get("match")
         if pd.notna(match_val):
             tuples.append(
-                (cs_uri, pred_uri, ct_uri,
-                 URIRef(f"{RDFSBASE}#Match"), Literal(str(match_val)))
+                (
+                    cs_uri,
+                    pred_uri,
+                    ct_uri,
+                    URIRef(f"{RDFSBASE}#Match"),
+                    Literal(str(match_val)),
+                )
             )
         method_val = row.get("mapping_method")
         if pd.notna(method_val):
             tuples.append(
-                (cs_uri, pred_uri, ct_uri,
-                 URIRef(f"{RDFSBASE}#Mapping_method"), Literal(str(method_val)))
+                (
+                    cs_uri,
+                    pred_uri,
+                    ct_uri,
+                    URIRef(f"{RDFSBASE}#Mapping_method"),
+                    Literal(str(method_val)),
+                )
             )
 
         # CellType has_exemplar_data CellSetDataset
         for dvid in dataset_version_ids:
             harvester_row = None
             if harvester_data is not None and not harvester_data.empty:
-                match_df = harvester_data[
-                    harvester_data["dataset_version_id"] == dvid
-                ]
+                match_df = harvester_data[harvester_data["dataset_version_id"] == dvid]
                 if not match_df.empty:
                     harvester_row = match_df.iloc[0]
 
@@ -189,9 +212,7 @@ def create_tuples(
                 dvid,
                 harvester_row=harvester_row,
                 doi=str(doi) if pd.notna(doi) else None,
-                collection_id=(
-                    str(collection_id) if pd.notna(collection_id) else None
-                ),
+                collection_id=(str(collection_id) if pd.notna(collection_id) else None),
                 collection_version_id=(
                     str(collection_version_id)
                     if pd.notna(collection_version_id)
@@ -199,10 +220,14 @@ def create_tuples(
                 ),
             )
             assoc = ASSOCIATION_CLASSES["CellTypeHasExemplarDataCellSetDataset"](
-                subject=cell_type, predicate="has_exemplar_data", object=csd,
+                subject=cell_type,
+                predicate="has_exemplar_data",
+                object=csd,
             )
             tuples.extend(
-                association_to_tuples(assoc, ctx, source="Manual Mapping", annotated_terms=annotated)
+                association_to_tuples(
+                    assoc, ctx, source="Manual Mapping", annotated_terms=annotated
+                )
             )
 
             # CellSetDataset source Publication
@@ -214,20 +239,28 @@ def create_tuples(
                     publication_doi=row.get("DOI"),
                 )
                 assoc = ASSOCIATION_CLASSES["CellSetDatasetHasSourcePublication"](
-                    subject=csd, predicate="source", object=pub,
+                    subject=csd,
+                    predicate="source",
+                    object=pub,
                 )
                 tuples.extend(
-                    association_to_tuples(assoc, ctx, source="Manual Mapping", annotated_terms=annotated)
+                    association_to_tuples(
+                        assoc, ctx, source="Manual Mapping", annotated_terms=annotated
+                    )
                 )
 
         # CellType expresses Gene (for each marker and binary gene)
         for gene_symbol in markers + binary_genes:
             gene = Gene(gene_symbol=gene_symbol)
             assoc = ASSOCIATION_CLASSES["CellTypeExpressesGene"](
-                subject=cell_type, predicate="selectively_expresses", object=gene,
+                subject=cell_type,
+                predicate="selectively_expresses",
+                object=gene,
             )
             tuples.extend(
-                association_to_tuples(assoc, ctx, source="Manual Mapping", annotated_terms=annotated)
+                association_to_tuples(
+                    assoc, ctx, source="Manual Mapping", annotated_terms=annotated
+                )
             )
 
     return tuples
@@ -267,7 +300,13 @@ def main():
         )
         author_to_cl_results = author_to_cl_results.merge(
             nsforest_results[
-                ["clusterName", "clusterSize", "NSForest_markers", "binary_genes", "uuid"]
+                [
+                    "clusterName",
+                    "clusterSize",
+                    "NSForest_markers",
+                    "binary_genes",
+                    "uuid",
+                ]
             ].copy(),
             left_on="author_cell_set",
             right_on="clusterName",

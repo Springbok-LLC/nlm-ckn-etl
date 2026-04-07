@@ -1,6 +1,6 @@
 """Create tuples from CELLxGENE fetched metadata using schema entities.
 
-Produces CellSetDataset → Publication associations and annotations
+Produces CellSetDataset has source Publication associations and annotations
 from CELLxGENE curation API metadata.
 """
 
@@ -40,6 +40,7 @@ def create_tuples(cellxgene_results: dict) -> list[tuple]:
     """
     tuples = []
 
+    # CellSetDataset source Publication
     for dataset_version_id, metadata in cellxgene_results.items():
         csd = CellSetDataset(
             dataset_identifier=dataset_version_id,
@@ -93,9 +94,8 @@ def create_tuples(cellxgene_results: dict) -> list[tuple]:
 def main():
     """Run CELLxGENE tuple writer.
 
-    Loads CELLxGENE metadata from the fetched JSON file and creates
-    CellSetDataset-to-Publication tuples with annotations. Writes
-    output to a single JSON tuple file.
+    Loads CELLxGENE metadata from the fetched JSON file and creates tuples for
+    each dataset. Writes output to a single JSON tuple file.
     """
     if not CELLXGENE_PATH.exists():
         print(f"CELLxGENE results not found at {CELLXGENE_PATH}")

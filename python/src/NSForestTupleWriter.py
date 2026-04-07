@@ -1,7 +1,7 @@
 """Create tuples from NSForest results using schema entities.
 
-Produces CellSet, BiomarkerCombination, BinaryGeneSet, and Gene
-associations from NSForest results and silhouette scores.
+Produces AnatomicalStructure, BinaryGeneSet, BiomarkerCombination, CellSet, and
+Gene associations from NSForest results and silhouette scores.
 """
 
 import pandas as pd
