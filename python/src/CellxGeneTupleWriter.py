@@ -64,29 +64,32 @@ def create_tuples(cellxgene_results: dict) -> list[tuple]:
             ),
             collection_id=metadata.get("Collection_ID"),
         )
-        # TODO: Populate with data from mapping or summary file
-        pub = Publication(publication_doi="NA")
+        pub = Publication(
+            publication_doi=remove_protocols(metadata.get("Link_to_publication")),
+        )
+        ctx = {"dataset_version_id": dataset_version_id}
 
         assoc = ASSOCIATION_CLASSES["CellSetDatasetHasSourcePublication"](
             subject=csd,
             predicate="source",
             object=pub,
         )
-        tuples.extend(association_to_tuples(assoc, source="CELLxGENE"))
+        tuples.extend(
+            association_to_tuples(assoc, ctx, source="CELLxGENE")
+        )
 
         # Additional PUB annotations not on the Publication entity
         pub_term = f"PUB_{dataset_version_id}"
 
-        for key in ["Citation", "Link_to_publication", "Link_to_CELLxGENE_collection"]:
-            value = metadata.get(key)
-            if value:
-                tuples.append(
-                    (
-                        URIRef(f"{PURLBASE}/{pub_term}"),
-                        URIRef(f"{RDFSBASE}#{key}"),
-                        Literal(remove_protocols(value)),
-                    )
+        citation = metadata.get("Citation")
+        if citation:
+            tuples.append(
+                (
+                    URIRef(f"{PURLBASE}/{pub_term}"),
+                    URIRef(f"{RDFSBASE}#Citation"),
+                    Literal(citation),
                 )
+            )
 
     return tuples
 

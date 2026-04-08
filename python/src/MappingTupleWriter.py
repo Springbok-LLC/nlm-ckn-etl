@@ -27,7 +27,6 @@ from ckn_schema.pydantic.ckn_schema import (
     CellSet,
     CellType,
     Gene,
-    Publication,
 )
 
 from TupleWriterUtilities import (
@@ -53,7 +52,6 @@ def create_tuples(
     - CellTypePartOfAnatomicalStructure
     - CellSetComposedPrimarilyOfCellType
     - CellTypeHasExemplarDataCellSetDataset
-    - CellSetDatasetHasSourcePublication
     - CellTypeSelectivelyExpressesGene (for each marker + binary gene)
 
     Parameters
@@ -236,23 +234,6 @@ def create_tuples(
                         URIRef(f"{PURLBASE}/{csd_term}"),
                         URIRef(f"{RDFSBASE}#Citation"),
                         Literal(citation),
-                    )
-                )
-
-            # CellSetDataset source Publication
-            doi = row.get("DOI")
-            if pd.notna(doi):
-                pub = Publication(
-                    publication_doi=str(doi),
-                )
-                assoc = ASSOCIATION_CLASSES["CellSetDatasetHasSourcePublication"](
-                    subject=csd,
-                    predicate="source",
-                    object=pub,
-                )
-                tuples.extend(
-                    association_to_tuples(
-                        assoc, ctx, source="Manual Mapping", annotated_terms=annotated
                     )
                 )
 

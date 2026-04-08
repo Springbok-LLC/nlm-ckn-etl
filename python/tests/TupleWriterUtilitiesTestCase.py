@@ -150,7 +150,14 @@ class EntityToTermTestCase(unittest.TestCase):
             "BGS_xyz789",
         )
 
-    def test_publication(self):
+    def test_publication_with_context(self):
+        pub = Publication(publication_doi="10.1234/test")
+        self.assertEqual(
+            twu.entity_to_term(pub, {"dataset_version_id": "dvid-001"}),
+            "PUB_dvid-001",
+        )
+
+    def test_publication_without_context(self):
         pub = Publication(publication_doi="10.1234/test")
         self.assertEqual(twu.entity_to_term(pub), "PUB_10.1234/test")
 
