@@ -33,7 +33,7 @@ class UniProtTupleWriterTestCase(unittest.TestCase):
         self.assertTrue(all(len(t) == 3 for t in tuples))
         attrs = [str(t[1]).split("#")[-1] for t in tuples]
         self.assertIn("Label", attrs)
-        self.assertIn("Function", attrs)
+        self.assertIn("Protein_function", attrs)
         self.assertIn("Species", attrs)
         self.assertIn("Gene_symbol", attrs)
         self.assertIn("Annotation_score", attrs)
@@ -44,7 +44,7 @@ class UniProtTupleWriterTestCase(unittest.TestCase):
         data["P19022"]["Function"] = None
         tuples = create_tuples(data)
         attrs = [str(t[1]).split("#")[-1] for t in tuples]
-        self.assertNotIn("Function", attrs)
+        self.assertNotIn("Protein_function", attrs)
 
     def test_uniprot_id_term_encoded(self):
         tuples = create_tuples(self._make_data())

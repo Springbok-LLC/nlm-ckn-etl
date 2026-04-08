@@ -198,7 +198,7 @@ def create_tuples(
                 if not match.empty:
                     harvester_row = match.iloc[0]
 
-            csd = build_cell_set_dataset(dvid, summary_data, harvester_row)
+            csd, citation = build_cell_set_dataset(dvid, summary_data, harvester_row)
             assoc = ASSOCIATION_CLASSES["CellSetHasSourceCellSetDataset"](
                 subject=cell_set,
                 predicate="source",
@@ -209,6 +209,15 @@ def create_tuples(
                     assoc, ctx, source="NSForest", annotated_terms=annotated
                 )
             )
+            if citation:
+                csd_term = f"CSD_{dvid}"
+                tuples.append(
+                    (
+                        URIRef(f"{PURLBASE}/{csd_term}"),
+                        URIRef(f"{RDFSBASE}#Citation"),
+                        Literal(citation),
+                    )
+                )
 
         # Gene part_of BiomarkerCombination (for each marker)
         for gene_symbol in markers:

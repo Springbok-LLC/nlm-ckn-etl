@@ -91,7 +91,7 @@
         "color": "#FF6B6B",
         "individual_labels": [
           {
-            "field_to_use": "Binary_genes",
+            "field_to_use": "Markers",
             "to_be_replaced": " ",
             "replace_with": "|",
             "make_lower_case": false
@@ -114,8 +114,8 @@
         ],
         "individual_fields": [
           {
-            "field_to_display": "Binary_genes",
-            "display_field_as": "Binary_genes",
+            "field_to_display": "Markers",
+            "display_field_as": "Markers",
             "field_url": "",
             "field_to_use": ""
           }

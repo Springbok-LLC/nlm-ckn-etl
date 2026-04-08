@@ -1113,7 +1113,7 @@ files = [
 
 [[package]]
 name = "ckn-schema"
-version = "0.1.2"
+version = "0.1.3"
 description = "LinkML data model for cell phenotypes and biological entities."
 optional = false
 python-versions = ">=3.9"
@@ -1131,7 +1131,7 @@ dev = ["linkml (>=1.8,<2)"]
 type = "git"
 url = "ssh://git@github.com/NIH-NLM/cell-kn-schema.git"
 reference = "ralatsdc/use-gene-and-protein-entities-throughout"
-resolved_reference = "e2c6194d7384c8edf3ce9d290ef72f1367cd2818"
+resolved_reference = "a8bb55e9c359a8538da72ff6f58b7b940cdd0141"
 
 [[package]]
 name = "class-resolver"
@@ -1373,14 +1373,14 @@ test-no-images = ["pytest", "pytest-cov", "pytest-rerunfailures", "pytest-xdist"
 
 [[package]]
 name = "curies"
-version = "0.13.1"
+version = "0.13.3"
 description = "Idiomatic conversion between URIs and compact URIs (CURIEs)"
 optional = false
 python-versions = ">=3.10"
 groups = ["main"]
 files = [
-    {file = "curies-0.13.1-py3-none-any.whl", hash = "sha256:e8680d5d2396afd3d3ed476617db41133f568209015b8e31ad691617fca92dcc"},
-    {file = "curies-0.13.1.tar.gz", hash = "sha256:358d8fccb2564639e6cba012115fe51210c3cd40518a7d9667a28abe6db3a8b3"},
+    {file = "curies-0.13.3-py3-none-any.whl", hash = "sha256:eefd58bcc7e0e49ab8f7341a751cce1d62a4669ef93de4683f0a370824bd2289"},
+    {file = "curies-0.13.3.tar.gz", hash = "sha256:ee48a8def8fe65b162029505e2554221d3ccdc7c5580716abd9d5693539ed9ee"},
 ]
 
 [package.dependencies]
@@ -2518,14 +2518,14 @@ zstd = ["zstandard (>=0.18.0)"]
 
 [[package]]
 name = "huggingface-hub"
-version = "1.9.1"
+version = "1.9.2"
 description = "Client library to download and publish models, datasets and other repos on the huggingface.co hub"
 optional = false
 python-versions = ">=3.10.0"
 groups = ["main"]
 files = [
-    {file = "huggingface_hub-1.9.1-py3-none-any.whl", hash = "sha256:8dae771b969b318203727a6c6c5209d25e661f6f0dd010fc09cc4a12cf81c657"},
-    {file = "huggingface_hub-1.9.1.tar.gz", hash = "sha256:442af372207cc24dcb089caf507fcd7dbc1217c11d6059a06f6b90afe64e8bd2"},
+    {file = "huggingface_hub-1.9.2-py3-none-any.whl", hash = "sha256:e1e62ce237d4fbeca9f970aeb15176fbd503e04c25577bfd22f44aa7aa2b5243"},
+    {file = "huggingface_hub-1.9.2.tar.gz", hash = "sha256:8d09d080a186bd950a361bfc04b862dfb04d6a2b41d48e9ba1b37507cfd3f1e1"},
 ]
 
 [package.dependencies]
@@ -4831,14 +4831,14 @@ test = ["flaky", "ipykernel (>=6.19.3)", "ipython", "ipywidgets", "nbconvert (>=
 
 [[package]]
 name = "nbconvert"
-version = "7.17.0"
+version = "7.17.1"
 description = "Convert Jupyter Notebooks (.ipynb files) to other formats."
 optional = false
 python-versions = ">=3.9"
 groups = ["dev"]
 files = [
-    {file = "nbconvert-7.17.0-py3-none-any.whl", hash = "sha256:4f99a63b337b9a23504347afdab24a11faa7d86b405e5c8f9881cd313336d518"},
-    {file = "nbconvert-7.17.0.tar.gz", hash = "sha256:1b2696f1b5be12309f6c7d707c24af604b87dfaf6d950794c7b07acab96dda78"},
+    {file = "nbconvert-7.17.1-py3-none-any.whl", hash = "sha256:aa85c087b435e7bf1ffd03319f658e285f2b89eccab33bc1ba7025495ab3e7c8"},
+    {file = "nbconvert-7.17.1.tar.gz", hash = "sha256:34d0d0a7e73ce3cbab6c5aae8f4f468797280b01fd8bd2ca746da8569eddd7d2"},
 ]
 
 [package.dependencies]
@@ -7996,21 +7996,18 @@ test = ["pytest (>=8)"]
 
 [[package]]
 name = "session-info2"
-version = "0.4"
+version = "0.4.1"
 description = "Print versions of imported packages."
 optional = false
 python-versions = ">=3.10"
 groups = ["main"]
 files = [
-    {file = "session_info2-0.4-py3-none-any.whl", hash = "sha256:1c06604853acd43d8cdcc9e815efbdf5534d728234e8374dea1eef29496bb1df"},
-    {file = "session_info2-0.4.tar.gz", hash = "sha256:bb01bf7c320301d6cbcfad36b85cca7befe537ffd60269be38ae9e1a956f4aa4"},
+    {file = "session_info2-0.4.1-py3-none-any.whl", hash = "sha256:423b3f6bb7023433cfc3f791a6fdbb6a2cfbe226770ae6c127c3b2c4cf5a9d56"},
+    {file = "session_info2-0.4.1.tar.gz", hash = "sha256:3bb2bf7b73b2e13a1737e9aa91a6dae55e2c49e83bee973f24245f31ae264a1f"},
 ]
 
 [package.extras]
-docs = ["click (!=8.3)", "furo", "hatch", "ipywidgets", "myst-nb", "numpy", "session-info", "sphinx", "sphinx-autodoc-typehints", "sphinx-codeautolink"]
 jupyter = ["ipywidgets"]
-notebook = ["ipywidgets", "numpy", "session-info"]
-test = ["coverage[toml] (>=6.5)", "ipykernel", "jupyter-client", "pytest", "pytest-asyncio", "pytest-md", "pytest-subprocess", "testing-common-database"]
 
 [[package]]
 name = "setuptools"
@@ -8613,32 +8610,32 @@ url = ["furl (>=0.4.1)"]
 
 [[package]]
 name = "sssom"
-version = "0.4.18"
+version = "0.4.19"
 description = "Operations on SSSOM mapping tables"
 optional = false
 python-versions = "<4.0.0,>=3.10"
 groups = ["main"]
 files = [
-    {file = "sssom-0.4.18-py3-none-any.whl", hash = "sha256:214bed6b19ab8614e3d231ac074644cbffd475ce326378bbca683154992f7cd7"},
-    {file = "sssom-0.4.18.tar.gz", hash = "sha256:af1338f32f80e2d71df8faa8b51d5d4b79e23b0508af4c7d89a288f1520d2490"},
+    {file = "sssom-0.4.19-py3-none-any.whl", hash = "sha256:dc2fdacd0b5e86a49e510cae9abe3ca7e093e54285432cd65c7d62e8f33c5e93"},
+    {file = "sssom-0.4.19.tar.gz", hash = "sha256:ac59d5fcc6b3abdcc5317a729c1c894010847cf32aae04538dffc0e9599c2d47"},
 ]
 
 [package.dependencies]
 click = ">=8.1.6"
 curies = ">=0.10.23"
 deprecation = ">=2.1.0"
-linkml = ">1.7.10"
-linkml-runtime = ">=1.7.5"
+linkml = ">=1.10.0"
+linkml-runtime = ">=1.10.0"
 packaging = ">=20.0"
-pandas = ">1.0.3"
+pandas = ">=2.0.0"
 pyyaml = ">=6.0.1"
 rdflib = ">=7.1.3"
 sparqlwrapper = ">=2.0.0"
-sssom-schema = "1.1.0a3"
+sssom-schema = "1.1.0a4"
 validators = ">=0.20.0"
 
 [package.extras]
-docs = ["myst-parser (>=0.18.1)", "sphinx (>=6.1.3)", "sphinx-autodoc-typehints (>=1.2.0)", "sphinx-click (>=4.3.0)", "sphinx-rtd-theme (>=1.0.0)"]
+docs = ["mkdocs-click (>=0.8.1)", "mkdocs-material (>=9.5.0)", "mkdocstrings[python] (>=0.24.0)"]
 networkx = ["networkx (>=3.1)"]
 pansql = ["pansql (>=0.0.1)"]
 rdflib-endpoint = ["fastapi", "httpx", "rdflib-endpoint", "uvicorn"]
@@ -8646,22 +8643,20 @@ scipy = ["scipy"]
 
 [[package]]
 name = "sssom-schema"
-version = "1.1.0a3"
+version = "1.1.0a4"
 description = "SSSOM is a Simple Standard for Sharing Ontology Mappings."
 optional = false
-python-versions = ">=3.8.1"
+python-versions = ">=3.10.0"
 groups = ["main"]
 files = [
-    {file = "sssom_schema-1.1.0a3-py3-none-any.whl", hash = "sha256:ca737e771919e947eb85240f56f5c7fd78980992f92cdb130195cd42aca5215b"},
-    {file = "sssom_schema-1.1.0a3.tar.gz", hash = "sha256:b68a4a14a3712c01b8637147b9f7e5153806acdba966cde86961030df2533b1c"},
+    {file = "sssom_schema-1.1.0a4-py3-none-any.whl", hash = "sha256:3f5fa3e2216e303646bed8ed2e927850007183be2e0751ac2ba0cdc132ef483e"},
+    {file = "sssom_schema-1.1.0a4.tar.gz", hash = "sha256:5324cd9c42b0f0b5f9432b3a2ef11cd0cead9e9d688464d2669051f37b11b6ec"},
 ]
 
 [package.dependencies]
 jinjanator = "*"
-linkml-runtime = "*"
-
-[package.extras]
-docs = ["linkml (>=1.7.0)", "mkdocs-material (>=8.2.8)", "mkdocs-mermaid2-plugin (>=1.1.1)"]
+linkml = ">=1.10.0"
+linkml-runtime = ">=1.10.0"
 
 [[package]]
 name = "stack-data"

@@ -212,19 +212,13 @@ def create_tuples(opentargets_results: dict, gene_results: dict) -> list[tuple]:
                 )
 
             drug_entity = Drug(
-                drug_name=drug_name,
-                drug_description=drug_desc,
+                label=drug_name,
+                definition=drug_desc,
                 drug_type=drug_type,
                 mechanism_of_action=mechanism,
                 trade_names=", ".join(trade_names_list) if trade_names_list else None,
                 exact_synonym=", ".join(synonyms) if synonyms else None,
                 approval_status=drug["drug"].get("maximumClinicalStage"),
-                link_to_pubchem_record=(
-                    f"pubchem.ncbi.nlm.nih.gov/compound/{pubchem_id}"
-                    if pubchem_id
-                    else None
-                ),
-                link_to_uniprot_id=link_to_uniprot,
                 uniprot_id=uniprot_name,
                 protein=gene_name,
             )
@@ -309,7 +303,7 @@ def create_tuples(opentargets_results: dict, gene_results: dict) -> list[tuple]:
 
             chembl_id = drug["drug"]["id"].replace("CHEMBL", "")
             drug_name = drug["drug"].get("name")
-            drug_entity_sym = Drug(drug_name=drug_name)
+            drug_entity_sym = Drug(label=drug_name)
             ctx_sym = {"chembl_id": chembl_id}
 
             # Gene molecularly_interacts_with Drug
@@ -382,7 +376,7 @@ def create_tuples(opentargets_results: dict, gene_results: dict) -> list[tuple]:
                 genotype_annotation=str(pg.get("genotypeAnnotationText")),
                 evidence_level=str(pg.get("evidenceLevel")),
                 source=str(pg.get("datasourceId")),
-                literature=str(pg.get("literature")),
+                publication=str(pg.get("literature")),
             )
 
             # Gene has_quality Mutation
@@ -436,7 +430,7 @@ def create_tuples(opentargets_results: dict, gene_results: dict) -> list[tuple]:
                         f"Warning: Missing drug ID in pharmacogenetics for variant {variant_rs_id}"
                     )
                     continue
-                pg_drug_entity = Drug(drug_name=pg_drug.get("drugFromSource", drug_id))
+                pg_drug_entity = Drug(label=pg_drug.get("drugFromSource", drug_id))
                 pg_chembl_id = drug_id.replace("CHEMBL", "")
                 assoc = ASSOCIATION_CLASSES["MutationHasPharmacologicalEffectDrug"](
                     subject=mutation_entity,

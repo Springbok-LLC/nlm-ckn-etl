@@ -54,7 +54,7 @@ def create_tuples(
     - CellSetComposedPrimarilyOfCellType
     - CellTypeHasExemplarDataCellSetDataset
     - CellSetDatasetHasSourcePublication
-    - CellTypeExpressesGene (for each marker + binary gene)
+    - CellTypeSelectivelyExpressesGene (for each marker + binary gene)
 
     Parameters
     ----------
@@ -208,7 +208,7 @@ def create_tuples(
                 if not match_df.empty:
                     harvester_row = match_df.iloc[0]
 
-            csd = build_cell_set_dataset(
+            csd, citation = build_cell_set_dataset(
                 dvid,
                 harvester_row=harvester_row,
                 doi=str(doi) if pd.notna(doi) else None,
@@ -229,14 +229,21 @@ def create_tuples(
                     assoc, ctx, source="Manual Mapping", annotated_terms=annotated
                 )
             )
+            if citation:
+                csd_term = f"CSD_{dvid}"
+                tuples.append(
+                    (
+                        URIRef(f"{PURLBASE}/{csd_term}"),
+                        URIRef(f"{RDFSBASE}#Citation"),
+                        Literal(citation),
+                    )
+                )
 
             # CellSetDataset source Publication
-            pmid = row.get("PMID")
-            if pd.notna(pmid):
+            doi = row.get("DOI")
+            if pd.notna(doi):
                 pub = Publication(
-                    pmid=str(int(pmid)) if isinstance(pmid, float) else str(pmid),
-                    pmcid=row.get("PMCID"),
-                    publication_doi=row.get("DOI"),
+                    publication_doi=str(doi),
                 )
                 assoc = ASSOCIATION_CLASSES["CellSetDatasetHasSourcePublication"](
                     subject=csd,
@@ -252,7 +259,7 @@ def create_tuples(
         # CellType expresses Gene (for each marker and binary gene)
         for gene_symbol in markers + binary_genes:
             gene = Gene(gene_symbol=gene_symbol)
-            assoc = ASSOCIATION_CLASSES["CellTypeExpressesGene"](
+            assoc = ASSOCIATION_CLASSES["CellTypeSelectivelyExpressesGene"](
                 subject=cell_type,
                 predicate="selectively_expresses",
                 object=gene,

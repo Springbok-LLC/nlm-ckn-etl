@@ -63,10 +63,9 @@ def create_tuples(cellxgene_results: dict) -> list[tuple]:
                 metadata.get("Link_to_CELLxGENE_dataset")
             ),
             collection_id=metadata.get("Collection_ID"),
-            citation=metadata.get("Citation"),
         )
         # TODO: Populate with data from mapping or summary file
-        pub = Publication(pmid="NA")
+        pub = Publication(publication_doi="NA")
 
         assoc = ASSOCIATION_CLASSES["CellSetDatasetHasSourcePublication"](
             subject=csd,

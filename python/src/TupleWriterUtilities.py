@@ -67,7 +67,6 @@ TERM_ENCODED_FIELDS: dict[str, set[str]] = {
     "Publication": {"publication_doi"},
     "ClinicalTrial": {"study_id"},
     "Mutation": {"reference_sequence_identifier"},
-    "VariantConsequence": {"ontology_purl"},
 }
 
 # Entity fields that become edge annotation quintuples rather than
@@ -299,8 +298,8 @@ def entity_to_term(entity: Any, context: dict[str, Any] | None = None) -> str | 
         chembl_id = ctx.get("chembl_id")
         if chembl_id:
             return f"CHEMBL_{chembl_id}"
-        drug_name = getattr(entity, "drug_name", None)
-        return f"DRUG_{drug_name}" if drug_name else None
+        drug_label = getattr(entity, "label", None)
+        return f"DRUG_{drug_label}" if drug_label else None
 
     if isinstance(entity, ClinicalTrial):
         sid = getattr(entity, "study_id", None)
@@ -581,8 +580,11 @@ def build_cell_set_dataset(
 
     Returns
     -------
-    CellSetDataset
+    tuple[CellSetDataset, str | None]
+        The CellSetDataset entity and an optional citation string
+        derived from author, year, and journal fields.
     """
+    citation = None
     kwargs: dict[str, Any] = {
         "dataset_identifier": dataset_version_id,
         "species": "Homo sapiens",
@@ -604,13 +606,13 @@ def build_cell_set_dataset(
         n_cells = s.get("n_cells")
         if pd.notna(n_cells):
             kwargs["cell_count"] = int(n_cells)
-        journal = s.get("journal")
         first_author = s.get("first_author")
         year = s.get("year")
+        journal = s.get("journal")
         if first_author and year:
-            kwargs["citation"] = f"{first_author} et al. ({year})"
+            citation = f"{first_author} et al. ({year})"
             if journal:
-                kwargs["citation"] += f" {journal}"
+                citation += f" {journal}"
 
     if harvester_row is not None:
         h = harvester_row
@@ -632,9 +634,9 @@ def build_cell_set_dataset(
         first_author = _hstr("first_author")
         year = _hstr("year")
         journal = _hstr("journal")
-        if first_author and year and "citation" not in kwargs:
-            kwargs["citation"] = f"{first_author} et al. ({year})"
+        if first_author and year and citation is None:
+            citation = f"{first_author} et al. ({year})"
             if journal:
-                kwargs["citation"] += f" {journal}"
+                citation += f" {journal}"
 
-    return CellSetDataset(**kwargs)
+    return CellSetDataset(**kwargs), citation
