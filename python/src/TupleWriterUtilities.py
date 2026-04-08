@@ -46,23 +46,8 @@ TUPLES_DIRPATH = DATA_DIRPATH / "tuples"
 # Maps Pydantic field names to annotation attribute names where the
 # default capitalization convention does not match.
 FIELD_NAME_MAP: dict[str, str] = {
-    "f_beta_score": "F_beta_confidence_score",
-    "cell_count": "Total_cell_count",
-    "publication_doi": "DOI",
-    "drug_name": "Name",
-    "drug_description": "Description",
-    "drug_type": "Type",
-    "gene_id": "Gene_ID",
-    "gene_type": "Gene_type",
-    "uniprot_name": "UniProt_name",
-    "protein_function": "Function",
-    "number_of_amino_acids": "Number_of_amino_acids",
-    "annotation_score": "Annotation_score",
-    "variant_consequence_label": "Variant_consequence_label",
-    "silhouette_score": "Silhouette_score",
-    "collection_id": "Collection_ID",
-    "dataset_name": "Dataset_name",
-    "disease_status": "Disease_status",
+    # Example:
+    # "f_beta_score": "F_beta_confidence_score",
 }
 
 # Fields to skip when generating vertex annotation triples because
@@ -88,9 +73,10 @@ TERM_ENCODED_FIELDS: dict[str, set[str]] = {
 # Entity fields that become edge annotation quintuples rather than
 # vertex annotation triples.
 EDGE_ANNOTATION_FIELDS: dict[str, dict[str, set[str]]] = {
-    "CellSetHasCharacterizingMarkerSetBiomarkerCombination": {
-        "object": {"f_beta_score"},
-    },
+    # Example:
+    # "CellSetHasCharacterizingMarkerSetBiomarkerCombination": {
+    #     "object": {"f_beta_score"},
+    # },
 }
 
 # Auto-discover Association subclasses from the schema module.
