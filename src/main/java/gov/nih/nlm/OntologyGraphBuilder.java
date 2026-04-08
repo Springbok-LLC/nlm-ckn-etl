@@ -58,7 +58,6 @@ public class OntologyGraphBuilder {
             "PATO",
             "PR",
             "PUB",
-            "RS",
             "UBERON"));
 
     /**
