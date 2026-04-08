@@ -64,7 +64,7 @@ TERM_ENCODED_FIELDS: dict[str, set[str]] = {
     "Gene": {"gene_symbol"},
     "Protein": {"uniprot_id"},
     "CellSetDataset": {"dataset_identifier"},
-    "Publication": {"pmid"},
+    "Publication": {"publication_doi"},
     "ClinicalTrial": {"study_id"},
     "Mutation": {"reference_sequence_identifier"},
     "VariantConsequence": {"ontology_purl"},
@@ -292,8 +292,8 @@ def entity_to_term(entity: Any, context: dict[str, Any] | None = None) -> str | 
         return f"BGS_{uuid}" if uuid else None
 
     if isinstance(entity, Publication):
-        pmid = getattr(entity, "pmid", None)
-        return f"PUB_{pmid}" if pmid else None
+        doi = remove_protocols(getattr(entity, "publication_doi", None))
+        return f"PUB_{doi}" if doi else None
 
     if isinstance(entity, Drug):
         chembl_id = ctx.get("chembl_id")
