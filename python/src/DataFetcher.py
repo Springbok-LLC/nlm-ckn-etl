@@ -15,6 +15,7 @@ from E_Utilities import fetch_xml_for_gene_id
 from OpenTargetsGGetQueries import gget_queries
 from LoaderUtilities import (
     EXTERNAL_DIRPATH,
+    OPENTARGETS_RESOURCES,
     get_cellxgene_harvester_data,
     get_dataset_file_paths,
     get_dataset_version_id_lists,
@@ -216,17 +217,6 @@ class CellxGeneFetcher(DataFetcher):
 
 
 OPENTARGETS_BASE_URL = "https://api.platform.opentargets.org/api/v4/graphql"
-OPENTARGETS_RESOURCES = [
-    "diseases",
-    "drugs",
-    "interactions",
-    "pharmacogenetics",
-    "tractability",
-    "expression",
-    "depmap",
-]
-
-
 class OpenTargetsFetcher(DataFetcher):
     """Fetches target and resource data from the Open Targets Platform
     GraphQL API."""
