@@ -34,11 +34,19 @@ OPENTARGETS_RESOURCES = [
 
 HUBMAP_DIRPATH = Path(__file__).parents[2] / "data" / "hubmap"
 HUBMAP_LATEST_URLS = [
-    "https://lod.humanatlas.io/asct-b/allen-brain/latest/",
-    "https://lod.humanatlas.io/asct-b/eye/latest/",
-    "https://lod.humanatlas.io/asct-b/kidney/latest/",
-    "https://lod.humanatlas.io/asct-b/lung/latest/",
-    "https://lod.humanatlas.io/asct-b/pancreas/latest/",
+    "https://purl.humanatlas.io/asct-b/allen-brain/latest/",
+    "https://purl.humanatlas.io/asct-b/bone-marrow",
+    "https://purl.humanatlas.io/asct-b/eye/latest/",
+    "https://purl.humanatlas.io/asct-b/heart",
+    "https://purl.humanatlas.io/asct-b/kidney/latest/",
+    "https://purl.humanatlas.io/asct-b/large-intestine",
+    "https://purl.humanatlas.io/asct-b/liver",
+    "https://purl.humanatlas.io/asct-b/lung/latest/",
+    "https://purl.humanatlas.io/asct-b/mouth",
+    "https://purl.humanatlas.io/asct-b/palatine-tonsil",
+    "https://purl.humanatlas.io/asct-b/pancreas/latest/",
+    "https://purl.humanatlas.io/asct-b/skin",
+    "https://purl.humanatlas.io/asct-b/small-intestine",
 ]
 
 CELLXGENE_PATH = EXTERNAL_DIRPATH / "cellxgene.json"
