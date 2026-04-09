@@ -58,7 +58,6 @@ public class OntologyGraphBuilder {
             "PATO",
             "PR",
             "PUB",
-            "RS",
             "UBERON"));
 
     /**
@@ -118,9 +117,14 @@ public class OntologyGraphBuilder {
             fragment = createURI(p.getURI()).getFragment();
             term = path.substring(path.lastIndexOf("/") + 1);
             if (fragment == null) {
-                curie = term.replace("_", ":");
-                if (ontologyElementMaps.get("ro").getTerms().containsKey(term)) {
-                    label = ontologyElementMaps.get("ro").getTerms().get(term).label();
+                if (path.contains("/dc/")) {
+                    curie = "dc:" + term;
+                    label = term;
+                } else {
+                    curie = term.replace("_", ":");
+                    if (ontologyElementMaps.get("ro").getTerms().containsKey(term)) {
+                        label = ontologyElementMaps.get("ro").getTerms().get(term).label();
+                    }
                 }
             } else {
                 curie = term.replace("rdf-schema", "rdfs") + ":" + fragment;

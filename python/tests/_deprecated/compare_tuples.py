@@ -7,8 +7,11 @@ then compares the tuple sets.
 import json
 from collections import Counter
 from pathlib import Path
+import sys
 
 import pandas as pd
+
+sys.path.insert(0, str(Path(__file__).parents[2] / "src"))
 
 from LoaderUtilities import (
     DATA_DIRPATH,
@@ -240,7 +243,9 @@ def main():
 
     # --- NSForest comparison ---
     old_nsf = run_old_nsforest(nsforest_path, scores_path, summary_path, dvids)
-    new_nsf = run_new_nsforest(nsforest_path, scores_path, summary_path, dvids, harvester_data)
+    new_nsf = run_new_nsforest(
+        nsforest_path, scores_path, summary_path, dvids, harvester_data
+    )
 
     summarize_tuples(old_nsf, "OLD NSForest")
     summarize_tuples(new_nsf, "NEW NSForest")
@@ -351,9 +356,12 @@ def compare_external_api():
     results_sources = get_results_sources()
     file_paths = get_dataset_file_paths(results_sources)
     from LoaderUtilities import get_cl_terms
+
     cl_terms = get_cl_terms(file_paths["mapping_paths"])
 
-    hubmap_paths = sorted(Path(p).resolve() for p in glob(str(HUBMAP_DIRPATH / "*.json")))
+    hubmap_paths = sorted(
+        Path(p).resolve() for p in glob(str(HUBMAP_DIRPATH / "*.json"))
+    )
     if hubmap_paths:
         hubmap_path = hubmap_paths[0]  # Compare first HuBMAP file
         print(f"Comparing HuBMAP file: {hubmap_path.name}")

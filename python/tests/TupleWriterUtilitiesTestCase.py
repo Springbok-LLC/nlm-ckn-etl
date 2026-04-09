@@ -20,7 +20,6 @@ from ckn_schema.pydantic.ckn_schema import (
     Mutation,
     Protein,
     Publication,
-    VariantConsequence,
 )
 
 import TupleWriterUtilities as twu
@@ -151,19 +150,26 @@ class EntityToTermTestCase(unittest.TestCase):
             "BGS_xyz789",
         )
 
-    def test_publication(self):
-        pub = Publication(pmid="12345678")
-        self.assertEqual(twu.entity_to_term(pub), "PUB_12345678")
+    def test_publication_with_context(self):
+        pub = Publication(publication_doi="10.1234/test")
+        self.assertEqual(
+            twu.entity_to_term(pub, {"dataset_version_id": "dvid-001"}),
+            "PUB_dvid-001",
+        )
+
+    def test_publication_without_context(self):
+        pub = Publication(publication_doi="10.1234/test")
+        self.assertEqual(twu.entity_to_term(pub), "PUB_10.1234/test")
 
     def test_drug_with_chembl_context(self):
-        drug = Drug(drug_name="Imatinib")
+        drug = Drug(label="Imatinib")
         self.assertEqual(
             twu.entity_to_term(drug, {"chembl_id": "941"}),
             "CHEMBL_941",
         )
 
     def test_drug_without_context(self):
-        drug = Drug(drug_name="Imatinib")
+        drug = Drug(label="Imatinib")
         self.assertEqual(twu.entity_to_term(drug), "DRUG_Imatinib")
 
     def test_clinical_trial(self):
@@ -177,11 +183,6 @@ class EntityToTermTestCase(unittest.TestCase):
     def test_disease_fallback(self):
         disease = Disease(ontology_purl="MONDO:0009061")
         self.assertEqual(twu.entity_to_term(disease), "MONDO_0009061")
-
-    def test_variant_consequence_fallback(self):
-        vc = VariantConsequence(ontology_purl="SO:0001819")
-        self.assertEqual(twu.entity_to_term(vc), "SO_0001819")
-
 
 class GetPredicateUriTestCase(unittest.TestCase):
     """Tests for get_predicate_uri."""
@@ -198,7 +199,7 @@ class GetPredicateUriTestCase(unittest.TestCase):
         )
 
     def test_selectively_expresses(self):
-        assoc = twu.ASSOCIATION_CLASSES["CellTypeExpressesGene"](
+        assoc = twu.ASSOCIATION_CLASSES["CellTypeSelectivelyExpressesGene"](
             subject=CellType(ontology_purl="CL:0000235"),
             predicate="selectively_expresses",
             object=Gene(gene_symbol="TP53"),

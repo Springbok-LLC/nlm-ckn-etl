@@ -86,10 +86,13 @@ def create_tuples(
     """
     tuples = []
 
-    uberon_terms = [
-        t.replace(":", "_").strip()
-        for t in str(summary_data.iloc[0]["tissue_ontology_term_id"]).split("|")
-    ]
+    if summary_data.empty:
+        uberon_terms = []
+    else:
+        uberon_terms = [
+            t.replace(":", "_").strip()
+            for t in str(summary_data.iloc[0]["tissue_ontology_term_id"]).split("|")
+        ]
 
     for _, row in nsforest_results.iterrows():
         uuid = row["uuid"]
@@ -171,7 +174,7 @@ def create_tuples(
                 cs_uri,
                 pred_uri,
                 bmc_uri,
-                URIRef(f"{PURLBASE}/#source_algorithm"),
+                URIRef(f"{RDFSBASE}/#source_algorithm"),
                 Literal("NSForest-v4.0_dev"),
             )
         )
@@ -195,7 +198,7 @@ def create_tuples(
                 if not match.empty:
                     harvester_row = match.iloc[0]
 
-            csd = build_cell_set_dataset(dvid, summary_data, harvester_row)
+            csd, citation = build_cell_set_dataset(dvid, summary_data, harvester_row)
             assoc = ASSOCIATION_CLASSES["CellSetHasSourceCellSetDataset"](
                 subject=cell_set,
                 predicate="source",
@@ -206,6 +209,15 @@ def create_tuples(
                     assoc, ctx, source="NSForest", annotated_terms=annotated
                 )
             )
+            if citation:
+                csd_term = f"CSD_{dvid}"
+                tuples.append(
+                    (
+                        URIRef(f"{PURLBASE}/{csd_term}"),
+                        URIRef(f"{RDFSBASE}#Citation"),
+                        Literal(citation),
+                    )
+                )
 
         # Gene part_of BiomarkerCombination (for each marker)
         for gene_symbol in markers:

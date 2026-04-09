@@ -46,23 +46,8 @@ TUPLES_DIRPATH = DATA_DIRPATH / "tuples"
 # Maps Pydantic field names to annotation attribute names where the
 # default capitalization convention does not match.
 FIELD_NAME_MAP: dict[str, str] = {
-    "f_beta_score": "F_beta_confidence_score",
-    "cell_count": "Total_cell_count",
-    "publication_doi": "DOI",
-    "drug_name": "Name",
-    "drug_description": "Description",
-    "drug_type": "Type",
-    "gene_id": "Gene_ID",
-    "gene_type": "Gene_type",
-    "uniprot_name": "UniProt_name",
-    "protein_function": "Function",
-    "number_of_amino_acids": "Number_of_amino_acids",
-    "annotation_score": "Annotation_score",
-    "variant_consequence_label": "Variant_consequence_label",
-    "silhouette_score": "Silhouette_score",
-    "collection_id": "Collection_ID",
-    "dataset_name": "Dataset_name",
-    "disease_status": "Disease_status",
+    # Example:
+    # "f_beta_score": "F_beta_confidence_score",
 }
 
 # Fields to skip when generating vertex annotation triples because
@@ -76,21 +61,20 @@ TERM_ENCODED_FIELDS: dict[str, set[str]] = {
     "MolecularFunction": {"ontology_purl"},
     "Species": {"ontology_purl"},
     "LifeCycleStage": {"ontology_purl"},
-    "Gene": {"gene_symbol"},
-    "Protein": {"uniprot_id"},
-    "CellSetDataset": {"dataset_identifier"},
-    "Publication": {"pmid"},
-    "ClinicalTrial": {"study_id"},
-    "Mutation": {"reference_sequence_identifier"},
-    "VariantConsequence": {"ontology_purl"},
+    # "Gene": {"gene_symbol"},
+    # "Protein": {"uniprot_id"},
+    # "CellSetDataset": {"dataset_identifier"},
+    # "ClinicalTrial": {"study_id"},
+    # "Mutation": {"reference_sequence_identifier"},
 }
 
 # Entity fields that become edge annotation quintuples rather than
 # vertex annotation triples.
 EDGE_ANNOTATION_FIELDS: dict[str, dict[str, set[str]]] = {
-    "CellSetHasCharacterizingMarkerSetBiomarkerCombination": {
-        "object": {"f_beta_score"},
-    },
+    # Example:
+    # "CellSetHasCharacterizingMarkerSetBiomarkerCombination": {
+    #     "object": {"f_beta_score"},
+    # },
 }
 
 # Auto-discover Association subclasses from the schema module.
@@ -306,15 +290,18 @@ def entity_to_term(entity: Any, context: dict[str, Any] | None = None) -> str | 
         return f"BGS_{uuid}" if uuid else None
 
     if isinstance(entity, Publication):
-        pmid = getattr(entity, "pmid", None)
-        return f"PUB_{pmid}" if pmid else None
+        dvid = ctx.get("dataset_version_id")
+        if dvid:
+            return f"PUB_{dvid}"
+        doi = remove_protocols(getattr(entity, "publication_doi", None))
+        return f"PUB_{doi}" if doi else None
 
     if isinstance(entity, Drug):
         chembl_id = ctx.get("chembl_id")
         if chembl_id:
             return f"CHEMBL_{chembl_id}"
-        drug_name = getattr(entity, "drug_name", None)
-        return f"DRUG_{drug_name}" if drug_name else None
+        drug_label = getattr(entity, "label", None)
+        return f"DRUG_{drug_label}" if drug_label else None
 
     if isinstance(entity, ClinicalTrial):
         sid = getattr(entity, "study_id", None)
@@ -595,10 +582,11 @@ def build_cell_set_dataset(
 
     Returns
     -------
-    CellSetDataset
+    tuple[CellSetDataset, str | None]
+        The CellSetDataset entity and an optional citation string
+        derived from author, year, and journal fields.
     """
-    from typing import Any
-
+    citation = None
     kwargs: dict[str, Any] = {
         "dataset_identifier": dataset_version_id,
         "species": "Homo sapiens",
@@ -620,13 +608,13 @@ def build_cell_set_dataset(
         n_cells = s.get("n_cells")
         if pd.notna(n_cells):
             kwargs["cell_count"] = int(n_cells)
-        journal = s.get("journal")
         first_author = s.get("first_author")
         year = s.get("year")
+        journal = s.get("journal")
         if first_author and year:
-            kwargs["citation"] = f"{first_author} et al. ({year})"
+            citation = f"{first_author} et al. ({year})"
             if journal:
-                kwargs["citation"] += f" {journal}"
+                citation += f" {journal}"
 
     if harvester_row is not None:
         h = harvester_row
@@ -648,9 +636,9 @@ def build_cell_set_dataset(
         first_author = _hstr("first_author")
         year = _hstr("year")
         journal = _hstr("journal")
-        if first_author and year and "citation" not in kwargs:
-            kwargs["citation"] = f"{first_author} et al. ({year})"
+        if first_author and year and citation is None:
+            citation = f"{first_author} et al. ({year})"
             if journal:
-                kwargs["citation"] += f" {journal}"
+                citation += f" {journal}"
 
-    return CellSetDataset(**kwargs)
+    return CellSetDataset(**kwargs), citation

@@ -48,15 +48,15 @@ class GeneTupleWriterTestCase(unittest.TestCase):
         self.assertIn("Gene_type", attrs)
         self.assertIn("Species", attrs)
 
-    def test_also_known_as_joined(self):
+    def test_exact_synonym_joined(self):
         tuples = create_tuples(self._make_data())
-        aka_tuples = [
+        synonym_tuples = [
             t for t in tuples
-            if len(t) == 3 and "Also_known_as" in str(t[1])
+            if len(t) == 3 and "Exact_synonym" in str(t[1])
         ]
-        self.assertEqual(len(aka_tuples), 1)
-        self.assertIn("NCAD", str(aka_tuples[0][2]))
-        self.assertNotIn("[", str(aka_tuples[0][2]))
+        self.assertEqual(len(synonym_tuples), 1)
+        self.assertIn("NCAD", str(synonym_tuples[0][2]))
+        self.assertNotIn("[", str(synonym_tuples[0][2]))
 
 
 if __name__ == "__main__":

@@ -27,7 +27,6 @@ from ckn_schema.pydantic.ckn_schema import (
     CellSet,
     CellType,
     Gene,
-    Publication,
 )
 
 from TupleWriterUtilities import (
@@ -53,8 +52,7 @@ def create_tuples(
     - CellTypePartOfAnatomicalStructure
     - CellSetComposedPrimarilyOfCellType
     - CellTypeHasExemplarDataCellSetDataset
-    - CellSetDatasetHasSourcePublication
-    - CellTypeExpressesGene (for each marker + binary gene)
+    - CellTypeSelectivelyExpressesGene (for each marker + binary gene)
 
     Parameters
     ----------
@@ -127,7 +125,7 @@ def create_tuples(
 
         cell_set = CellSet(
             author_cell_term=author_cell_set,
-            ontology_purl=cell_type,
+            ontology_purl=cell_type.ontology_purl,
             anatomical_structure=anat.ontology_purl,
             species="Homo sapiens",
             publication=str(doi) if pd.notna(doi) else None,
@@ -208,7 +206,7 @@ def create_tuples(
                 if not match_df.empty:
                     harvester_row = match_df.iloc[0]
 
-            csd = build_cell_set_dataset(
+            csd, citation = build_cell_set_dataset(
                 dvid,
                 harvester_row=harvester_row,
                 doi=str(doi) if pd.notna(doi) else None,
@@ -229,30 +227,20 @@ def create_tuples(
                     assoc, ctx, source="Manual Mapping", annotated_terms=annotated
                 )
             )
-
-            # CellSetDataset source Publication
-            pmid = row.get("PMID")
-            if pd.notna(pmid):
-                pub = Publication(
-                    pmid=str(int(pmid)) if isinstance(pmid, float) else str(pmid),
-                    pmcid=row.get("PMCID"),
-                    publication_doi=row.get("DOI"),
-                )
-                assoc = ASSOCIATION_CLASSES["CellSetDatasetHasSourcePublication"](
-                    subject=csd,
-                    predicate="source",
-                    object=pub,
-                )
-                tuples.extend(
-                    association_to_tuples(
-                        assoc, ctx, source="Manual Mapping", annotated_terms=annotated
+            if citation:
+                csd_term = f"CSD_{dvid}"
+                tuples.append(
+                    (
+                        URIRef(f"{PURLBASE}/{csd_term}"),
+                        URIRef(f"{RDFSBASE}#Citation"),
+                        Literal(citation),
                     )
                 )
 
         # CellType expresses Gene (for each marker and binary gene)
         for gene_symbol in markers + binary_genes:
             gene = Gene(gene_symbol=gene_symbol)
-            assoc = ASSOCIATION_CLASSES["CellTypeExpressesGene"](
+            assoc = ASSOCIATION_CLASSES["CellTypeSelectivelyExpressesGene"](
                 subject=cell_type,
                 predicate="selectively_expresses",
                 object=gene,

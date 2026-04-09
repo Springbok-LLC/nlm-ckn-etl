@@ -19,6 +19,7 @@ from TupleWriterUtilities import (
     ASSOCIATION_CLASSES,
     TUPLES_DIRPATH,
     association_to_tuples,
+    entity_to_annotation_triples,
     remove_protocols,
     write_tuples,
 )
@@ -62,9 +63,9 @@ def create_tuples(gene_results: dict) -> list[tuple]:
 
         data = gene_results[gene_entrez_id]
 
-        also_known_as = data.get("Also_known_as")
-        if isinstance(also_known_as, list):
-            also_known_as = ", ".join(str(a) for a in also_known_as)
+        exact_synonym = data.get("Also_known_as")
+        if isinstance(exact_synonym, list):
+            exact_synonym = ", ".join(str(a) for a in exact_synonym)
 
         mrna_pro_seq = data.get("mRNA_(NM)_and_protein_(NP)_sequences")
         if isinstance(mrna_pro_seq, list):
@@ -77,11 +78,10 @@ def create_tuples(gene_results: dict) -> list[tuple]:
             label=data.get("Official_full_name"),
             gene_type=data.get("Gene_type"),
             gene_id=str(data["Gene_ID"]) if data.get("Gene_ID") is not None else None,
-            also_known_as=also_known_as,
+            exact_synonym=exact_synonym,
             refseq_summary=data.get("Summary"),
             uniprot_name=data.get("UniProt_name"),
             reference_sequence_identifier=data.get("RefSeq_gene_ID"),
-            link_to_uniprot_id=remove_protocols(data.get("Link_to_UniProt_ID")),
             species=data.get("Organism"),
             mrna__nm__and_protein__np__sequences=mrna_pro_seq,
         )
@@ -101,8 +101,6 @@ def create_tuples(gene_results: dict) -> list[tuple]:
             tuples.extend(association_to_tuples(assoc, source="UniProt"))
         else:
             # Still emit Gene annotations even without a Protein association
-            from TupleWriterUtilities import entity_to_annotation_triples
-
             gs_term = f"GS_{gene_name}"
             tuples.extend(entity_to_annotation_triples(gene_entity, gs_term))
 

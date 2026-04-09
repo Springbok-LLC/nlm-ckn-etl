@@ -7,8 +7,11 @@ from CELLxGENE curation API metadata.
 import json
 
 from ckn_schema.pydantic.ckn_schema import CellSetDataset, Publication
+from rdflib.term import Literal, URIRef
 
 from DataFetcher import CELLXGENE_PATH
+
+from LoaderUtilities import PURLBASE, RDFSBASE
 
 from TupleWriterUtilities import (
     ASSOCIATION_CLASSES,
@@ -60,33 +63,33 @@ def create_tuples(cellxgene_results: dict) -> list[tuple]:
                 metadata.get("Link_to_CELLxGENE_dataset")
             ),
             collection_id=metadata.get("Collection_ID"),
-            citation=metadata.get("Citation"),
         )
-        # TODO: Populate with data from mapping or summary file
-        pub = Publication(pmid="NA")
+        pub = Publication(
+            publication_doi=remove_protocols(metadata.get("Link_to_publication")),
+        )
+        ctx = {"dataset_version_id": dataset_version_id}
 
         assoc = ASSOCIATION_CLASSES["CellSetDatasetHasSourcePublication"](
             subject=csd,
             predicate="source",
             object=pub,
         )
-        tuples.extend(association_to_tuples(assoc, source="CELLxGENE"))
+        tuples.extend(
+            association_to_tuples(assoc, ctx, source="CELLxGENE")
+        )
 
         # Additional PUB annotations not on the Publication entity
         pub_term = f"PUB_{dataset_version_id}"
-        from rdflib.term import Literal, URIRef
-        from LoaderUtilities import PURLBASE, RDFSBASE
 
-        for key in ["Citation", "Link_to_publication", "Link_to_CELLxGENE_collection"]:
-            value = metadata.get(key)
-            if value:
-                tuples.append(
-                    (
-                        URIRef(f"{PURLBASE}/{pub_term}"),
-                        URIRef(f"{RDFSBASE}#{key}"),
-                        Literal(remove_protocols(value)),
-                    )
+        citation = metadata.get("Citation")
+        if citation:
+            tuples.append(
+                (
+                    URIRef(f"{PURLBASE}/{pub_term}"),
+                    URIRef(f"{RDFSBASE}#Citation"),
+                    Literal(citation),
                 )
+            )
 
     return tuples
 
