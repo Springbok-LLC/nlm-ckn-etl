@@ -168,6 +168,12 @@ class CellxGeneFetcherTestCase(unittest.TestCase):
         ids = fetcher.get_ids(context)
         self.assertEqual(ids, ["id1", "id2", "id3"])
 
+    def test_get_ids_raises_on_missing_context(self):
+        """get_ids raises ValueError when context is missing required key."""
+        fetcher = CellxGeneFetcher()
+        with self.assertRaises(ValueError):
+            fetcher.get_ids({})
+
     @patch("DataFetcher.requests.get")
     def test_fetch_one_success(self, mock_get):
         """fetch_one returns dataset and collection JSON on success."""
@@ -206,6 +212,12 @@ class OpenTargetsFetcherTestCase(unittest.TestCase):
         fetcher = OpenTargetsFetcher()
         context = {"gene_data": {"gene_ensembl_ids": ["ENSG001", "ENSG002"]}}
         self.assertEqual(fetcher.get_ids(context), ["ENSG001", "ENSG002"])
+
+    def test_get_ids_raises_on_missing_context(self):
+        """get_ids raises ValueError when context is missing required key."""
+        fetcher = OpenTargetsFetcher()
+        with self.assertRaises(ValueError):
+            fetcher.get_ids({})
 
     @patch("DataFetcher.requests.post")
     def test_fetch_one_success(self, mock_post):
@@ -252,6 +264,12 @@ class GeneFetcherTestCase(unittest.TestCase):
         context = {"gene_data": {"gene_entrez_ids": ["896", "1080"]}}
         self.assertEqual(fetcher.get_ids(context), ["896", "1080"])
 
+    def test_get_ids_raises_on_missing_context(self):
+        """get_ids raises ValueError when context is missing required key."""
+        fetcher = GeneFetcher()
+        with self.assertRaises(ValueError):
+            fetcher.get_ids({})
+
     @patch("DataFetcher.fetch_xml_for_gene_id")
     def test_fetch_one_compresses_xml(self, mock_fetch):
         """fetch_one returns gzip-compressed base64-encoded XML."""
@@ -287,6 +305,12 @@ class GeneFetcherTestCase(unittest.TestCase):
 
 class UniProtFetcherTestCase(unittest.TestCase):
     """Tests for UniProtFetcher."""
+
+    def test_get_ids_raises_on_missing_context(self):
+        """get_ids raises ValueError when context is missing required key."""
+        fetcher = UniProtFetcher()
+        with self.assertRaises(ValueError):
+            fetcher.get_ids({})
 
     def test_get_ids_derives_accessions(self):
         """get_ids extracts unique sorted protein accessions from gene results."""

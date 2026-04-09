@@ -172,6 +172,10 @@ class CellxGeneFetcher(DataFetcher):
 
     def get_ids(self, context):
         """Flatten dataset_version_id_lists into a single list."""
+        if "dataset_version_id_lists" not in context:
+            raise ValueError(
+                "CellxGeneFetcher requires 'dataset_version_id_lists' in context"
+            )
         dataset_version_id_lists = context["dataset_version_id_lists"]
         ids = []
         for id_list in dataset_version_id_lists:
@@ -226,6 +230,10 @@ class OpenTargetsFetcher(DataFetcher):
 
     def get_ids(self, context):
         """Return gene Ensembl IDs."""
+        if "gene_data" not in context:
+            raise ValueError(
+                "OpenTargetsFetcher requires 'gene_data' in context"
+            )
         return context["gene_data"]["gene_ensembl_ids"]
 
     def fetch_one(self, gene_ensembl_id):
@@ -281,6 +289,10 @@ class GeneFetcher(DataFetcher):
 
     def get_ids(self, context):
         """Return gene Entrez IDs."""
+        if "gene_data" not in context:
+            raise ValueError(
+                "GeneFetcher requires 'gene_data' in context"
+            )
         return context["gene_data"]["gene_entrez_ids"]
 
     def fetch_one(self, gene_entrez_id):
@@ -339,6 +351,11 @@ class UniProtFetcher(DataFetcher):
         list
             Unique protein accession strings
         """
+        if "gene_results" not in context:
+            raise ValueError(
+                "UniProtFetcher requires 'gene_results' in context"
+                " — run GeneFetcher first"
+            )
         gene_results = context["gene_results"]
         accessions = set()
         for gene_id, gene_data in gene_results.items():
