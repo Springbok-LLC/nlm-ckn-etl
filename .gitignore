@@ -42,6 +42,7 @@ build/
 .built
 .ai
 .archived
+.env
 .poetry/
 .pybiomart.sqlite
 .pytest_cache/

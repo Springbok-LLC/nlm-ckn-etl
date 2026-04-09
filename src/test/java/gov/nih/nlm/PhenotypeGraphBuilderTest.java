@@ -12,6 +12,11 @@ import java.util.Map;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+/**
+ * @deprecated Tests for deprecated {@link PhenotypeGraphBuilder}.
+ */
+@Deprecated
+@SuppressWarnings("deprecation")
 class PhenotypeGraphBuilderTest {
 
     private static Map<String, Object> makeVertexMap(String id, String key) {
