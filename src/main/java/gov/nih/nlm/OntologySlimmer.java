@@ -1,6 +1,5 @@
 package gov.nih.nlm;
 
-import javax.xml.stream.XMLEventFactory;
 import javax.xml.stream.XMLEventReader;
 import javax.xml.stream.XMLEventWriter;
 import javax.xml.stream.XMLInputFactory;
@@ -28,7 +27,6 @@ public class OntologySlimmer {
 
     private static final String OWL_NS = "http://www.w3.org/2002/07/owl#";
     private static final String RDF_NS = "http://www.w3.org/1999/02/22-rdf-syntax-ns#";
-    private static final String SOME_VALUES_FROM = "http://purl.obolibrary.org/obo/NCBITaxon_";
 
     /**
      * Filter an OWL file to retain only classes with a taxon restriction for the given NCBI taxon ID.
@@ -48,8 +46,6 @@ public class OntologySlimmer {
 
         XMLInputFactory inputFactory = XMLInputFactory.newInstance();
         XMLOutputFactory outputFactory = XMLOutputFactory.newInstance();
-        XMLEventFactory eventFactory = XMLEventFactory.newInstance();
-
         int classesWritten = 0;
         int classesSkipped = 0;
 
@@ -158,14 +154,15 @@ public class OntologySlimmer {
 
     /**
      * Filter pr.owl in data/obo to retain only human (NCBITaxon 9606) protein classes.
-     * Reads pr.owl, writes the filtered result to pr-9606.owl, then replaces pr.owl.
+     * Writes the filtered result to pr-slim.owl, then moves pr.owl to .archive/pr.owl.
      *
      * @param args (None expected)
      */
     public static void main(String[] args) {
         Path fullFile = OBO_DIR.resolve("pr.owl");
-        Path slimFile = OBO_DIR.resolve("pr-9606.owl");
-        Path backupFile = OBO_DIR.resolve("pr-full.owl");
+        Path slimFile = OBO_DIR.resolve("pr-slim.owl");
+        Path archiveDir = OBO_DIR.resolve(".archive");
+        Path archiveFile = archiveDir.resolve("pr.owl");
 
         if (!Files.exists(fullFile)) {
             throw new RuntimeException("pr.owl not found in " + OBO_DIR);
@@ -178,11 +175,10 @@ public class OntologySlimmer {
             long stopTime = System.nanoTime();
             System.out.println("Slimmed in " + (stopTime - startTime) / 1e9 + " s");
 
-            // Rename pr.owl -> pr-full.owl, pr-9606.owl -> pr.owl
-            System.out.println("Renaming " + fullFile + " to " + backupFile);
-            Files.move(fullFile, backupFile);
-            System.out.println("Renaming " + slimFile + " to " + fullFile);
-            Files.move(slimFile, fullFile);
+            // Move pr.owl to .archive/pr.owl
+            Files.createDirectories(archiveDir);
+            System.out.println("Moving " + fullFile + " to " + archiveFile);
+            Files.move(fullFile, archiveFile);
 
         } catch (IOException | XMLStreamException e) {
             throw new RuntimeException(e);
