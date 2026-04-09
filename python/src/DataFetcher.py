@@ -437,9 +437,11 @@ class HuBMAPFetcher(DataFetcher):
                 print(f"HuBMAP data table {hubmap_filepath} already exists")
                 continue
 
+            archive_dirpath = HUBMAP_DIRPATH / ".archive"
+            os.makedirs(archive_dirpath, exist_ok=True)
             for pathname in glob(str(HUBMAP_DIRPATH / f"{org}-v*.json")):
                 try:
-                    shutil.move(Path(pathname), HUBMAP_DIRPATH / ".archive")
+                    shutil.move(Path(pathname), archive_dirpath)
                     print(f"Archived HuBMAP data table {pathname}")
                 except Exception:
                     os.remove(pathname)
