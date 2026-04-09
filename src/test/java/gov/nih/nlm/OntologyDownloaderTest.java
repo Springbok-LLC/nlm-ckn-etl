@@ -52,7 +52,7 @@ class OntologyDownloaderTest {
 
     @Test
     void oboPurls_containsExpectedUrls() {
-        assertEquals(9, OntologyDownloader.OBO_PURLS.size());
+        assertEquals(10, OntologyDownloader.OBO_PURLS.size());
         assertTrue(OntologyDownloader.OBO_PURLS.contains("http://purl.obolibrary.org/obo/cl.owl"));
         assertTrue(OntologyDownloader.OBO_PURLS.contains("http://purl.obolibrary.org/obo/ro.owl"));
     }
