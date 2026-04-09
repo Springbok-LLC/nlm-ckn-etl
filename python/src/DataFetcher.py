@@ -23,6 +23,8 @@ from LoaderUtilities import (
 )
 
 
+REQUEST_TIMEOUT = 30  # seconds
+
 class DataFetcher:
     """Base class for all external API data fetchers. Subclasses implement
     get_ids() and fetch_one(). The batch loop, checkpointing, and CLI
@@ -189,7 +191,7 @@ class CellxGeneFetcher(DataFetcher):
             Raw response with keys 'dataset_json' and 'collection_json'
         """
         dataset_url = f"{self.BASE_URL}/dataset_versions/{dataset_version_id}"
-        response = requests.get(dataset_url)
+        response = requests.get(dataset_url, timeout=REQUEST_TIMEOUT)
         if response.status_code != 200:
             print(
                 f"[{self.name}] Could not fetch dataset for "
@@ -203,7 +205,7 @@ class CellxGeneFetcher(DataFetcher):
         collection_id = dataset_json.get("collection_id")
         if collection_id:
             collection_url = f"{self.BASE_URL}/collections/{collection_id}"
-            resp = requests.get(collection_url)
+            resp = requests.get(collection_url, timeout=REQUEST_TIMEOUT)
             if resp.status_code == 200:
                 collection_json = resp.json()
 
@@ -257,6 +259,7 @@ class OpenTargetsFetcher(DataFetcher):
                 "query": query["query_string"],
                 "variables": query["variables"],
             },
+            timeout=REQUEST_TIMEOUT,
         )
         response.raise_for_status()
         print(
@@ -369,7 +372,8 @@ class UniProtFetcher(DataFetcher):
             Raw UniProt API response
         """
         response = requests.get(
-            f"https://rest.uniprot.org/uniprotkb/{protein_accession}"
+            f"https://rest.uniprot.org/uniprotkb/{protein_accession}",
+            timeout=REQUEST_TIMEOUT,
         )
         if response.status_code == 200:
             print(
@@ -447,7 +451,7 @@ class HuBMAPFetcher(DataFetcher):
                     os.remove(pathname)
                     print(f"Removed HuBMAP data table {pathname}")
 
-            response = requests.get(url)
+            response = requests.get(url, timeout=REQUEST_TIMEOUT)
             if response.status_code == 200:
                 with open(hubmap_filepath, "w") as fp:
                     fp.write(response.text)
@@ -476,7 +480,7 @@ class HuBMAPFetcher(DataFetcher):
             else:
                 raise Exception("No organ in HuBMAP URL")
 
-            response = requests.get(latest_url)
+            response = requests.get(latest_url, timeout=REQUEST_TIMEOUT)
             if response.status_code == 200:
                 m_url = p_url.search(response.text)
                 if m_url is not None:

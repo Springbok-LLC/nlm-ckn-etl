@@ -12,6 +12,7 @@ EUTILS_URL = "https://eutils.ncbi.nlm.nih.gov/entrez/eutils/"
 NCBI_EMAIL = os.environ.get("NCBI_EMAIL")
 NCBI_API_KEY = os.environ.get("NCBI_API_KEY")
 NCBI_API_SLEEP = 1
+REQUEST_TIMEOUT = 30  # seconds
 
 
 def find_names_or_none(soup, names, attribute=None):
@@ -77,7 +78,7 @@ def get_data_for_pmid(pmid, do_write=False):
         "api_key": NCBI_API_KEY,
     }
     sleep(NCBI_API_SLEEP)
-    response = requests.get(fetch_url, params=parse.urlencode(params, safe=","))
+    response = requests.get(fetch_url, params=parse.urlencode(params, safe=","), timeout=REQUEST_TIMEOUT)
     if response.status_code == 200:
         xml_data = response.text
         if do_write:
@@ -134,7 +135,7 @@ def find_gene_id_for_gene_name(name, do_write=False):
         "api_key": NCBI_API_KEY,
     }
     sleep(NCBI_API_SLEEP)
-    response = requests.get(search_url, params=parse.urlencode(params, safe=","))
+    response = requests.get(search_url, params=parse.urlencode(params, safe=","), timeout=REQUEST_TIMEOUT)
     if response.status_code == 200:
         json_data = response.json()
         if do_write:
@@ -180,7 +181,7 @@ def fetch_xml_for_gene_id(gene_id):
         "api_key": NCBI_API_KEY,
     }
     sleep(NCBI_API_SLEEP)
-    response = requests.get(fetch_url, params=parse.urlencode(params, safe=","))
+    response = requests.get(fetch_url, params=parse.urlencode(params, safe=","), timeout=REQUEST_TIMEOUT)
     if response.status_code == 200:
         return response.text
     else:
