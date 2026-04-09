@@ -291,16 +291,17 @@ class EntityToAnnotationTriplesTestCase(unittest.TestCase):
         )
         triples = twu.entity_to_annotation_triples(gene, "GS_TP53")
         attr_names = [str(t[1]).split("#")[-1] for t in triples]
+        self.assertIn("Gene_symbol", attr_names)
         self.assertIn("Label", attr_names)
         self.assertIn("Gene_type", attr_names)
-        # gene_symbol is term-encoded, should be skipped
-        self.assertNotIn("Gene_symbol", attr_names)
 
     def test_none_fields_skipped(self):
         gene = Gene(gene_symbol="TP53")
         triples = twu.entity_to_annotation_triples(gene, "GS_TP53")
-        # Only gene_symbol field is populated but it's term-encoded
-        self.assertEqual(len(triples), 0)
+        # Only gene_symbol is populated; None fields are skipped
+        self.assertEqual(len(triples), 1)
+        attr_name = str(triples[0][1]).split("#")[-1]
+        self.assertEqual(attr_name, "Gene_symbol")
 
     def test_edge_fields_skipped(self):
         bmc = BiomarkerCombination(markers="TP53 BRCA1", f_beta_score=0.85)

@@ -61,11 +61,6 @@ TERM_ENCODED_FIELDS: dict[str, set[str]] = {
     "MolecularFunction": {"ontology_purl"},
     "Species": {"ontology_purl"},
     "LifeCycleStage": {"ontology_purl"},
-    # "Gene": {"gene_symbol"},
-    # "Protein": {"uniprot_id"},
-    # "CellSetDataset": {"dataset_identifier"},
-    # "ClinicalTrial": {"study_id"},
-    # "Mutation": {"reference_sequence_identifier"},
 }
 
 # Entity fields that become edge annotation quintuples rather than
