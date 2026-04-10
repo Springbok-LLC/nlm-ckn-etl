@@ -19,6 +19,8 @@ import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
+import java.util.TreeSet;
 
 import static gov.nih.nlm.OntologyElementParser.parseOntologyElements;
 import static gov.nih.nlm.PathUtilities.OBO_DIR;
@@ -35,33 +37,80 @@ public class OntologyTripleParser {
             "http://purl.org/dc/",
             "http://www.geneontology.org/formats/oboInOwl#");
 
+    // Additional class namespaces to include per ontology file, beyond the root namespace.
+    // Key: OWL filename, Value: set of namespace prefixes to include.
+    private static final Map<String, Set<String>> EXTRA_NAMESPACES = Map.of(
+            "cl.owl", Set.of("http://purl.obolibrary.org/obo/PR")
+    );
+
     /**
-     * Test whether a triple is valid by checking that the subject contains the root namespace, and optionally that any
-     * named object also contains the root namespace.
+     * Build the set of namespaces for a given ontology file. Includes the root namespace
+     * plus any additional namespaces configured in EXTRA_NAMESPACES.
      *
-     * @param triple     Triple to validate
-     * @param rootNS     Root namespace to check against
-     * @param testObjectInRootNS If true, also validate that named objects contain the root namespace
-     * @return true if the triple is valid
+     * @param rootNS   Root namespace derived from the ontology
+     * @param fileName Name of the OWL file
+     * @return Set of namespace prefixes to accept
      */
-    public static boolean isValidTriple(Triple triple, String rootNS, boolean testObjectInRootNS) {
-        boolean subjectIsValid = triple.getSubject().toString().contains(rootNS);
-        if (testObjectInRootNS) {
-            boolean objectIsNamedResource = triple.getObject().isURI();
-            boolean objectContainsRootNS = triple.getObject().toString().contains(rootNS);
-            return subjectIsValid && (!objectIsNamedResource || objectContainsRootNS);
-        } return subjectIsValid;
+    static Set<String> getNamespaces(String rootNS, String fileName) {
+        Set<String> namespaces = new HashSet<>();
+        namespaces.add(rootNS);
+        Set<String> extras = EXTRA_NAMESPACES.get(fileName);
+        if (extras != null) {
+            namespaces.addAll(extras);
+        }
+        return namespaces;
     }
 
     /**
-     * Read an OWL file and identify the root namespace. Collect triples from statements which contain a named object
-     * and a predicate in one of the specified namespaces. Handle statements which contain an anonymous object and an
-     * rdfs:subClassOf predicate by flattening all statements about the anonymous object into a single statement with a
-     * named subject and object, then collecting the triple from the single statement. Optionally skip statements with a
-     * named object not in the root namespace
+     * Test whether a URI starts with any of the given namespace prefixes.
+     *
+     * @param uri        URI to check
+     * @param namespaces Set of namespace prefixes
+     * @return true if the URI starts with any namespace
+     */
+    private static boolean matchesAnyNamespace(String uri, Set<String> namespaces) {
+        for (String ns : namespaces) {
+            if (uri.startsWith(ns)) return true;
+        }
+        return false;
+    }
+
+    /**
+     * Test whether a triple is valid by checking that the subject matches one of the accepted namespaces,
+     * and optionally that any named object also matches.
+     *
+     * @param triple             Triple to validate
+     * @param namespaces         Set of namespace prefixes to accept
+     * @param testObjectInRootNS If true, also validate that named objects match an accepted namespace
+     * @return true if the triple is valid
+     */
+    public static boolean isValidTriple(Triple triple, Set<String> namespaces, boolean testObjectInRootNS) {
+        boolean subjectIsValid = matchesAnyNamespace(triple.getSubject().toString(), namespaces);
+        if (testObjectInRootNS) {
+            boolean objectIsNamedResource = triple.getObject().isURI();
+            boolean objectMatchesNS = matchesAnyNamespace(triple.getObject().toString(), namespaces);
+            return subjectIsValid && (!objectIsNamedResource || objectMatchesNS);
+        }
+        return subjectIsValid;
+    }
+
+    /**
+     * @deprecated Use {@link #isValidTriple(Triple, Set, boolean)} instead.
+     */
+    @Deprecated
+    public static boolean isValidTriple(Triple triple, String rootNS, boolean testObjectInRootNS) {
+        return isValidTriple(triple, Set.of(rootNS), testObjectInRootNS);
+    }
+
+    /**
+     * Read an OWL file and identify the accepted namespaces. Collect triples from statements which contain a named
+     * object and a predicate in one of the specified namespaces. Handle statements which contain an anonymous object
+     * and an rdfs:subClassOf predicate by flattening all statements about the anonymous object into a single statement
+     * with a named subject and object, then collecting the triple from the single statement. Optionally skip statements
+     * with a named object not in an accepted namespace.
      *
      * @param owlFile            Path to OWL file
-     * @param testObjectInRootNS Flag to check that named objects are in the root namespace
+     * @param testObjectInRootNS Flag to check that named objects are in an accepted namespace
      * @return List of triples with named subject and object nodes
      */
     public static List<Triple> collectTriplesFromFile(Path owlFile, boolean testObjectInRootNS) {
@@ -73,11 +122,15 @@ public class OntologyTripleParser {
         OntModel ontModel = OntModelFactory.createModel();
         RDFDataMgr.read(ontModel, owlFile.toString());
 
-        // Consider each statement about each class in the root name space
+        // Build the set of accepted namespaces for this file
         String rootNS = getRootNS(ontModel);
-        System.out.println("Filter on root NS " + rootNS);
+        String fileName = owlFile.getFileName().toString();
+        Set<String> namespaces = getNamespaces(rootNS, fileName);
+        System.out.println("Filter on namespaces " + namespaces);
+
+        // Consider each statement about each class in an accepted namespace
         for (OntClass ontClass : ontModel.classes().toList()) {
-            if (!ontClass.getURI().startsWith(rootNS)) {
+            if (!matchesAnyNamespace(ontClass.getURI(), namespaces)) {
                 continue;
             }
             for (OntStatement classStatement : ontClass.statements().toList()) {
@@ -88,7 +141,7 @@ public class OntologyTripleParser {
                         // Collect statements as triples which contain a predicate in one of the
                         // selected name spaces
                         Triple triple = classStatement.asTriple();
-                        if (isValidTriple(triple, rootNS, testObjectInRootNS)) {
+                        if (isValidTriple(triple, namespaces, testObjectInRootNS)) {
                             triples.add(triple);
                         }
                     }
@@ -113,7 +166,7 @@ public class OntologyTripleParser {
                     // Create the single statement, and collect it as a triple
                     if (predicate != null && object != null) {
                         Triple triple = ontModel.createStatement(subject, predicate, object).asTriple();
-                        if (isValidTriple(triple, rootNS, testObjectInRootNS)) {
+                        if (isValidTriple(triple, namespaces, testObjectInRootNS)) {
                             triples.add(triple);
                         }
                     }
@@ -155,6 +208,92 @@ public class OntologyTripleParser {
     }
 
     /**
+     * Extract owl:imports URIs from an ontology model and derive namespace prefixes from them.
+     * For example, an import of "http://purl.obolibrary.org/obo/go.owl" yields prefix
+     * "http://purl.obolibrary.org/obo/GO".
+     *
+     * @param ontModel An ontology model created on reading an OWL file
+     * @return Sorted set of namespace prefixes derived from owl:imports
+     */
+    static Set<String> getImportNamespaces(OntModel ontModel) {
+        Set<String> namespaces = new TreeSet<>();
+        Resource ontology = ontModel.listResourcesWithProperty(RDF.type, OWL.Ontology).nextOptional().orElse(null);
+        if (ontology == null) {
+            return namespaces;
+        }
+        for (Statement stmt : ontModel.listStatements(ontology, OWL.imports, (RDFNode) null).toList()) {
+            String importURI = stmt.getObject().asResource().getURI();
+            // Derive namespace prefix: strip ".owl" suffix and uppercase the local name
+            // e.g. "http://purl.obolibrary.org/obo/go.owl" -> "http://purl.obolibrary.org/obo/GO"
+            String stripped = importURI.replaceFirst("\\.owl$", "");
+            int lastSlash = stripped.lastIndexOf('/');
+            if (lastSlash >= 0 && lastSlash < stripped.length() - 1) {
+                String base = stripped.substring(0, lastSlash + 1);
+                String localName = stripped.substring(lastSlash + 1);
+                namespaces.add(base + localName.toUpperCase());
+            }
+        }
+        return namespaces;
+    }
+
+    /**
+     * Collect all unique namespace prefixes from class URIs in the model. The prefix is derived
+     * by splitting on "_" and taking the portion before the first underscore.
+     * For example, "http://purl.obolibrary.org/obo/CL_0000235" yields
+     * "http://purl.obolibrary.org/obo/CL".
+     *
+     * @param ontModel An ontology model created on reading an OWL file
+     * @return Sorted set of namespace prefixes found in class URIs
+     */
+    static Set<String> getClassNamespaces(OntModel ontModel) {
+        Set<String> namespaces = new TreeSet<>();
+        for (OntClass ontClass : ontModel.classes().toList()) {
+            String uri = ontClass.getURI();
+            if (uri != null && uri.contains("_")) {
+                namespaces.add(uri.split("_")[0]);
+            }
+        }
+        return namespaces;
+    }
+
+    /**
+     * Report namespace prefixes for each OWL file. Prints the root namespace, any owl:imports,
+     * and all class namespace prefixes found in the file. Use this to decide which namespaces
+     * to include per ontology.
+     *
+     * @param files Paths to ontology files
+     */
+    public static void reportImports(List<Path> files) {
+        for (Path file : files) {
+            if (file.getFileName().toString().equals("ro.owl")) continue;
+            System.out.println("=== " + file.getFileName() + " ===");
+            OntModel ontModel = OntModelFactory.createModel();
+            RDFDataMgr.read(ontModel, file.toString());
+            String rootNS = getRootNS(ontModel);
+            System.out.println("  rootNS:  " + rootNS);
+            Set<String> imports = getImportNamespaces(ontModel);
+            if (imports.isEmpty()) {
+                System.out.println("  imports: (none)");
+            } else {
+                for (String ns : imports) {
+                    System.out.println("  import:  " + ns);
+                }
+            }
+            try {
+                Set<String> classNS = getClassNamespaces(ontModel);
+                System.out.println("  class namespaces: " + classNS.size());
+                for (String ns : classNS) {
+                    String marker = ns.equals(rootNS) ? " (root)" : "";
+                    System.out.println("  class:   " + ns + marker);
+                }
+            } catch (Exception e) {
+                System.out.println("  ERROR: " + e.getMessage());
+            }
+            System.out.println();
+        }
+    }
+
+    /**
      * Collect unique triples with named subject and object nodes.
      *
      * @param files              Paths to ontology files
@@ -176,13 +315,14 @@ public class OntologyTripleParser {
     }
 
     /**
-     * Parse each ontology file in the data/obo directory to collect unique triples
+     * Parse each ontology file in the data/obo directory to collect unique triples.
+     * Pass "--report-imports" to print owl:imports for each ontology file instead.
      *
-     * @param args (None expected)
+     * @param args Optional: "--report-imports" to print import namespaces
      */
     public static void main(String[] args) {
 
-        // List onotology files
+        // List ontology files
         String oboPattern = ".*\\.owl";
         List<Path> oboFiles;
         try {
@@ -192,6 +332,12 @@ public class OntologyTripleParser {
             }
         } catch (IOException e) {
             throw new RuntimeException(e);
+        }
+
+        // Report imports if requested
+        if (args.length > 0 && "--report-imports".equals(args[0])) {
+            reportImports(oboFiles);
+            return;
         }
 
         // Map terms and labels
