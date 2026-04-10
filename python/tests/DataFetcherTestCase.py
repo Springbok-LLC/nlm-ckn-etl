@@ -8,6 +8,8 @@ import tempfile
 import unittest
 from unittest.mock import MagicMock, patch
 
+import requests
+
 sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 
 from DataFetcher import (
@@ -40,7 +42,7 @@ class FakeFetcher(DataFetcher):
     def fetch_one(self, id_value):
         self.fetched_ids.append(id_value)
         if id_value in self.fetch_errors:
-            raise Exception(f"Simulated error for {id_value}")
+            raise RuntimeError(f"Simulated error for {id_value}")
         return self.fetch_results.get(id_value, {"data": id_value})
 
     def before_dump(self, results, ids):
@@ -195,13 +197,14 @@ class CellxGeneFetcherTestCase(unittest.TestCase):
 
     @patch("DataFetcher.requests.get")
     def test_fetch_one_dataset_failure(self, mock_get):
-        """fetch_one returns empty dict when dataset request fails."""
-        mock_get.return_value = MagicMock(status_code=404)
+        """fetch_one raises HTTPError when dataset request fails."""
+        mock_response = MagicMock(status_code=404)
+        mock_response.raise_for_status.side_effect = requests.HTTPError("404")
+        mock_get.return_value = mock_response
 
         fetcher = CellxGeneFetcher()
-        result = fetcher.fetch_one("bad_id")
-
-        self.assertEqual(result, {})
+        with self.assertRaises(requests.HTTPError):
+            fetcher.fetch_one("bad_id")
 
 
 class OpenTargetsFetcherTestCase(unittest.TestCase):
@@ -286,14 +289,13 @@ class GeneFetcherTestCase(unittest.TestCase):
         self.assertEqual(decoded, "<xml>test data</xml>")
 
     @patch("DataFetcher.fetch_xml_for_gene_id")
-    def test_fetch_one_returns_empty_on_failure(self, mock_fetch):
-        """fetch_one returns empty dict when fetch returns None."""
+    def test_fetch_one_raises_on_failure(self, mock_fetch):
+        """fetch_one raises RuntimeError when fetch returns None."""
         mock_fetch.return_value = None
 
         fetcher = GeneFetcher()
-        result = fetcher.fetch_one("bad_id")
-
-        self.assertEqual(result, {})
+        with self.assertRaises(RuntimeError):
+            fetcher.fetch_one("bad_id")
 
     def test_before_dump_stores_ids(self):
         """before_dump stores gene_entrez_ids in results."""
@@ -354,13 +356,14 @@ class UniProtFetcherTestCase(unittest.TestCase):
 
     @patch("DataFetcher.requests.get")
     def test_fetch_one_failure(self, mock_get):
-        """fetch_one returns empty dict on non-200 response."""
-        mock_get.return_value = MagicMock(status_code=404)
+        """fetch_one raises HTTPError on non-200 response."""
+        mock_response = MagicMock(status_code=404)
+        mock_response.raise_for_status.side_effect = requests.HTTPError("404")
+        mock_get.return_value = mock_response
 
         fetcher = UniProtFetcher()
-        result = fetcher.fetch_one("BAD")
-
-        self.assertEqual(result, {})
+        with self.assertRaises(requests.HTTPError):
+            fetcher.fetch_one("BAD")
 
 
 class HuBMAPFetcherTestCase(unittest.TestCase):

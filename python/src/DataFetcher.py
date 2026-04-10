@@ -1,10 +1,12 @@
 import argparse
 import json
+import logging
 import os
 from glob import glob
 from pathlib import Path
 import re
 import shutil
+import warnings
 
 import requests
 
@@ -132,8 +134,14 @@ class DataFetcher:
 
                 try:
                     results[id_value] = self.fetch_one(id_value)
-                except Exception as exc:
+                except (requests.RequestException, ValueError, KeyError, RuntimeError) as exc:
                     print(f"[{self.name}] Error fetching {id_value}: {exc}")
+                    results[id_value] = self.on_fetch_error(id_value)
+                except Exception as exc:
+                    warnings.warn(
+                        f"[{self.name}] Unexpected error fetching"
+                        f" {id_value}: {exc!r}"
+                    )
                     results[id_value] = self.on_fetch_error(id_value)
 
             else:
@@ -197,12 +205,7 @@ class CellxGeneFetcher(DataFetcher):
         """
         dataset_url = f"{self.BASE_URL}/dataset_versions/{dataset_version_id}"
         response = requests.get(dataset_url, timeout=REQUEST_TIMEOUT)
-        if response.status_code != 200:
-            print(
-                f"[{self.name}] Could not fetch dataset for "
-                f"dataset_version_id {dataset_version_id}"
-            )
-            return {}
+        response.raise_for_status()
 
         dataset_json = response.json()
 
@@ -211,8 +214,8 @@ class CellxGeneFetcher(DataFetcher):
         if collection_id:
             collection_url = f"{self.BASE_URL}/collections/{collection_id}"
             resp = requests.get(collection_url, timeout=REQUEST_TIMEOUT)
-            if resp.status_code == 200:
-                collection_json = resp.json()
+            resp.raise_for_status()
+            collection_json = resp.json()
 
         return {
             "dataset_json": dataset_json,
@@ -315,7 +318,9 @@ class GeneFetcher(DataFetcher):
         )
         xml_data = fetch_xml_for_gene_id(gene_entrez_id)
         if xml_data is None:
-            return {}
+            raise RuntimeError(
+                f"Failed to fetch gene XML for Entrez id {gene_entrez_id}"
+            )
         compressed = gzip.compress(xml_data.encode("utf-8"))
         return {"xml_gz_b64": base64.b64encode(compressed).decode("ascii")}
 
@@ -382,18 +387,12 @@ class UniProtFetcher(DataFetcher):
             f"https://rest.uniprot.org/uniprotkb/{protein_accession}",
             timeout=REQUEST_TIMEOUT,
         )
-        if response.status_code == 200:
-            print(
-                f"[{self.name}] Assigning results for "
-                f"protein accession {protein_accession}"
-            )
-            return response.json()
-        else:
-            print(
-                f"[{self.name}] Could not assign results for "
-                f"protein accession {protein_accession}"
-            )
-            return {}
+        response.raise_for_status()
+        print(
+            f"[{self.name}] Assigning results for "
+            f"protein accession {protein_accession}"
+        )
+        return response.json()
 
     def before_dump(self, results, ids):
         """Store the protein accession list in the results."""
