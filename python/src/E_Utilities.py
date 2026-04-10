@@ -236,6 +236,7 @@ def parse_xml_for_gene_id(gene_id, xml_data):
         ],
     )
     data["Gene_type"] = find_names_or_none(root, ["Entrezgene_type"], attribute="value")
+    data["Link_to_UniProt_ID"] = None
     for child in root.find_all("Other-source_url"):
         if "www.uniprot.org" in child.text:
             data["Link_to_UniProt_ID"] = child.text
@@ -260,7 +261,12 @@ def parse_xml_for_gene_id(gene_id, xml_data):
         data["Also_known_as"].append(child.text)
     data["Summary"] = find_names_or_none(root, ["Entrezgene_summary"])
     pr_desc = find_names_or_none(root, ["Entrezgene_prot", "Prot-ref_desc"])
-    data["UniProt_name"] = Path(parse.urlparse(data["Link_to_UniProt_ID"]).path).stem
+    if data["Link_to_UniProt_ID"]:
+        data["UniProt_name"] = Path(
+            parse.urlparse(data["Link_to_UniProt_ID"]).path
+        ).stem
+    else:
+        data["UniProt_name"] = None
     for product in root.find_all("Gene-commentary_products"):
         if find_names_or_none(product, ["Gene-commentary_type"], "value") == "mRNA":
             nm_id = None
