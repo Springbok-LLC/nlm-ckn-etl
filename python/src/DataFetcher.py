@@ -1,10 +1,12 @@
 import argparse
+from concurrent.futures import ThreadPoolExecutor, as_completed
 import json
 import os
 from glob import glob
 from pathlib import Path
 import re
 import shutil
+from time import sleep
 import warnings
 
 import requests
@@ -25,6 +27,8 @@ from LoaderUtilities import (
 
 
 REQUEST_TIMEOUT = 30  # seconds
+MAX_RETRIES = 3
+DEFAULT_RETRY_AFTER = 5  # seconds
 
 
 class DataFetcher:
@@ -35,6 +39,7 @@ class DataFetcher:
     name: str
     output_path: Path
     batch_size: int = 25
+    max_per_second: int = 5
 
     def get_ids(self, context):
         """Return the list of IDs to iterate over.
@@ -94,8 +99,54 @@ class DataFetcher:
         """
         pass
 
+    def _fetch_with_retry(self, id_value):
+        """Call fetch_one, retrying on HTTP 429 (Too Many Requests).
+
+        Respects the Retry-After header if present, otherwise waits
+        DEFAULT_RETRY_AFTER seconds.  Gives up after MAX_RETRIES
+        consecutive 429s.
+
+        Parameters
+        ----------
+        id_value : str
+            The identifier to fetch
+
+        Returns
+        -------
+        dict
+            Raw API response data
+        """
+        for attempt in range(1, MAX_RETRIES + 1):
+            try:
+                return self.fetch_one(id_value)
+            except requests.HTTPError as exc:
+                if exc.response is not None and exc.response.status_code == 429:
+                    wait = int(
+                        exc.response.headers.get("Retry-After", DEFAULT_RETRY_AFTER)
+                    )
+                    print(
+                        f"[{self.name}] 429 for {id_value},"
+                        f" retry {attempt}/{MAX_RETRIES}"
+                        f" after {wait}s"
+                    )
+                    sleep(wait)
+                else:
+                    raise
+        return self.fetch_one(id_value)
+
+    @property
+    def checkpoint_path(self):
+        """Path to the JSONL checkpoint file."""
+        return self.output_path.with_suffix(".jsonl")
+
     def run(self, context, force=False):
         """Execute the fetch loop with batch-save checkpointing.
+
+        Fetches are submitted to a thread pool at a rate of
+        ``max_per_second`` to stay under API rate limits. New results
+        are appended to a JSONL checkpoint file every ``batch_size``
+        completions. Once all fetches are done, the final JSON output
+        is written and the checkpoint is removed.
 
         Parameters
         ----------
@@ -109,67 +160,138 @@ class DataFetcher:
         dict
             The full results dict
         """
-        if not self.output_path.exists() or force:
+        if force:
             results = {}
+            if self.checkpoint_path.exists():
+                self.checkpoint_path.unlink()
         else:
             results = self._load()
 
         ids = self.get_ids(context)
-        total_size = len(ids)
-        n_so_far = 0
-        do_dump = False
-        n_in_batch = 0
+        pending_ids = [id_val for id_val in ids if id_val not in results]
+        total = len(ids)
 
-        for id_value in ids:
-            n_so_far += 1
+        if not pending_ids:
+            print(f"[{self.name}] All {total} IDs already fetched")
+            return results
 
-            if id_value not in results:
-                n_in_batch += 1
+        print(
+            f"[{self.name}] {total - len(pending_ids)} already fetched,"
+            f" {len(pending_ids)} remaining"
+        )
+
+        interval = 1.0 / self.max_per_second
+        n_completed = 0
+
+        with ThreadPoolExecutor(max_workers=self.max_per_second) as pool:
+            for batch_start in range(0, len(pending_ids), self.batch_size):
+                batch_ids = pending_ids[batch_start : batch_start + self.batch_size]
+                futures = {}
+                for id_value in batch_ids:
+                    futures[pool.submit(self._fetch_with_retry, id_value)] = id_value
+                    sleep(interval)
+
+                batch = {}
+                for future in as_completed(futures):
+                    id_value = futures[future]
+                    n_completed += 1
+
+                    try:
+                        result = future.result()
+                    except (
+                        requests.RequestException,
+                        ValueError,
+                        KeyError,
+                        RuntimeError,
+                    ) as exc:
+                        print(f"[{self.name}] Error fetching {id_value}: {exc}")
+                        result = self.on_fetch_error(id_value)
+                    except Exception as exc:
+                        warnings.warn(
+                            f"[{self.name}] Unexpected error fetching"
+                            f" {id_value}: {exc!r}"
+                        )
+                        result = self.on_fetch_error(id_value)
+
+                    results[id_value] = result
+                    batch[id_value] = result
+
                 print(
-                    f"[{self.name}] Fetched {n_in_batch}/{self.batch_size} in batch"
-                    f" - {n_so_far}/{total_size} so far"
+                    f"[{self.name}] Completed"
+                    f" {n_completed}/{len(pending_ids)}"
+                    f" - {total - len(pending_ids) + n_completed}"
+                    f"/{total} total"
                 )
-                do_dump = True
 
-                try:
-                    results[id_value] = self.fetch_one(id_value)
-                except (
-                    requests.RequestException,
-                    ValueError,
-                    KeyError,
-                    RuntimeError,
-                ) as exc:
-                    print(f"[{self.name}] Error fetching {id_value}: {exc}")
-                    results[id_value] = self.on_fetch_error(id_value)
-                except Exception as exc:
-                    warnings.warn(
-                        f"[{self.name}] Unexpected error fetching {id_value}: {exc!r}"
-                    )
-                    results[id_value] = self.on_fetch_error(id_value)
+                self._save_checkpoint(batch)
 
-            else:
-                if id_value != ids[-1]:
-                    continue
-
-            if do_dump and (n_in_batch >= self.batch_size or id_value == ids[-1]):
-                do_dump = False
-                n_in_batch = 0
-                self.before_dump(results, ids)
-                self._save(results)
-
+        self._save_final(results, ids)
         return results
 
     def _load(self):
-        """Load results from the output path."""
-        print(f"[{self.name}] Loading results from {self.output_path}")
-        with open(self.output_path, "r") as fp:
-            return json.load(fp)
+        """Load results from the JSONL checkpoint (if an incomplete run
+        exists) or from the final JSON output.
 
-    def _save(self, results):
-        """Save results to the output path."""
-        print(f"[{self.name}] Dumping results to {self.output_path}")
+        Returns
+        -------
+        dict
+            Previously fetched results, or empty dict
+        """
+        if self.checkpoint_path.exists():
+            print(f"[{self.name}] Resuming from checkpoint {self.checkpoint_path}")
+            results = {}
+            with open(self.checkpoint_path, "r") as fp:
+                for line in fp:
+                    line = line.strip()
+                    if line:
+                        record = json.loads(line)
+                        results[record["id"]] = record["data"]
+            if self.output_path.exists():
+                print(
+                    f"[{self.name}] Merging with prior results from {self.output_path}"
+                )
+                with open(self.output_path, "r") as fp:
+                    prior = json.load(fp)
+                for key, value in prior.items():
+                    if key not in results:
+                        results[key] = value
+            return results
+        elif self.output_path.exists():
+            print(f"[{self.name}] Loading results from {self.output_path}")
+            with open(self.output_path, "r") as fp:
+                return json.load(fp)
+        return {}
+
+    def _save_checkpoint(self, batch):
+        """Append a batch of new results to the JSONL checkpoint file.
+
+        Parameters
+        ----------
+        batch : dict
+            Mapping of ID to result data for newly completed fetches
+        """
+        print(f"[{self.name}] Appending {len(batch)} records to {self.checkpoint_path}")
+        with open(self.checkpoint_path, "a") as fp:
+            for id_value, data in batch.items():
+                fp.write(json.dumps({"id": id_value, "data": data}) + "\n")
+
+    def _save_final(self, results, ids):
+        """Write the final JSON output and remove the checkpoint.
+
+        Parameters
+        ----------
+        results : dict
+            The full results dict
+        ids : list
+            The full list of IDs (passed to before_dump)
+        """
+        self.before_dump(results, ids)
+        print(f"[{self.name}] Writing final results to {self.output_path}")
         with open(self.output_path, "w") as fp:
             json.dump(results, fp, indent=4)
+        if self.checkpoint_path.exists():
+            self.checkpoint_path.unlink()
+            print(f"[{self.name}] Removed checkpoint {self.checkpoint_path}")
 
 
 class CellxGeneFetcher(DataFetcher):
@@ -256,12 +378,12 @@ class OpenTargetsFetcher(DataFetcher):
             Raw GraphQL 'data' dict
         """
         query = gget_queries["target"]
-        query["variables"]["ensemblId"] = gene_ensembl_id
+        variables = {**query["variables"], "ensemblId": gene_ensembl_id}
         response = requests.post(
             OPENTARGETS_BASE_URL,
             json={
                 "query": query["query_string"],
-                "variables": query["variables"],
+                "variables": variables,
             },
             timeout=REQUEST_TIMEOUT,
         )
@@ -292,6 +414,7 @@ class GeneFetcher(DataFetcher):
 
     name = "gene"
     output_path = EXTERNAL_DIRPATH / "gene.json"
+    # max_per_second = 10  # NCBI allows 10 req/s with API key, but seems to return 429 at times
 
     def get_ids(self, context):
         """Return gene Entrez IDs."""
@@ -299,9 +422,15 @@ class GeneFetcher(DataFetcher):
             raise ValueError("GeneFetcher requires 'gene_data' in context")
         return context["gene_data"]["gene_entrez_ids"]
 
+    # Pattern to extract UniProt accession from Gene XML
+    _UNIPROT_URL_RE = re.compile(
+        r"<Other-source_url>[^<]*www\.uniprot\.org/uniprot(?:kb)?/([^</ ]+)"
+    )
+
     def fetch_one(self, gene_entrez_id):
         """Fetch raw XML for a gene Entrez ID, compress, and base64
-        encode for JSON storage.
+        encode for JSON storage. Also extracts the UniProt accession
+        so that UniProtFetcher can run without a prior parse step.
 
         Parameters
         ----------
@@ -311,7 +440,8 @@ class GeneFetcher(DataFetcher):
         Returns
         -------
         dict
-            Dict with 'xml_gz_b64' key containing compressed XML
+            Dict with 'xml_gz_b64' (compressed XML) and optionally
+            'UniProt_name' (protein accession)
         """
         print(f"[{self.name}] Fetching gene XML for gene Entrez id {gene_entrez_id}")
         xml_data = fetch_xml_for_gene_id(gene_entrez_id)
@@ -320,7 +450,13 @@ class GeneFetcher(DataFetcher):
                 f"Failed to fetch gene XML for Entrez id {gene_entrez_id}"
             )
         compressed = gzip.compress(xml_data.encode("utf-8"))
-        return {"xml_gz_b64": base64.b64encode(compressed).decode("ascii")}
+        result = {"xml_gz_b64": base64.b64encode(compressed).decode("ascii")}
+
+        m = self._UNIPROT_URL_RE.search(xml_data)
+        if m:
+            result["UniProt_name"] = m.group(1)
+
+        return result
 
     def on_fetch_error(self, gene_entrez_id):
         """Return empty dict on error."""

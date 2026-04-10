@@ -184,7 +184,6 @@ def fetch_xml_for_gene_id(gene_id):
         "email": NCBI_EMAIL,
         "api_key": NCBI_API_KEY,
     }
-    sleep(NCBI_API_SLEEP)
     response = requests.get(
         fetch_url, params=parse.urlencode(params, safe=","), timeout=REQUEST_TIMEOUT
     )
