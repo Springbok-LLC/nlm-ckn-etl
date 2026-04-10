@@ -8,6 +8,7 @@ from E_Utilities import parse_xml_for_gene_id
 
 from LoaderUtilities import (
     EXTERNAL_DIRPATH,
+    OPENTARGETS_RESOURCES,
     get_value_or_none,
     get_values_or_none,
 )
@@ -138,16 +139,6 @@ class CellxGeneTransformer(BaseTransformer):
 
         return transformed
 
-
-OPENTARGETS_RESOURCES = [
-    "diseases",
-    "drugs",
-    "interactions",
-    "pharmacogenetics",
-    "tractability",
-    "expression",
-    "depmap",
-]
 
 # Maps resource name to the GraphQL response path
 _RESOURCE_PATHS = {

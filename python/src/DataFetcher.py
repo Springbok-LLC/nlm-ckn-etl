@@ -1,10 +1,12 @@
 import argparse
 import json
+import logging
 import os
 from glob import glob
 from pathlib import Path
 import re
 import shutil
+import warnings
 
 import requests
 
@@ -15,6 +17,7 @@ from E_Utilities import fetch_xml_for_gene_id
 from OpenTargetsGGetQueries import gget_queries
 from LoaderUtilities import (
     EXTERNAL_DIRPATH,
+    OPENTARGETS_RESOURCES,
     get_cellxgene_harvester_data,
     get_dataset_file_paths,
     get_dataset_version_id_lists,
@@ -22,6 +25,8 @@ from LoaderUtilities import (
     get_unique_gene_names_and_ids,
 )
 
+
+REQUEST_TIMEOUT = 30  # seconds
 
 class DataFetcher:
     """Base class for all external API data fetchers. Subclasses implement
@@ -129,8 +134,14 @@ class DataFetcher:
 
                 try:
                     results[id_value] = self.fetch_one(id_value)
-                except Exception as exc:
+                except (requests.RequestException, ValueError, KeyError, RuntimeError) as exc:
                     print(f"[{self.name}] Error fetching {id_value}: {exc}")
+                    results[id_value] = self.on_fetch_error(id_value)
+                except Exception as exc:
+                    warnings.warn(
+                        f"[{self.name}] Unexpected error fetching"
+                        f" {id_value}: {exc!r}"
+                    )
                     results[id_value] = self.on_fetch_error(id_value)
 
             else:
@@ -169,6 +180,10 @@ class CellxGeneFetcher(DataFetcher):
 
     def get_ids(self, context):
         """Flatten dataset_version_id_lists into a single list."""
+        if "dataset_version_id_lists" not in context:
+            raise ValueError(
+                "CellxGeneFetcher requires 'dataset_version_id_lists' in context"
+            )
         dataset_version_id_lists = context["dataset_version_id_lists"]
         ids = []
         for id_list in dataset_version_id_lists:
@@ -189,13 +204,8 @@ class CellxGeneFetcher(DataFetcher):
             Raw response with keys 'dataset_json' and 'collection_json'
         """
         dataset_url = f"{self.BASE_URL}/dataset_versions/{dataset_version_id}"
-        response = requests.get(dataset_url)
-        if response.status_code != 200:
-            print(
-                f"[{self.name}] Could not fetch dataset for "
-                f"dataset_version_id {dataset_version_id}"
-            )
-            return {}
+        response = requests.get(dataset_url, timeout=REQUEST_TIMEOUT)
+        response.raise_for_status()
 
         dataset_json = response.json()
 
@@ -203,9 +213,9 @@ class CellxGeneFetcher(DataFetcher):
         collection_id = dataset_json.get("collection_id")
         if collection_id:
             collection_url = f"{self.BASE_URL}/collections/{collection_id}"
-            resp = requests.get(collection_url)
-            if resp.status_code == 200:
-                collection_json = resp.json()
+            resp = requests.get(collection_url, timeout=REQUEST_TIMEOUT)
+            resp.raise_for_status()
+            collection_json = resp.json()
 
         return {
             "dataset_json": dataset_json,
@@ -214,17 +224,6 @@ class CellxGeneFetcher(DataFetcher):
 
 
 OPENTARGETS_BASE_URL = "https://api.platform.opentargets.org/api/v4/graphql"
-OPENTARGETS_RESOURCES = [
-    "diseases",
-    "drugs",
-    "interactions",
-    "pharmacogenetics",
-    "tractability",
-    "expression",
-    "depmap",
-]
-
-
 class OpenTargetsFetcher(DataFetcher):
     """Fetches target and resource data from the Open Targets Platform
     GraphQL API."""
@@ -234,6 +233,10 @@ class OpenTargetsFetcher(DataFetcher):
 
     def get_ids(self, context):
         """Return gene Ensembl IDs."""
+        if "gene_data" not in context:
+            raise ValueError(
+                "OpenTargetsFetcher requires 'gene_data' in context"
+            )
         return context["gene_data"]["gene_ensembl_ids"]
 
     def fetch_one(self, gene_ensembl_id):
@@ -257,6 +260,7 @@ class OpenTargetsFetcher(DataFetcher):
                 "query": query["query_string"],
                 "variables": query["variables"],
             },
+            timeout=REQUEST_TIMEOUT,
         )
         response.raise_for_status()
         print(
@@ -288,6 +292,10 @@ class GeneFetcher(DataFetcher):
 
     def get_ids(self, context):
         """Return gene Entrez IDs."""
+        if "gene_data" not in context:
+            raise ValueError(
+                "GeneFetcher requires 'gene_data' in context"
+            )
         return context["gene_data"]["gene_entrez_ids"]
 
     def fetch_one(self, gene_entrez_id):
@@ -310,7 +318,9 @@ class GeneFetcher(DataFetcher):
         )
         xml_data = fetch_xml_for_gene_id(gene_entrez_id)
         if xml_data is None:
-            return {}
+            raise RuntimeError(
+                f"Failed to fetch gene XML for Entrez id {gene_entrez_id}"
+            )
         compressed = gzip.compress(xml_data.encode("utf-8"))
         return {"xml_gz_b64": base64.b64encode(compressed).decode("ascii")}
 
@@ -346,6 +356,11 @@ class UniProtFetcher(DataFetcher):
         list
             Unique protein accession strings
         """
+        if "gene_results" not in context:
+            raise ValueError(
+                "UniProtFetcher requires 'gene_results' in context"
+                " — run GeneFetcher first"
+            )
         gene_results = context["gene_results"]
         accessions = set()
         for gene_id, gene_data in gene_results.items():
@@ -369,20 +384,15 @@ class UniProtFetcher(DataFetcher):
             Raw UniProt API response
         """
         response = requests.get(
-            f"https://rest.uniprot.org/uniprotkb/{protein_accession}"
+            f"https://rest.uniprot.org/uniprotkb/{protein_accession}",
+            timeout=REQUEST_TIMEOUT,
         )
-        if response.status_code == 200:
-            print(
-                f"[{self.name}] Assigning results for "
-                f"protein accession {protein_accession}"
-            )
-            return response.json()
-        else:
-            print(
-                f"[{self.name}] Could not assign results for "
-                f"protein accession {protein_accession}"
-            )
-            return {}
+        response.raise_for_status()
+        print(
+            f"[{self.name}] Assigning results for "
+            f"protein accession {protein_accession}"
+        )
+        return response.json()
 
     def before_dump(self, results, ids):
         """Store the protein accession list in the results."""
@@ -437,15 +447,17 @@ class HuBMAPFetcher(DataFetcher):
                 print(f"HuBMAP data table {hubmap_filepath} already exists")
                 continue
 
+            archive_dirpath = HUBMAP_DIRPATH / ".archive"
+            os.makedirs(archive_dirpath, exist_ok=True)
             for pathname in glob(str(HUBMAP_DIRPATH / f"{org}-v*.json")):
                 try:
-                    shutil.move(Path(pathname), HUBMAP_DIRPATH / ".archive")
+                    shutil.move(Path(pathname), archive_dirpath)
                     print(f"Archived HuBMAP data table {pathname}")
                 except Exception:
                     os.remove(pathname)
                     print(f"Removed HuBMAP data table {pathname}")
 
-            response = requests.get(url)
+            response = requests.get(url, timeout=REQUEST_TIMEOUT)
             if response.status_code == 200:
                 with open(hubmap_filepath, "w") as fp:
                     fp.write(response.text)
@@ -474,7 +486,7 @@ class HuBMAPFetcher(DataFetcher):
             else:
                 raise Exception("No organ in HuBMAP URL")
 
-            response = requests.get(latest_url)
+            response = requests.get(latest_url, timeout=REQUEST_TIMEOUT)
             if response.status_code == 200:
                 m_url = p_url.search(response.text)
                 if m_url is not None:
