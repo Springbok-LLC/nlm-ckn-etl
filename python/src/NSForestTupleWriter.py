@@ -22,6 +22,7 @@ from LoaderUtilities import (
     get_cellxgene_harvester_data,
     get_dataset_file_paths,
     get_dataset_version_id_lists,
+    get_gene_ensembl_id_to_names_map,
     get_results_sources,
     hyphenate,
     load_results,
@@ -33,6 +34,7 @@ from TupleWriterUtilities import (
     association_to_tuples,
     build_cell_set_dataset,
     parse_string_list,
+    resolve_gene_names,
     write_tuples,
 )
 
@@ -85,6 +87,7 @@ def create_tuples(
         List of 3-element and 5-element RDF tuples.
     """
     tuples = []
+    ensembl_id_to_names = get_gene_ensembl_id_to_names_map()
 
     if summary_data.empty:
         uberon_terms = []
@@ -101,8 +104,12 @@ def create_tuples(
         if cluster_size < MIN_CLUSTER_SIZE:
             continue
 
-        markers = parse_string_list(str(row["NSForest_markers"]))
-        binary_genes = parse_string_list(str(row["binary_genes"]))
+        markers = resolve_gene_names(
+            parse_string_list(str(row["NSForest_markers"])), ensembl_id_to_names
+        )
+        binary_genes = resolve_gene_names(
+            parse_string_list(str(row["binary_genes"])), ensembl_id_to_names
+        )
 
         bmc = BiomarkerCombination(
             markers=" ".join(markers),

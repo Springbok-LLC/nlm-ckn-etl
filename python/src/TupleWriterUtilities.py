@@ -35,6 +35,7 @@ from LoaderUtilities import (
     DATA_DIRPATH,
     PURLBASE,
     RDFSBASE,
+    map_gene_ensembl_id_to_names,
 )
 
 # ---------------------------------------------------------------------------
@@ -83,6 +84,32 @@ ASSOCIATION_CLASSES: dict[str, type] = {
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
+
+def resolve_gene_names(gene_list, ensembl_id_to_names):
+    """Replace Ensembl gene ids with gene names where possible.
+
+    Parameters
+    ----------
+    gene_list : list[str]
+        Gene symbols or Ensembl ids.
+    ensembl_id_to_names : pd.DataFrame
+        Mapping from ``get_gene_ensembl_id_to_names_map()``.
+
+    Returns
+    -------
+    list[str]
+        Gene list with Ensembl ids replaced by names.
+    """
+    resolved = []
+    for gene in gene_list:
+        if gene.startswith("ENSG"):
+            ensembl_id = gene.split(".")[0]
+            names = map_gene_ensembl_id_to_names(ensembl_id, ensembl_id_to_names)
+            resolved.append(names[0] if names else gene)
+        else:
+            resolved.append(gene)
+    return resolved
 
 
 def purl_to_curie(purl: str) -> str:
