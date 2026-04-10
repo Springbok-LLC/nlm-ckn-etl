@@ -21,6 +21,16 @@ from UniProtIdMapper import (
 )
 
 ALPHABET = string.ascii_lowercase + string.digits
+
+OPENTARGETS_RESOURCES = [
+    "diseases",
+    "drugs",
+    "interactions",
+    "pharmacogenetics",
+    "tractability",
+    "expression",
+    "depmap",
+]
 PURLBASE = "http://purl.obolibrary.org/obo"
 RDFSBASE = "http://www.w3.org/1999/02/22-rdf-syntax-ns"
 
@@ -29,7 +39,9 @@ OBO_IN_OWL_NS = "{http://www.geneontology.org/formats/oboInOwl#}"
 RDF_NS = "{http://www.w3.org/1999/02/22-rdf-syntax-ns#}"
 
 DATA_DIRPATH = Path(__file__).resolve().parents[2] / "data"
-RESULTS_SOURCES_PATH = DATA_DIRPATH / "results-sources-2026-01-06-6253d09e2fc7.json"
+RESULTS_SOURCES_PATH = (
+    DATA_DIRPATH / "results-sources-2026-01-06-6253d09e2fc7-test.json"
+)
 EXTERNAL_DIRPATH = DATA_DIRPATH / "external"
 BIOMART_DIRPATH = EXTERNAL_DIRPATH / "biomart"
 GENE_MAPPING_PATH = BIOMART_DIRPATH / "gene_mapping.csv"
@@ -420,7 +432,9 @@ def get_gene_names_and_ensembl_and_entrez_ids():
     if GENE_MAPPING_PATH.exists():
         print(f"Loading gene mapping from {GENE_MAPPING_PATH}")
         gene_names_and_ids = pd.read_csv(GENE_MAPPING_PATH, index_col=0)
-        gene_names_and_ids["entrezgene_id"] = gene_names_and_ids["entrezgene_id"].astype(str)
+        gene_names_and_ids["entrezgene_id"] = gene_names_and_ids[
+            "entrezgene_id"
+        ].astype(str)
         return gene_names_and_ids
 
     print("Getting gene names, and Ensembl and Entrez ids from BioMart")

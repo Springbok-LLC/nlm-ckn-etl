@@ -1,0 +1,2279 @@
+{
+  "25b62707-5933-415b-8000-3369ec4af23f": {
+    "dataset_json": {
+      "assay": [
+        {
+          "label": "10x 3' v3",
+          "ontology_term_id": "EFO:0009922"
+        }
+      ],
+      "assets": [
+        {
+          "filesize": 2959319246,
+          "filetype": "H5AD",
+          "url": "https://datasets.cellxgene.cziscience.com/25b62707-5933-415b-8000-3369ec4af23f.h5ad"
+        }
+      ],
+      "cell_count": 304652,
+      "cell_type": [
+        {
+          "label": "B cell",
+          "ontology_term_id": "CL:0000236"
+        },
+        {
+          "label": "T cell",
+          "ontology_term_id": "CL:0000084"
+        },
+        {
+          "label": "conventional dendritic cell",
+          "ontology_term_id": "CL:0000990"
+        },
+        {
+          "label": "endothelial cell",
+          "ontology_term_id": "CL:0000115"
+        },
+        {
+          "label": "epithelial cell of proximal tubule",
+          "ontology_term_id": "CL:0002306"
+        },
+        {
+          "label": "kidney collecting duct intercalated cell",
+          "ontology_term_id": "CL:1001432"
+        },
+        {
+          "label": "kidney collecting duct principal cell",
+          "ontology_term_id": "CL:1001431"
+        },
+        {
+          "label": "kidney connecting tubule epithelial cell",
+          "ontology_term_id": "CL:1000768"
+        },
+        {
+          "label": "kidney distal convoluted tubule epithelial cell",
+          "ontology_term_id": "CL:1000849"
+        },
+        {
+          "label": "kidney interstitial alternatively activated macrophage",
+          "ontology_term_id": "CL:1000695"
+        },
+        {
+          "label": "kidney interstitial fibroblast",
+          "ontology_term_id": "CL:1000692"
+        },
+        {
+          "label": "kidney loop of Henle thick ascending limb epithelial cell",
+          "ontology_term_id": "CL:1001106"
+        },
+        {
+          "label": "kidney loop of Henle thin ascending limb epithelial cell",
+          "ontology_term_id": "CL:1001107"
+        },
+        {
+          "label": "kidney loop of Henle thin descending limb epithelial cell",
+          "ontology_term_id": "CL:1001111"
+        },
+        {
+          "label": "lymphocyte",
+          "ontology_term_id": "CL:0000542"
+        },
+        {
+          "label": "mast cell",
+          "ontology_term_id": "CL:0000097"
+        },
+        {
+          "label": "mononuclear phagocyte",
+          "ontology_term_id": "CL:0000113"
+        },
+        {
+          "label": "neural cell",
+          "ontology_term_id": "CL:0002319"
+        },
+        {
+          "label": "neutrophil",
+          "ontology_term_id": "CL:0000775"
+        },
+        {
+          "label": "non-classical monocyte",
+          "ontology_term_id": "CL:0000875"
+        },
+        {
+          "label": "papillary tips cell",
+          "ontology_term_id": "CL:1000597"
+        },
+        {
+          "label": "parietal epithelial cell",
+          "ontology_term_id": "CL:1000452"
+        },
+        {
+          "label": "plasma cell",
+          "ontology_term_id": "CL:0000786"
+        },
+        {
+          "label": "plasmacytoid dendritic cell, human",
+          "ontology_term_id": "CL:0001058"
+        },
+        {
+          "label": "podocyte",
+          "ontology_term_id": "CL:0000653"
+        },
+        {
+          "label": "renal interstitial pericyte",
+          "ontology_term_id": "CL:1001318"
+        }
+      ],
+      "citation": "Publication: https://doi.org/10.1038/s41586-023-05769-3 Dataset Version: https://datasets.cellxgene.cziscience.com/25b62707-5933-415b-8000-3369ec4af23f.h5ad curated and distributed by CZ CELLxGENE Discover in Collection: https://cellxgene.cziscience.com/collections/bcb61471-2a44-4d00-a0af-ff085512674c",
+      "collection_id": "bcb61471-2a44-4d00-a0af-ff085512674c",
+      "collection_version_id": "9de065bf-d85b-4f4f-86aa-c0e48bf6538b",
+      "dataset_id": "0b75c598-0893-4216-afe8-5414cab7739d",
+      "dataset_version_id": "25b62707-5933-415b-8000-3369ec4af23f",
+      "development_stage": [
+        {
+          "label": "14-year-old stage",
+          "ontology_term_id": "HsapDv:0000108"
+        },
+        {
+          "label": "29-year-old stage",
+          "ontology_term_id": "HsapDv:0000123"
+        },
+        {
+          "label": "30-year-old stage",
+          "ontology_term_id": "HsapDv:0000124"
+        },
+        {
+          "label": "31-year-old stage",
+          "ontology_term_id": "HsapDv:0000125"
+        },
+        {
+          "label": "35-year-old stage",
+          "ontology_term_id": "HsapDv:0000129"
+        },
+        {
+          "label": "36-year-old stage",
+          "ontology_term_id": "HsapDv:0000130"
+        },
+        {
+          "label": "39-year-old stage",
+          "ontology_term_id": "HsapDv:0000133"
+        },
+        {
+          "label": "40-year-old stage",
+          "ontology_term_id": "HsapDv:0000134"
+        },
+        {
+          "label": "41-year-old stage",
+          "ontology_term_id": "HsapDv:0000135"
+        },
+        {
+          "label": "42-year-old stage",
+          "ontology_term_id": "HsapDv:0000136"
+        },
+        {
+          "label": "43-year-old stage",
+          "ontology_term_id": "HsapDv:0000137"
+        },
+        {
+          "label": "45-year-old stage",
+          "ontology_term_id": "HsapDv:0000139"
+        },
+        {
+          "label": "47-year-old stage",
+          "ontology_term_id": "HsapDv:0000141"
+        },
+        {
+          "label": "48-year-old stage",
+          "ontology_term_id": "HsapDv:0000142"
+        },
+        {
+          "label": "49-year-old stage",
+          "ontology_term_id": "HsapDv:0000143"
+        },
+        {
+          "label": "52-year-old stage",
+          "ontology_term_id": "HsapDv:0000146"
+        },
+        {
+          "label": "53-year-old stage",
+          "ontology_term_id": "HsapDv:0000147"
+        },
+        {
+          "label": "54-year-old stage",
+          "ontology_term_id": "HsapDv:0000148"
+        },
+        {
+          "label": "56-year-old stage",
+          "ontology_term_id": "HsapDv:0000150"
+        },
+        {
+          "label": "57-year-old stage",
+          "ontology_term_id": "HsapDv:0000151"
+        },
+        {
+          "label": "59-year-old stage",
+          "ontology_term_id": "HsapDv:0000153"
+        },
+        {
+          "label": "63-year-old stage",
+          "ontology_term_id": "HsapDv:0000157"
+        },
+        {
+          "label": "64-year-old stage",
+          "ontology_term_id": "HsapDv:0000158"
+        },
+        {
+          "label": "66-year-old stage",
+          "ontology_term_id": "HsapDv:0000160"
+        },
+        {
+          "label": "69-year-old stage",
+          "ontology_term_id": "HsapDv:0000163"
+        },
+        {
+          "label": "70-year-old stage",
+          "ontology_term_id": "HsapDv:0000164"
+        },
+        {
+          "label": "76-year-old stage",
+          "ontology_term_id": "HsapDv:0000170"
+        },
+        {
+          "label": "eighth decade stage",
+          "ontology_term_id": "HsapDv:0000242"
+        },
+        {
+          "label": "fifth decade stage",
+          "ontology_term_id": "HsapDv:0000239"
+        },
+        {
+          "label": "fourth decade stage",
+          "ontology_term_id": "HsapDv:0000238"
+        },
+        {
+          "label": "seventh decade stage",
+          "ontology_term_id": "HsapDv:0000241"
+        },
+        {
+          "label": "sixth decade stage",
+          "ontology_term_id": "HsapDv:0000240"
+        },
+        {
+          "label": "third decade stage",
+          "ontology_term_id": "HsapDv:0000237"
+        }
+      ],
+      "disease": [
+        {
+          "label": "acute kidney failure",
+          "ontology_term_id": "MONDO:0002492"
+        },
+        {
+          "label": "chronic kidney disease",
+          "ontology_term_id": "MONDO:0005300"
+        },
+        {
+          "label": "normal",
+          "ontology_term_id": "PATO:0000461"
+        }
+      ],
+      "donor_id": [
+        "31-10001",
+        "31-10000",
+        "33-10005",
+        "32-10034",
+        "33-10006",
+        "29-10013",
+        "29-10010",
+        "31-10035",
+        "29-10006",
+        "30-10034",
+        "31-10006",
+        "32-10003",
+        "29-10008",
+        "29-10012",
+        "31-10013",
+        "32-2",
+        "3535",
+        "18-162",
+        "18-142",
+        "18-312",
+        "3499",
+        "3504",
+        "3593",
+        "3613",
+        "KRP446",
+        "3490",
+        "KRP460",
+        "KRP461",
+        "KRP462",
+        "3477",
+        "3479",
+        "3487",
+        "COV-02-0010",
+        "COV-02-0002",
+        "COV-02-0094",
+        "COV-02-0096",
+        "30-10018",
+        "30-10123",
+        "30-10125",
+        "32-10074",
+        "34-10050",
+        "34-10184",
+        "34-10187",
+        "27-10039",
+        "28-10051",
+        "29-10011",
+        "29-10016",
+        "31-10040",
+        "31-10042",
+        "PRE018-1",
+        "PRE019",
+        "PRE027",
+        "PRE038",
+        "PRE055-1",
+        "PRE062-1",
+        "PRE98sc",
+        "Sample1153-EO1",
+        "Sample1153-EO2",
+        "Sample1153-EO3",
+        "Sample1157-EO1",
+        "Sample1157-EO2",
+        "Sample1157-EO3",
+        "Sample1158-EO1",
+        "Sample1158-EO2",
+        "Sample1158-EO3",
+        "Sample1162-EO1",
+        "Sample1162-EO2"
+      ],
+      "embeddings": [
+        "X_umap"
+      ],
+      "feature_biotype": [
+        "gene"
+      ],
+      "feature_count": 33140,
+      "feature_reference": [
+        "NCBITaxon:9606"
+      ],
+      "is_primary_data": [
+        false
+      ],
+      "mean_genes_per_cell": 1792.7598538660504,
+      "organism": [
+        {
+          "label": "Homo sapiens",
+          "ontology_term_id": "NCBITaxon:9606"
+        }
+      ],
+      "primary_cell_count": 0,
+      "processing_status": "SUCCESS",
+      "published_at": "2025-11-12T17:15:29+00:00",
+      "raw_data_location": "raw.X",
+      "schema_version": "7.0.0",
+      "self_reported_ethnicity": [
+        {
+          "label": "African American",
+          "ontology_term_id": "HANCESTRO:0568"
+        },
+        {
+          "label": "Asian",
+          "ontology_term_id": "HANCESTRO:0847"
+        },
+        {
+          "label": "Hispanic or Latin",
+          "ontology_term_id": "HANCESTRO:0612"
+        },
+        {
+          "label": "unknown",
+          "ontology_term_id": "unknown"
+        }
+      ],
+      "sex": [
+        {
+          "label": "female",
+          "ontology_term_id": "PATO:0000383"
+        },
+        {
+          "label": "male",
+          "ontology_term_id": "PATO:0000384"
+        }
+      ],
+      "spatial": null,
+      "suspension_type": [
+        "nucleus",
+        "cell"
+      ],
+      "tissue": [
+        {
+          "label": "cortex of kidney",
+          "ontology_term_id": "UBERON:0001225",
+          "tissue_type": "tissue"
+        },
+        {
+          "label": "kidney",
+          "ontology_term_id": "UBERON:0002113",
+          "tissue_type": "tissue"
+        },
+        {
+          "label": "renal medulla",
+          "ontology_term_id": "UBERON:0000362",
+          "tissue_type": "tissue"
+        },
+        {
+          "label": "renal papilla",
+          "ontology_term_id": "UBERON:0001228",
+          "tissue_type": "tissue"
+        }
+      ],
+      "title": "Integrated Single-nucleus and Single-cell RNA-seq of the Adult Human Kidney",
+      "tombstone": false,
+      "x_approximate_distribution": null
+    },
+    "collection_json": {
+      "collection_id": "bcb61471-2a44-4d00-a0af-ff085512674c",
+      "collection_url": "https://cellxgene.cziscience.com/collections/bcb61471-2a44-4d00-a0af-ff085512674c",
+      "collection_version_id": "9de065bf-d85b-4f4f-86aa-c0e48bf6538b",
+      "consortia": [
+        "CZI Cell Science",
+        "Human BioMolecular Atlas Program (HuBMAP)",
+        "Kidney Precision Medicine Project (KPMP)"
+      ],
+      "contact_email": "info@kpmp.org",
+      "contact_name": "KPMP",
+      "created_at": "2025-11-10T20:47:42+00:00",
+      "curator_name": "Jennifer Yu-Sheng Chien",
+      "datasets": [
+        {
+          "assay": [
+            {
+              "label": "10x 3' v3",
+              "ontology_term_id": "EFO:0009922"
+            }
+          ],
+          "assets": [
+            {
+              "filesize": 2188308404,
+              "filetype": "H5AD",
+              "url": "https://datasets.cellxgene.cziscience.com/d141dc30-b521-4659-8349-b48bb0ed64bf.h5ad"
+            }
+          ],
+          "cell_count": 107344,
+          "cell_type": [
+            {
+              "label": "B cell",
+              "ontology_term_id": "CL:0000236"
+            },
+            {
+              "label": "T cell",
+              "ontology_term_id": "CL:0000084"
+            },
+            {
+              "label": "conventional dendritic cell",
+              "ontology_term_id": "CL:0000990"
+            },
+            {
+              "label": "cytotoxic T cell",
+              "ontology_term_id": "CL:0000910"
+            },
+            {
+              "label": "endothelial cell",
+              "ontology_term_id": "CL:0000115"
+            },
+            {
+              "label": "epithelial cell of proximal tubule",
+              "ontology_term_id": "CL:0002306"
+            },
+            {
+              "label": "kidney collecting duct intercalated cell",
+              "ontology_term_id": "CL:1001432"
+            },
+            {
+              "label": "kidney collecting duct principal cell",
+              "ontology_term_id": "CL:1001431"
+            },
+            {
+              "label": "kidney connecting tubule epithelial cell",
+              "ontology_term_id": "CL:1000768"
+            },
+            {
+              "label": "kidney distal convoluted tubule epithelial cell",
+              "ontology_term_id": "CL:1000849"
+            },
+            {
+              "label": "kidney interstitial alternatively activated macrophage",
+              "ontology_term_id": "CL:1000695"
+            },
+            {
+              "label": "kidney interstitial cell",
+              "ontology_term_id": "CL:1000500"
+            },
+            {
+              "label": "kidney loop of Henle thick ascending limb epithelial cell",
+              "ontology_term_id": "CL:1001106"
+            },
+            {
+              "label": "kidney loop of Henle thin ascending limb epithelial cell",
+              "ontology_term_id": "CL:1001107"
+            },
+            {
+              "label": "kidney loop of Henle thin descending limb epithelial cell",
+              "ontology_term_id": "CL:1001111"
+            },
+            {
+              "label": "mast cell",
+              "ontology_term_id": "CL:0000097"
+            },
+            {
+              "label": "mature NK T cell",
+              "ontology_term_id": "CL:0000814"
+            },
+            {
+              "label": "monocyte",
+              "ontology_term_id": "CL:0000576"
+            },
+            {
+              "label": "mononuclear phagocyte",
+              "ontology_term_id": "CL:0000113"
+            },
+            {
+              "label": "natural killer cell",
+              "ontology_term_id": "CL:0000623"
+            },
+            {
+              "label": "non-classical monocyte",
+              "ontology_term_id": "CL:0000875"
+            },
+            {
+              "label": "parietal epithelial cell",
+              "ontology_term_id": "CL:1000452"
+            },
+            {
+              "label": "plasma cell",
+              "ontology_term_id": "CL:0000786"
+            },
+            {
+              "label": "plasmacytoid dendritic cell, human",
+              "ontology_term_id": "CL:0001058"
+            },
+            {
+              "label": "podocyte",
+              "ontology_term_id": "CL:0000653"
+            },
+            {
+              "label": "regulatory T cell",
+              "ontology_term_id": "CL:0000815"
+            }
+          ],
+          "citation": "Publication: https://doi.org/10.1038/s41586-023-05769-3 Dataset Version: https://datasets.cellxgene.cziscience.com/d141dc30-b521-4659-8349-b48bb0ed64bf.h5ad curated and distributed by CZ CELLxGENE Discover in Collection: https://cellxgene.cziscience.com/collections/bcb61471-2a44-4d00-a0af-ff085512674c",
+          "dataset_id": "32b9bdce-2481-4c85-ba1b-6ad5fcea844c",
+          "dataset_version_id": "d141dc30-b521-4659-8349-b48bb0ed64bf",
+          "default_embedding": "X_umap1",
+          "development_stage": [
+            {
+              "label": "30-year-old stage",
+              "ontology_term_id": "HsapDv:0000124"
+            },
+            {
+              "label": "31-year-old stage",
+              "ontology_term_id": "HsapDv:0000125"
+            },
+            {
+              "label": "35-year-old stage",
+              "ontology_term_id": "HsapDv:0000129"
+            },
+            {
+              "label": "39-year-old stage",
+              "ontology_term_id": "HsapDv:0000133"
+            },
+            {
+              "label": "40-year-old stage",
+              "ontology_term_id": "HsapDv:0000134"
+            },
+            {
+              "label": "41-year-old stage",
+              "ontology_term_id": "HsapDv:0000135"
+            },
+            {
+              "label": "42-year-old stage",
+              "ontology_term_id": "HsapDv:0000136"
+            },
+            {
+              "label": "47-year-old stage",
+              "ontology_term_id": "HsapDv:0000141"
+            },
+            {
+              "label": "48-year-old stage",
+              "ontology_term_id": "HsapDv:0000142"
+            },
+            {
+              "label": "49-year-old stage",
+              "ontology_term_id": "HsapDv:0000143"
+            },
+            {
+              "label": "52-year-old stage",
+              "ontology_term_id": "HsapDv:0000146"
+            },
+            {
+              "label": "53-year-old stage",
+              "ontology_term_id": "HsapDv:0000147"
+            },
+            {
+              "label": "56-year-old stage",
+              "ontology_term_id": "HsapDv:0000150"
+            },
+            {
+              "label": "57-year-old stage",
+              "ontology_term_id": "HsapDv:0000151"
+            },
+            {
+              "label": "66-year-old stage",
+              "ontology_term_id": "HsapDv:0000160"
+            },
+            {
+              "label": "eighth decade stage",
+              "ontology_term_id": "HsapDv:0000242"
+            },
+            {
+              "label": "fifth decade stage",
+              "ontology_term_id": "HsapDv:0000239"
+            },
+            {
+              "label": "fourth decade stage",
+              "ontology_term_id": "HsapDv:0000238"
+            },
+            {
+              "label": "seventh decade stage",
+              "ontology_term_id": "HsapDv:0000241"
+            },
+            {
+              "label": "sixth decade stage",
+              "ontology_term_id": "HsapDv:0000240"
+            },
+            {
+              "label": "third decade stage",
+              "ontology_term_id": "HsapDv:0000237"
+            }
+          ],
+          "disease": [
+            {
+              "label": "acute kidney failure",
+              "ontology_term_id": "MONDO:0002492"
+            },
+            {
+              "label": "chronic kidney disease",
+              "ontology_term_id": "MONDO:0005300"
+            },
+            {
+              "label": "normal",
+              "ontology_term_id": "PATO:0000461"
+            }
+          ],
+          "donor_id": [
+            "30-10018",
+            "30-10034",
+            "30-10123",
+            "30-10125",
+            "32-10003",
+            "32-10034",
+            "32-10074",
+            "33-10005",
+            "33-10006",
+            "34-10050",
+            "34-10184",
+            "34-10187",
+            "27-10039",
+            "28-10051",
+            "29-10006",
+            "29-10010",
+            "29-10011",
+            "29-10012",
+            "29-10013",
+            "29-10016",
+            "31-10001",
+            "31-10035",
+            "31-10040",
+            "31-10042",
+            "29-10008",
+            "31-10000",
+            "31-10013",
+            "PRE018-1",
+            "PRE019",
+            "PRE027",
+            "PRE038",
+            "PRE055-1",
+            "PRE062-1",
+            "PRE98sc",
+            "Sample1153-EO1",
+            "Sample1153-EO2",
+            "Sample1153-EO3",
+            "Sample1157-EO1",
+            "Sample1157-EO2",
+            "Sample1157-EO3",
+            "Sample1158-EO1",
+            "Sample1158-EO2",
+            "Sample1158-EO3",
+            "Sample1162-EO1",
+            "Sample1162-EO2"
+          ],
+          "embeddings": [
+            "X_harmony",
+            "X_pca",
+            "X_umap1",
+            "X_umap2"
+          ],
+          "explorer_url": "https://cellxgene.cziscience.com/e/32b9bdce-2481-4c85-ba1b-6ad5fcea844c.cxg/",
+          "feature_biotype": [
+            "gene"
+          ],
+          "feature_count": 26837,
+          "feature_reference": [
+            "NCBITaxon:9606"
+          ],
+          "is_primary_data": [
+            false
+          ],
+          "mean_genes_per_cell": 1587.3557441496498,
+          "organism": [
+            {
+              "label": "Homo sapiens",
+              "ontology_term_id": "NCBITaxon:9606"
+            }
+          ],
+          "primary_cell_count": 0,
+          "published_at": "2022-02-16T00:36:47+00:00",
+          "raw_data_location": "raw.X",
+          "revised_at": "2025-10-24T21:07:30+00:00",
+          "schema_version": "7.0.0",
+          "self_reported_ethnicity": [
+            {
+              "label": "African American",
+              "ontology_term_id": "HANCESTRO:0568"
+            },
+            {
+              "label": "Asian",
+              "ontology_term_id": "HANCESTRO:0847"
+            },
+            {
+              "label": "unknown",
+              "ontology_term_id": "unknown"
+            }
+          ],
+          "sex": [
+            {
+              "label": "female",
+              "ontology_term_id": "PATO:0000383"
+            },
+            {
+              "label": "male",
+              "ontology_term_id": "PATO:0000384"
+            }
+          ],
+          "spatial": null,
+          "suspension_type": [
+            "cell"
+          ],
+          "tissue": [
+            {
+              "label": "kidney",
+              "ontology_term_id": "UBERON:0002113",
+              "tissue_type": "tissue"
+            }
+          ],
+          "title": "Single-cell RNA-seq of the Adult Human Kidney (Version 1.0)",
+          "tombstone": false,
+          "x_approximate_distribution": null
+        },
+        {
+          "assay": [
+            {
+              "label": "10x 3' v3",
+              "ontology_term_id": "EFO:0009922"
+            }
+          ],
+          "assets": [
+            {
+              "filesize": 2959319246,
+              "filetype": "H5AD",
+              "url": "https://datasets.cellxgene.cziscience.com/25b62707-5933-415b-8000-3369ec4af23f.h5ad"
+            }
+          ],
+          "cell_count": 304652,
+          "cell_type": [
+            {
+              "label": "B cell",
+              "ontology_term_id": "CL:0000236"
+            },
+            {
+              "label": "T cell",
+              "ontology_term_id": "CL:0000084"
+            },
+            {
+              "label": "conventional dendritic cell",
+              "ontology_term_id": "CL:0000990"
+            },
+            {
+              "label": "endothelial cell",
+              "ontology_term_id": "CL:0000115"
+            },
+            {
+              "label": "epithelial cell of proximal tubule",
+              "ontology_term_id": "CL:0002306"
+            },
+            {
+              "label": "kidney collecting duct intercalated cell",
+              "ontology_term_id": "CL:1001432"
+            },
+            {
+              "label": "kidney collecting duct principal cell",
+              "ontology_term_id": "CL:1001431"
+            },
+            {
+              "label": "kidney connecting tubule epithelial cell",
+              "ontology_term_id": "CL:1000768"
+            },
+            {
+              "label": "kidney distal convoluted tubule epithelial cell",
+              "ontology_term_id": "CL:1000849"
+            },
+            {
+              "label": "kidney interstitial alternatively activated macrophage",
+              "ontology_term_id": "CL:1000695"
+            },
+            {
+              "label": "kidney interstitial fibroblast",
+              "ontology_term_id": "CL:1000692"
+            },
+            {
+              "label": "kidney loop of Henle thick ascending limb epithelial cell",
+              "ontology_term_id": "CL:1001106"
+            },
+            {
+              "label": "kidney loop of Henle thin ascending limb epithelial cell",
+              "ontology_term_id": "CL:1001107"
+            },
+            {
+              "label": "kidney loop of Henle thin descending limb epithelial cell",
+              "ontology_term_id": "CL:1001111"
+            },
+            {
+              "label": "lymphocyte",
+              "ontology_term_id": "CL:0000542"
+            },
+            {
+              "label": "mast cell",
+              "ontology_term_id": "CL:0000097"
+            },
+            {
+              "label": "mononuclear phagocyte",
+              "ontology_term_id": "CL:0000113"
+            },
+            {
+              "label": "neural cell",
+              "ontology_term_id": "CL:0002319"
+            },
+            {
+              "label": "neutrophil",
+              "ontology_term_id": "CL:0000775"
+            },
+            {
+              "label": "non-classical monocyte",
+              "ontology_term_id": "CL:0000875"
+            },
+            {
+              "label": "papillary tips cell",
+              "ontology_term_id": "CL:1000597"
+            },
+            {
+              "label": "parietal epithelial cell",
+              "ontology_term_id": "CL:1000452"
+            },
+            {
+              "label": "plasma cell",
+              "ontology_term_id": "CL:0000786"
+            },
+            {
+              "label": "plasmacytoid dendritic cell, human",
+              "ontology_term_id": "CL:0001058"
+            },
+            {
+              "label": "podocyte",
+              "ontology_term_id": "CL:0000653"
+            },
+            {
+              "label": "renal interstitial pericyte",
+              "ontology_term_id": "CL:1001318"
+            }
+          ],
+          "citation": "Publication: https://doi.org/10.1038/s41586-023-05769-3 Dataset Version: https://datasets.cellxgene.cziscience.com/25b62707-5933-415b-8000-3369ec4af23f.h5ad curated and distributed by CZ CELLxGENE Discover in Collection: https://cellxgene.cziscience.com/collections/bcb61471-2a44-4d00-a0af-ff085512674c",
+          "dataset_id": "0b75c598-0893-4216-afe8-5414cab7739d",
+          "dataset_version_id": "25b62707-5933-415b-8000-3369ec4af23f",
+          "development_stage": [
+            {
+              "label": "14-year-old stage",
+              "ontology_term_id": "HsapDv:0000108"
+            },
+            {
+              "label": "29-year-old stage",
+              "ontology_term_id": "HsapDv:0000123"
+            },
+            {
+              "label": "30-year-old stage",
+              "ontology_term_id": "HsapDv:0000124"
+            },
+            {
+              "label": "31-year-old stage",
+              "ontology_term_id": "HsapDv:0000125"
+            },
+            {
+              "label": "35-year-old stage",
+              "ontology_term_id": "HsapDv:0000129"
+            },
+            {
+              "label": "36-year-old stage",
+              "ontology_term_id": "HsapDv:0000130"
+            },
+            {
+              "label": "39-year-old stage",
+              "ontology_term_id": "HsapDv:0000133"
+            },
+            {
+              "label": "40-year-old stage",
+              "ontology_term_id": "HsapDv:0000134"
+            },
+            {
+              "label": "41-year-old stage",
+              "ontology_term_id": "HsapDv:0000135"
+            },
+            {
+              "label": "42-year-old stage",
+              "ontology_term_id": "HsapDv:0000136"
+            },
+            {
+              "label": "43-year-old stage",
+              "ontology_term_id": "HsapDv:0000137"
+            },
+            {
+              "label": "45-year-old stage",
+              "ontology_term_id": "HsapDv:0000139"
+            },
+            {
+              "label": "47-year-old stage",
+              "ontology_term_id": "HsapDv:0000141"
+            },
+            {
+              "label": "48-year-old stage",
+              "ontology_term_id": "HsapDv:0000142"
+            },
+            {
+              "label": "49-year-old stage",
+              "ontology_term_id": "HsapDv:0000143"
+            },
+            {
+              "label": "52-year-old stage",
+              "ontology_term_id": "HsapDv:0000146"
+            },
+            {
+              "label": "53-year-old stage",
+              "ontology_term_id": "HsapDv:0000147"
+            },
+            {
+              "label": "54-year-old stage",
+              "ontology_term_id": "HsapDv:0000148"
+            },
+            {
+              "label": "56-year-old stage",
+              "ontology_term_id": "HsapDv:0000150"
+            },
+            {
+              "label": "57-year-old stage",
+              "ontology_term_id": "HsapDv:0000151"
+            },
+            {
+              "label": "59-year-old stage",
+              "ontology_term_id": "HsapDv:0000153"
+            },
+            {
+              "label": "63-year-old stage",
+              "ontology_term_id": "HsapDv:0000157"
+            },
+            {
+              "label": "64-year-old stage",
+              "ontology_term_id": "HsapDv:0000158"
+            },
+            {
+              "label": "66-year-old stage",
+              "ontology_term_id": "HsapDv:0000160"
+            },
+            {
+              "label": "69-year-old stage",
+              "ontology_term_id": "HsapDv:0000163"
+            },
+            {
+              "label": "70-year-old stage",
+              "ontology_term_id": "HsapDv:0000164"
+            },
+            {
+              "label": "76-year-old stage",
+              "ontology_term_id": "HsapDv:0000170"
+            },
+            {
+              "label": "eighth decade stage",
+              "ontology_term_id": "HsapDv:0000242"
+            },
+            {
+              "label": "fifth decade stage",
+              "ontology_term_id": "HsapDv:0000239"
+            },
+            {
+              "label": "fourth decade stage",
+              "ontology_term_id": "HsapDv:0000238"
+            },
+            {
+              "label": "seventh decade stage",
+              "ontology_term_id": "HsapDv:0000241"
+            },
+            {
+              "label": "sixth decade stage",
+              "ontology_term_id": "HsapDv:0000240"
+            },
+            {
+              "label": "third decade stage",
+              "ontology_term_id": "HsapDv:0000237"
+            }
+          ],
+          "disease": [
+            {
+              "label": "acute kidney failure",
+              "ontology_term_id": "MONDO:0002492"
+            },
+            {
+              "label": "chronic kidney disease",
+              "ontology_term_id": "MONDO:0005300"
+            },
+            {
+              "label": "normal",
+              "ontology_term_id": "PATO:0000461"
+            }
+          ],
+          "donor_id": [
+            "31-10001",
+            "31-10000",
+            "33-10005",
+            "32-10034",
+            "33-10006",
+            "29-10013",
+            "29-10010",
+            "31-10035",
+            "29-10006",
+            "30-10034",
+            "31-10006",
+            "32-10003",
+            "29-10008",
+            "29-10012",
+            "31-10013",
+            "32-2",
+            "3535",
+            "18-162",
+            "18-142",
+            "18-312",
+            "3499",
+            "3504",
+            "3593",
+            "3613",
+            "KRP446",
+            "3490",
+            "KRP460",
+            "KRP461",
+            "KRP462",
+            "3477",
+            "3479",
+            "3487",
+            "COV-02-0010",
+            "COV-02-0002",
+            "COV-02-0094",
+            "COV-02-0096",
+            "30-10018",
+            "30-10123",
+            "30-10125",
+            "32-10074",
+            "34-10050",
+            "34-10184",
+            "34-10187",
+            "27-10039",
+            "28-10051",
+            "29-10011",
+            "29-10016",
+            "31-10040",
+            "31-10042",
+            "PRE018-1",
+            "PRE019",
+            "PRE027",
+            "PRE038",
+            "PRE055-1",
+            "PRE062-1",
+            "PRE98sc",
+            "Sample1153-EO1",
+            "Sample1153-EO2",
+            "Sample1153-EO3",
+            "Sample1157-EO1",
+            "Sample1157-EO2",
+            "Sample1157-EO3",
+            "Sample1158-EO1",
+            "Sample1158-EO2",
+            "Sample1158-EO3",
+            "Sample1162-EO1",
+            "Sample1162-EO2"
+          ],
+          "embeddings": [
+            "X_umap"
+          ],
+          "explorer_url": "https://cellxgene.cziscience.com/e/0b75c598-0893-4216-afe8-5414cab7739d.cxg/",
+          "feature_biotype": [
+            "gene"
+          ],
+          "feature_count": 33140,
+          "feature_reference": [
+            "NCBITaxon:9606"
+          ],
+          "is_primary_data": [
+            false
+          ],
+          "mean_genes_per_cell": 1792.7598538660504,
+          "organism": [
+            {
+              "label": "Homo sapiens",
+              "ontology_term_id": "NCBITaxon:9606"
+            }
+          ],
+          "primary_cell_count": 0,
+          "published_at": "2022-02-16T00:36:47+00:00",
+          "raw_data_location": "raw.X",
+          "revised_at": "2025-11-12T17:15:29+00:00",
+          "schema_version": "7.0.0",
+          "self_reported_ethnicity": [
+            {
+              "label": "African American",
+              "ontology_term_id": "HANCESTRO:0568"
+            },
+            {
+              "label": "Asian",
+              "ontology_term_id": "HANCESTRO:0847"
+            },
+            {
+              "label": "Hispanic or Latin",
+              "ontology_term_id": "HANCESTRO:0612"
+            },
+            {
+              "label": "unknown",
+              "ontology_term_id": "unknown"
+            }
+          ],
+          "sex": [
+            {
+              "label": "female",
+              "ontology_term_id": "PATO:0000383"
+            },
+            {
+              "label": "male",
+              "ontology_term_id": "PATO:0000384"
+            }
+          ],
+          "spatial": null,
+          "suspension_type": [
+            "nucleus",
+            "cell"
+          ],
+          "tissue": [
+            {
+              "label": "cortex of kidney",
+              "ontology_term_id": "UBERON:0001225",
+              "tissue_type": "tissue"
+            },
+            {
+              "label": "kidney",
+              "ontology_term_id": "UBERON:0002113",
+              "tissue_type": "tissue"
+            },
+            {
+              "label": "renal medulla",
+              "ontology_term_id": "UBERON:0000362",
+              "tissue_type": "tissue"
+            },
+            {
+              "label": "renal papilla",
+              "ontology_term_id": "UBERON:0001228",
+              "tissue_type": "tissue"
+            }
+          ],
+          "title": "Integrated Single-nucleus and Single-cell RNA-seq of the Adult Human Kidney",
+          "tombstone": false,
+          "x_approximate_distribution": null
+        },
+        {
+          "assay": [
+            {
+              "label": "10x 3' v3",
+              "ontology_term_id": "EFO:0009922"
+            }
+          ],
+          "assets": [
+            {
+              "filesize": 1567530319,
+              "filetype": "H5AD",
+              "url": "https://datasets.cellxgene.cziscience.com/34d0abc5-99bc-4ad5-a804-c119e14ff30a.h5ad"
+            }
+          ],
+          "cell_count": 172847,
+          "cell_type": [
+            {
+              "label": "B cell",
+              "ontology_term_id": "CL:0000236"
+            },
+            {
+              "label": "T cell",
+              "ontology_term_id": "CL:0000084"
+            },
+            {
+              "label": "conventional dendritic cell",
+              "ontology_term_id": "CL:0000990"
+            },
+            {
+              "label": "endothelial cell",
+              "ontology_term_id": "CL:0000115"
+            },
+            {
+              "label": "epithelial cell of proximal tubule",
+              "ontology_term_id": "CL:0002306"
+            },
+            {
+              "label": "kidney collecting duct intercalated cell",
+              "ontology_term_id": "CL:1001432"
+            },
+            {
+              "label": "kidney collecting duct principal cell",
+              "ontology_term_id": "CL:1001431"
+            },
+            {
+              "label": "kidney connecting tubule epithelial cell",
+              "ontology_term_id": "CL:1000768"
+            },
+            {
+              "label": "kidney distal convoluted tubule epithelial cell",
+              "ontology_term_id": "CL:1000849"
+            },
+            {
+              "label": "kidney interstitial alternatively activated macrophage",
+              "ontology_term_id": "CL:1000695"
+            },
+            {
+              "label": "kidney interstitial fibroblast",
+              "ontology_term_id": "CL:1000692"
+            },
+            {
+              "label": "kidney loop of Henle thick ascending limb epithelial cell",
+              "ontology_term_id": "CL:1001106"
+            },
+            {
+              "label": "kidney loop of Henle thin ascending limb epithelial cell",
+              "ontology_term_id": "CL:1001107"
+            },
+            {
+              "label": "kidney loop of Henle thin descending limb epithelial cell",
+              "ontology_term_id": "CL:1001111"
+            },
+            {
+              "label": "mast cell",
+              "ontology_term_id": "CL:0000097"
+            },
+            {
+              "label": "mature NK T cell",
+              "ontology_term_id": "CL:0000814"
+            },
+            {
+              "label": "mononuclear phagocyte",
+              "ontology_term_id": "CL:0000113"
+            },
+            {
+              "label": "neural cell",
+              "ontology_term_id": "CL:0002319"
+            },
+            {
+              "label": "neutrophil",
+              "ontology_term_id": "CL:0000775"
+            },
+            {
+              "label": "non-classical monocyte",
+              "ontology_term_id": "CL:0000875"
+            },
+            {
+              "label": "papillary tips cell",
+              "ontology_term_id": "CL:1000597"
+            },
+            {
+              "label": "parietal epithelial cell",
+              "ontology_term_id": "CL:1000452"
+            },
+            {
+              "label": "plasma cell",
+              "ontology_term_id": "CL:0000786"
+            },
+            {
+              "label": "plasmacytoid dendritic cell, human",
+              "ontology_term_id": "CL:0001058"
+            },
+            {
+              "label": "podocyte",
+              "ontology_term_id": "CL:0000653"
+            },
+            {
+              "label": "renal interstitial pericyte",
+              "ontology_term_id": "CL:1001318"
+            }
+          ],
+          "citation": "Publication: https://doi.org/10.1038/s41586-023-05769-3 Dataset Version: https://datasets.cellxgene.cziscience.com/34d0abc5-99bc-4ad5-a804-c119e14ff30a.h5ad curated and distributed by CZ CELLxGENE Discover in Collection: https://cellxgene.cziscience.com/collections/bcb61471-2a44-4d00-a0af-ff085512674c",
+          "dataset_id": "07854d9c-5375-4a9b-ac34-fa919d3c3686",
+          "dataset_version_id": "34d0abc5-99bc-4ad5-a804-c119e14ff30a",
+          "development_stage": [
+            {
+              "label": "14-year-old stage",
+              "ontology_term_id": "HsapDv:0000108"
+            },
+            {
+              "label": "29-year-old stage",
+              "ontology_term_id": "HsapDv:0000123"
+            },
+            {
+              "label": "45-year-old stage",
+              "ontology_term_id": "HsapDv:0000139"
+            },
+            {
+              "label": "54-year-old stage",
+              "ontology_term_id": "HsapDv:0000148"
+            },
+            {
+              "label": "57-year-old stage",
+              "ontology_term_id": "HsapDv:0000151"
+            },
+            {
+              "label": "59-year-old stage",
+              "ontology_term_id": "HsapDv:0000153"
+            },
+            {
+              "label": "63-year-old stage",
+              "ontology_term_id": "HsapDv:0000157"
+            },
+            {
+              "label": "66-year-old stage",
+              "ontology_term_id": "HsapDv:0000160"
+            },
+            {
+              "label": "69-year-old stage",
+              "ontology_term_id": "HsapDv:0000163"
+            },
+            {
+              "label": "76-year-old stage",
+              "ontology_term_id": "HsapDv:0000170"
+            },
+            {
+              "label": "eighth decade stage",
+              "ontology_term_id": "HsapDv:0000242"
+            },
+            {
+              "label": "fourth decade stage",
+              "ontology_term_id": "HsapDv:0000238"
+            },
+            {
+              "label": "seventh decade stage",
+              "ontology_term_id": "HsapDv:0000241"
+            },
+            {
+              "label": "sixth decade stage",
+              "ontology_term_id": "HsapDv:0000240"
+            },
+            {
+              "label": "third decade stage",
+              "ontology_term_id": "HsapDv:0000237"
+            }
+          ],
+          "disease": [
+            {
+              "label": "acute kidney failure",
+              "ontology_term_id": "MONDO:0002492"
+            },
+            {
+              "label": "chronic kidney disease",
+              "ontology_term_id": "MONDO:0005300"
+            },
+            {
+              "label": "normal",
+              "ontology_term_id": "PATO:0000461"
+            }
+          ],
+          "donor_id": [
+            "31-10001",
+            "31-10000",
+            "33-10005",
+            "32-10034",
+            "33-10006",
+            "29-10013",
+            "29-10010",
+            "31-10035",
+            "29-10006",
+            "30-10034",
+            "31-10006",
+            "32-10003",
+            "29-10008",
+            "29-10012",
+            "31-10013",
+            "32-2",
+            "3535",
+            "18-162",
+            "18-142",
+            "18-312",
+            "3499",
+            "3504",
+            "3593",
+            "3613",
+            "KRP446",
+            "3490",
+            "KRP460",
+            "KRP461",
+            "KRP462"
+          ],
+          "embeddings": [
+            "X_pca",
+            "X_tsne",
+            "X_umap"
+          ],
+          "explorer_url": "https://cellxgene.cziscience.com/e/07854d9c-5375-4a9b-ac34-fa919d3c3686.cxg/",
+          "feature_biotype": [
+            "gene"
+          ],
+          "feature_count": 28813,
+          "feature_reference": [
+            "NCBITaxon:9606"
+          ],
+          "is_primary_data": [
+            false
+          ],
+          "mean_genes_per_cell": 1889.994324460361,
+          "organism": [
+            {
+              "label": "Homo sapiens",
+              "ontology_term_id": "NCBITaxon:9606"
+            }
+          ],
+          "primary_cell_count": 0,
+          "published_at": "2022-02-16T00:36:47+00:00",
+          "raw_data_location": "raw.X",
+          "revised_at": "2025-10-24T21:07:30+00:00",
+          "schema_version": "7.0.0",
+          "self_reported_ethnicity": [
+            {
+              "label": "African American",
+              "ontology_term_id": "HANCESTRO:0568"
+            },
+            {
+              "label": "Asian",
+              "ontology_term_id": "HANCESTRO:0847"
+            },
+            {
+              "label": "unknown",
+              "ontology_term_id": "unknown"
+            }
+          ],
+          "sex": [
+            {
+              "label": "female",
+              "ontology_term_id": "PATO:0000383"
+            },
+            {
+              "label": "male",
+              "ontology_term_id": "PATO:0000384"
+            }
+          ],
+          "spatial": null,
+          "suspension_type": [
+            "nucleus"
+          ],
+          "tissue": [
+            {
+              "label": "cortex of kidney",
+              "ontology_term_id": "UBERON:0001225",
+              "tissue_type": "tissue"
+            },
+            {
+              "label": "renal medulla",
+              "ontology_term_id": "UBERON:0000362",
+              "tissue_type": "tissue"
+            },
+            {
+              "label": "renal papilla",
+              "ontology_term_id": "UBERON:0001228",
+              "tissue_type": "tissue"
+            }
+          ],
+          "title": "Single-nucleus RNA-seq of the Adult Human Kidney (Version 1.0)",
+          "tombstone": false,
+          "x_approximate_distribution": null
+        }
+      ],
+      "description": "Understanding kidney health and disease relies upon defining the complexity of cell types and states, their associated molecular profiles, and interactions within tissue neighborhoods. We have applied single-cell and single-nucleus assays to a broad spectrum of healthy reference and disease kidneys. This has provided a high-resolution cellular atlas that includes rare and novel cell populations. We further identify and define cellular states altered in kidney injury, encompassing cycling, adaptive or maladaptive repair, transitioning and degenerative states affecting several nephron segments. These analyses further define biological pathways relevant to injury niches, including signatures underlying the transition from reference to predicted maladaptive states that are associated with a decline in kidney function during chronic kidney disease. Our collaborative efforts across the Kidney Precision Medicine Project (KPMP), the Human BioMolecular Atlas Program (HuBMAP) and the Human Cell Atlas consortia aim to generate a comprehensive human kidney cell atlas that includes injury and disease-relevant cell states and neighborhoods as a valuable resource to the research community.",
+      "doi": "10.1038/s41586-023-05769-3",
+      "links": [
+        {
+          "link_name": "KPMP",
+          "link_type": "DATA_SOURCE",
+          "link_url": "https://www.kpmp.org/"
+        },
+        {
+          "link_name": "GSE169285",
+          "link_type": "OTHER",
+          "link_url": "https://www.ncbi.nlm.nih.gov/geo/query/acc.cgi?acc=GSE169285"
+        },
+        {
+          "link_name": "",
+          "link_type": "OTHER",
+          "link_url": "https://atlas.kpmp.org/explorer"
+        },
+        {
+          "link_name": "Single-Nucleus RNA-Sequencing",
+          "link_type": "PROTOCOL",
+          "link_url": "https://www.protocols.io/view/10x-genomics-single-nucleus-rna-sequencing-for-tra-86khzcw"
+        },
+        {
+          "link_name": "Isolation of single nuclei from solid tissues",
+          "link_type": "PROTOCOL",
+          "link_url": "http://dx.doi.org/10.17504/protocols.io.ufketkw"
+        },
+        {
+          "link_name": "HuBMAP",
+          "link_type": "DATA_SOURCE",
+          "link_url": "https://hubmapconsortium.org/"
+        },
+        {
+          "link_name": "Single-Cell RNA-Sequencing",
+          "link_type": "PROTOCOL",
+          "link_url": "https://www.protocols.io/view/single-cell-rna-sequencing-scrna-seq-7dthi6n"
+        },
+        {
+          "link_name": "Preparation of Adult Human Kidney Tissue for Single Nucleus RNA-seq and Other Multiomics Studies",
+          "link_type": "PROTOCOL",
+          "link_url": "https://www.protocols.io/view/preparation-of-adult-human-kidney-tissue-for-singl-yxmvm78xbv3p/v1"
+        },
+        {
+          "link_name": "GSE183279",
+          "link_type": "RAW_DATA",
+          "link_url": "https://www.ncbi.nlm.nih.gov/geo/query/acc.cgi?acc=GSE183279"
+        },
+        {
+          "link_name": "Atlas Version 1.5",
+          "link_type": "OTHER",
+          "link_url": "https://cellxgene.cziscience.com/collections/0f528c8a-a25c-4840-8fa3-d156fa11086f"
+        },
+        {
+          "link_name": "Atlas Version 2.0",
+          "link_type": "OTHER",
+          "link_url": "https://cellxgene.cziscience.com/collections/9c9d04c4-8899-417f-bb6f-6107dcadf14f"
+        }
+      ],
+      "name": "An atlas of healthy and injured cell states and niches in the human kidney",
+      "published_at": "2022-02-16T00:36:47+00:00",
+      "publisher_metadata": {
+        "authors": [
+          {
+            "family": "Lake",
+            "given": "Blue B."
+          },
+          {
+            "family": "Menon",
+            "given": "Rajasree"
+          },
+          {
+            "family": "Winfree",
+            "given": "Seth"
+          },
+          {
+            "family": "Hu",
+            "given": "Qiwen"
+          },
+          {
+            "family": "Ferreira",
+            "given": "Ricardo Melo"
+          },
+          {
+            "family": "Kalhor",
+            "given": "Kian"
+          },
+          {
+            "family": "Barwinska",
+            "given": "Daria"
+          },
+          {
+            "family": "Otto",
+            "given": "Edgar A."
+          },
+          {
+            "family": "Ferkowicz",
+            "given": "Michael"
+          },
+          {
+            "family": "Diep",
+            "given": "Dinh"
+          },
+          {
+            "family": "Plongthongkum",
+            "given": "Nongluk"
+          },
+          {
+            "family": "Knoten",
+            "given": "Amanda"
+          },
+          {
+            "family": "Urata",
+            "given": "Sarah"
+          },
+          {
+            "family": "Mariani",
+            "given": "Laura H."
+          },
+          {
+            "family": "Naik",
+            "given": "Abhijit S."
+          },
+          {
+            "family": "Eddy",
+            "given": "Sean"
+          },
+          {
+            "family": "Zhang",
+            "given": "Bo"
+          },
+          {
+            "family": "Wu",
+            "given": "Yan"
+          },
+          {
+            "family": "Salamon",
+            "given": "Diane"
+          },
+          {
+            "family": "Williams",
+            "given": "James C."
+          },
+          {
+            "family": "Wang",
+            "given": "Xin"
+          },
+          {
+            "family": "Balderrama",
+            "given": "Karol S."
+          },
+          {
+            "family": "Hoover",
+            "given": "Paul J."
+          },
+          {
+            "family": "Murray",
+            "given": "Evan"
+          },
+          {
+            "family": "Marshall",
+            "given": "Jamie L."
+          },
+          {
+            "family": "Noel",
+            "given": "Teia"
+          },
+          {
+            "family": "Vijayan",
+            "given": "Anitha"
+          },
+          {
+            "family": "Hartman",
+            "given": "Austin"
+          },
+          {
+            "family": "Chen",
+            "given": "Fei"
+          },
+          {
+            "family": "Waikar",
+            "given": "Sushrut S."
+          },
+          {
+            "family": "Rosas",
+            "given": "Sylvia E."
+          },
+          {
+            "family": "Wilson",
+            "given": "Francis P."
+          },
+          {
+            "family": "Palevsky",
+            "given": "Paul M."
+          },
+          {
+            "family": "Kiryluk",
+            "given": "Krzysztof"
+          },
+          {
+            "family": "Sedor",
+            "given": "John R."
+          },
+          {
+            "family": "Toto",
+            "given": "Robert D."
+          },
+          {
+            "family": "Parikh",
+            "given": "Chirag R."
+          },
+          {
+            "family": "Kim",
+            "given": "Eric H."
+          },
+          {
+            "family": "Satija",
+            "given": "Rahul"
+          },
+          {
+            "family": "Greka",
+            "given": "Anna"
+          },
+          {
+            "family": "Macosko",
+            "given": "Evan Z."
+          },
+          {
+            "family": "Kharchenko",
+            "given": "Peter V."
+          },
+          {
+            "family": "Gaut",
+            "given": "Joseph P."
+          },
+          {
+            "family": "Hodgin",
+            "given": "Jeffrey B."
+          },
+          {
+            "family": "Knight",
+            "given": "Richard"
+          },
+          {
+            "family": "Lecker",
+            "given": "Stewart H."
+          },
+          {
+            "family": "Stillman",
+            "given": "Isaac"
+          },
+          {
+            "family": "Amodu",
+            "given": "Afolarin A."
+          },
+          {
+            "family": "Ilori",
+            "given": "Titlayo"
+          },
+          {
+            "family": "Maikhor",
+            "given": "Shana"
+          },
+          {
+            "family": "Schmidt",
+            "given": "Insa"
+          },
+          {
+            "family": "McMahon",
+            "given": "Gearoid M."
+          },
+          {
+            "family": "Weins",
+            "given": "Astrid"
+          },
+          {
+            "family": "Hacohen",
+            "given": "Nir"
+          },
+          {
+            "family": "Bush",
+            "given": "Lakeshia"
+          },
+          {
+            "family": "Gonzalez-Vicente",
+            "given": "Agustin"
+          },
+          {
+            "family": "Taliercio",
+            "given": "Jonathan"
+          },
+          {
+            "family": "O\u2019toole",
+            "given": "John"
+          },
+          {
+            "family": "Poggio",
+            "given": "Emilio"
+          },
+          {
+            "family": "Cooperman",
+            "given": "Leslie"
+          },
+          {
+            "family": "Jolly",
+            "given": "Stacey"
+          },
+          {
+            "family": "Herlitz",
+            "given": "Leal"
+          },
+          {
+            "family": "Nguyen",
+            "given": "Jane"
+          },
+          {
+            "family": "Palmer",
+            "given": "Ellen"
+          },
+          {
+            "family": "Sendrey",
+            "given": "Dianna"
+          },
+          {
+            "family": "Spates-Harden",
+            "given": "Kassandra"
+          },
+          {
+            "family": "Appelbaum",
+            "given": "Paul"
+          },
+          {
+            "family": "Barasch",
+            "given": "Jonathan M."
+          },
+          {
+            "family": "Bomback",
+            "given": "Andrew S."
+          },
+          {
+            "family": "D\u2019Agati",
+            "given": "Vivette D."
+          },
+          {
+            "family": "Mehl",
+            "given": "Karla"
+          },
+          {
+            "family": "Canetta",
+            "given": "Pietro A."
+          },
+          {
+            "family": "Shang",
+            "given": "Ning"
+          },
+          {
+            "family": "Balderes",
+            "given": "Olivia"
+          },
+          {
+            "family": "Kudose",
+            "given": "Satoru"
+          },
+          {
+            "family": "Barisoni",
+            "given": "Laura"
+          },
+          {
+            "family": "Alexandrov",
+            "given": "Theodore"
+          },
+          {
+            "family": "Cheng",
+            "given": "Yinghua"
+          },
+          {
+            "family": "Dunn",
+            "given": "Kenneth W."
+          },
+          {
+            "family": "Kelly",
+            "given": "Katherine J."
+          },
+          {
+            "family": "Sutton",
+            "given": "Timothy A."
+          },
+          {
+            "family": "Wen",
+            "given": "Yumeng"
+          },
+          {
+            "family": "Corona-Villalobos",
+            "given": "Celia P."
+          },
+          {
+            "family": "Menez",
+            "given": "Steven"
+          },
+          {
+            "family": "Rosenberg",
+            "given": "Avi"
+          },
+          {
+            "family": "Atta",
+            "given": "Mohammed"
+          },
+          {
+            "family": "Johansen",
+            "given": "Camille"
+          },
+          {
+            "family": "Sun",
+            "given": "Jennifer"
+          },
+          {
+            "family": "Roy",
+            "given": "Neil"
+          },
+          {
+            "family": "Williams",
+            "given": "Mark"
+          },
+          {
+            "family": "Azeloglu",
+            "given": "Evren U."
+          },
+          {
+            "family": "He",
+            "given": "Cijang"
+          },
+          {
+            "family": "Iyengar",
+            "given": "Ravi"
+          },
+          {
+            "family": "Hansen",
+            "given": "Jens"
+          },
+          {
+            "family": "Xiong",
+            "given": "Yuguang"
+          },
+          {
+            "family": "Rovin",
+            "given": "Brad"
+          },
+          {
+            "family": "Parikh",
+            "given": "Samir"
+          },
+          {
+            "family": "Madhavan",
+            "given": "Sethu M."
+          },
+          {
+            "family": "Anderton",
+            "given": "Christopher R."
+          },
+          {
+            "family": "Pasa-Tolic",
+            "given": "Ljiljana"
+          },
+          {
+            "family": "Velickovic",
+            "given": "Dusan"
+          },
+          {
+            "family": "Troyanskaya",
+            "given": "Olga"
+          },
+          {
+            "family": "Sealfon",
+            "given": "Rachel"
+          },
+          {
+            "family": "Tuttle",
+            "given": "Katherine R."
+          },
+          {
+            "family": "Laszik",
+            "given": "Zoltan G."
+          },
+          {
+            "family": "Nolan",
+            "given": "Garry"
+          },
+          {
+            "family": "Sarwal",
+            "given": "Minnie"
+          },
+          {
+            "family": "Anjani",
+            "given": "Kavya"
+          },
+          {
+            "family": "Sigdel",
+            "given": "Tara"
+          },
+          {
+            "family": "Ascani",
+            "given": "Heather"
+          },
+          {
+            "family": "Balis",
+            "given": "Ulysses G. J."
+          },
+          {
+            "family": "Lienczewski",
+            "given": "Chrysta"
+          },
+          {
+            "family": "Steck",
+            "given": "Becky"
+          },
+          {
+            "family": "He",
+            "given": "Yougqun"
+          },
+          {
+            "family": "Schaub",
+            "given": "Jennifer"
+          },
+          {
+            "family": "Blanc",
+            "given": "Victoria M."
+          },
+          {
+            "family": "Murugan",
+            "given": "Raghavan"
+          },
+          {
+            "family": "Randhawa",
+            "given": "Parmjeet"
+          },
+          {
+            "family": "Rosengart",
+            "given": "Matthew"
+          },
+          {
+            "family": "Tublin",
+            "given": "Mitchell"
+          },
+          {
+            "family": "Vita",
+            "given": "Tina"
+          },
+          {
+            "family": "Kellum",
+            "given": "John A."
+          },
+          {
+            "family": "Hall",
+            "given": "Daniel E."
+          },
+          {
+            "family": "Elder",
+            "given": "Michele M."
+          },
+          {
+            "family": "Winters",
+            "given": "James"
+          },
+          {
+            "family": "Gilliam",
+            "given": "Matthew"
+          },
+          {
+            "family": "Alpers",
+            "given": "Charles E."
+          },
+          {
+            "family": "Blank",
+            "given": "Kristina N."
+          },
+          {
+            "family": "Carson",
+            "given": "Jonas"
+          },
+          {
+            "family": "De Boer",
+            "given": "Ian H."
+          },
+          {
+            "family": "Dighe",
+            "given": "Ashveena L."
+          },
+          {
+            "family": "Himmelfarb",
+            "given": "Jonathan"
+          },
+          {
+            "family": "Mooney",
+            "given": "Sean D."
+          },
+          {
+            "family": "Shankland",
+            "given": "Stuart"
+          },
+          {
+            "family": "Williams",
+            "given": "Kayleen"
+          },
+          {
+            "family": "Park",
+            "given": "Christopher"
+          },
+          {
+            "family": "Dowd",
+            "given": "Frederick"
+          },
+          {
+            "family": "McClelland",
+            "given": "Robyn L."
+          },
+          {
+            "family": "Daniel",
+            "given": "Stephen"
+          },
+          {
+            "family": "Hoofnagle",
+            "given": "Andrew N."
+          },
+          {
+            "family": "Wilcox",
+            "given": "Adam"
+          },
+          {
+            "family": "Bansal",
+            "given": "Shweta"
+          },
+          {
+            "family": "Sharma",
+            "given": "Kumar"
+          },
+          {
+            "family": "Venkatachalam",
+            "given": "Manjeri"
+          },
+          {
+            "family": "Zhang",
+            "given": "Guanshi"
+          },
+          {
+            "family": "Pamreddy",
+            "given": "Annapurna"
+          },
+          {
+            "family": "Kakade",
+            "given": "Vijaykumar R."
+          },
+          {
+            "family": "Moledina",
+            "given": "Dennis"
+          },
+          {
+            "family": "Shaw",
+            "given": "Melissa M."
+          },
+          {
+            "family": "Ugwuowo",
+            "given": "Ugochukwu"
+          },
+          {
+            "family": "Arora",
+            "given": "Tanima"
+          },
+          {
+            "family": "Ardayfio",
+            "given": "Joseph"
+          },
+          {
+            "family": "Bebiak",
+            "given": "Jack"
+          },
+          {
+            "family": "Brown",
+            "given": "Keith"
+          },
+          {
+            "family": "Campbell",
+            "given": "Catherine E."
+          },
+          {
+            "family": "Saul",
+            "given": "John"
+          },
+          {
+            "family": "Shpigel",
+            "given": "Anna"
+          },
+          {
+            "family": "Stutzke",
+            "given": "Christy"
+          },
+          {
+            "family": "Koewler",
+            "given": "Robert"
+          },
+          {
+            "family": "Campbell",
+            "given": "Taneisha"
+          },
+          {
+            "family": "Hayashi",
+            "given": "Lynda"
+          },
+          {
+            "family": "Jefferson",
+            "given": "Nichole"
+          },
+          {
+            "family": "Pinkeney",
+            "given": "Roy"
+          },
+          {
+            "family": "Roberts",
+            "given": "Glenda V."
+          },
+          {
+            "family": "Eadon",
+            "given": "Michael T."
+          },
+          {
+            "family": "Dagher",
+            "given": "Pierre C."
+          },
+          {
+            "family": "El-Achkar",
+            "given": "Tarek M."
+          },
+          {
+            "family": "Zhang",
+            "given": "Kun"
+          },
+          {
+            "family": "Kretzler",
+            "given": "Matthias"
+          },
+          {
+            "family": "Jain",
+            "given": "Sanjay"
+          },
+          {
+            "name": "KPMP Consortium"
+          }
+        ],
+        "is_preprint": false,
+        "journal": "Nature",
+        "published_at": 1689811200.0,
+        "published_day": 20,
+        "published_month": 7,
+        "published_year": 2023
+      },
+      "revised_at": "2025-11-12T17:15:29+00:00",
+      "revising_in": null,
+      "revision_of": null,
+      "visibility": "PUBLIC"
+    }
+  }
+}

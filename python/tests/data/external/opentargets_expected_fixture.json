@@ -1,0 +1,1071 @@
+{
+  "ENSG00000010810": {
+    "target": {
+      "id": "ENSG00000010810",
+      "dbXrefs": [
+        {
+          "id": "4037",
+          "source": "HGNC"
+        },
+        {
+          "id": "1A0N",
+          "source": "PDB"
+        },
+        {
+          "id": "1AOT",
+          "source": "PDB"
+        },
+        {
+          "id": "1AOU",
+          "source": "PDB"
+        },
+        {
+          "id": "1AVZ",
+          "source": "PDB"
+        },
+        {
+          "id": "1AZG",
+          "source": "PDB"
+        },
+        {
+          "id": "1EFN",
+          "source": "PDB"
+        },
+        {
+          "id": "1FYN",
+          "source": "PDB"
+        },
+        {
+          "id": "1G83",
+          "source": "PDB"
+        },
+        {
+          "id": "1M27",
+          "source": "PDB"
+        },
+        {
+          "id": "1NYF",
+          "source": "PDB"
+        },
+        {
+          "id": "1NYG",
+          "source": "PDB"
+        },
+        {
+          "id": "1SHF",
+          "source": "PDB"
+        },
+        {
+          "id": "1ZBJ",
+          "source": "PDB"
+        },
+        {
+          "id": "2DQ7",
+          "source": "PDB"
+        },
+        {
+          "id": "2MQI",
+          "source": "PDB"
+        },
+        {
+          "id": "2MRJ",
+          "source": "PDB"
+        },
+        {
+          "id": "2MRK",
+          "source": "PDB"
+        },
+        {
+          "id": "3H0F",
+          "source": "PDB"
+        },
+        {
+          "id": "3H0H",
+          "source": "PDB"
+        },
+        {
+          "id": "3H0I",
+          "source": "PDB"
+        },
+        {
+          "id": "3UA6",
+          "source": "PDB"
+        },
+        {
+          "id": "3UA7",
+          "source": "PDB"
+        },
+        {
+          "id": "4D8D",
+          "source": "PDB"
+        },
+        {
+          "id": "4EIK",
+          "source": "PDB"
+        },
+        {
+          "id": "4U17",
+          "source": "PDB"
+        },
+        {
+          "id": "4U1P",
+          "source": "PDB"
+        },
+        {
+          "id": "4ZNX",
+          "source": "PDB"
+        },
+        {
+          "id": "5ZAU",
+          "source": "PDB"
+        },
+        {
+          "id": "6EDF",
+          "source": "PDB"
+        },
+        {
+          "id": "6IPY",
+          "source": "PDB"
+        },
+        {
+          "id": "6IPZ",
+          "source": "PDB"
+        },
+        {
+          "id": "7A2J",
+          "source": "PDB"
+        },
+        {
+          "id": "7A2K",
+          "source": "PDB"
+        },
+        {
+          "id": "7A2L",
+          "source": "PDB"
+        },
+        {
+          "id": "7A2M",
+          "source": "PDB"
+        },
+        {
+          "id": "7A2N",
+          "source": "PDB"
+        },
+        {
+          "id": "7A2O",
+          "source": "PDB"
+        },
+        {
+          "id": "7A2P",
+          "source": "PDB"
+        },
+        {
+          "id": "7A2Q",
+          "source": "PDB"
+        },
+        {
+          "id": "7A2R",
+          "source": "PDB"
+        },
+        {
+          "id": "7A2S",
+          "source": "PDB"
+        },
+        {
+          "id": "7A2T",
+          "source": "PDB"
+        },
+        {
+          "id": "7A2U",
+          "source": "PDB"
+        },
+        {
+          "id": "7A2V",
+          "source": "PDB"
+        },
+        {
+          "id": "7A2W",
+          "source": "PDB"
+        },
+        {
+          "id": "7A2X",
+          "source": "PDB"
+        },
+        {
+          "id": "7A2Y",
+          "source": "PDB"
+        },
+        {
+          "id": "7A2Z",
+          "source": "PDB"
+        },
+        {
+          "id": "7UD6",
+          "source": "PDB"
+        },
+        {
+          "id": "8KDX",
+          "source": "PDB"
+        },
+        {
+          "id": "9GHK",
+          "source": "PDB"
+        },
+        {
+          "id": "CHEMBL1841",
+          "source": "ChEMBL"
+        },
+        {
+          "id": "DB01254",
+          "source": "DrugBank"
+        },
+        {
+          "id": "DB12010",
+          "source": "DrugBank"
+        },
+        {
+          "id": "DB02078",
+          "source": "DrugBank"
+        },
+        {
+          "id": "DB16656",
+          "source": "DrugBank"
+        },
+        {
+          "id": "R-HSA-114604",
+          "source": "Reactome"
+        },
+        {
+          "id": "R-HSA-1227986",
+          "source": "Reactome"
+        },
+        {
+          "id": "R-HSA-1257604",
+          "source": "Reactome"
+        },
+        {
+          "id": "R-HSA-1433557",
+          "source": "Reactome"
+        },
+        {
+          "id": "R-HSA-1433559",
+          "source": "Reactome"
+        },
+        {
+          "id": "R-HSA-164944",
+          "source": "Reactome"
+        },
+        {
+          "id": "R-HSA-202733",
+          "source": "Reactome"
+        },
+        {
+          "id": "R-HSA-2029481",
+          "source": "Reactome"
+        },
+        {
+          "id": "R-HSA-210990",
+          "source": "Reactome"
+        },
+        {
+          "id": "R-HSA-2219530",
+          "source": "Reactome"
+        },
+        {
+          "id": "R-HSA-2424491",
+          "source": "Reactome"
+        },
+        {
+          "id": "R-HSA-2682334",
+          "source": "Reactome"
+        },
+        {
+          "id": "R-HSA-2730905",
+          "source": "Reactome"
+        },
+        {
+          "id": "R-HSA-373753",
+          "source": "Reactome"
+        },
+        {
+          "id": "R-HSA-375165",
+          "source": "Reactome"
+        },
+        {
+          "id": "R-HSA-389356",
+          "source": "Reactome"
+        },
+        {
+          "id": "R-HSA-389357",
+          "source": "Reactome"
+        },
+        {
+          "id": "R-HSA-389359",
+          "source": "Reactome"
+        },
+        {
+          "id": "R-HSA-389513",
+          "source": "Reactome"
+        },
+        {
+          "id": "R-HSA-3928662",
+          "source": "Reactome"
+        },
+        {
+          "id": "R-HSA-3928663",
+          "source": "Reactome"
+        },
+        {
+          "id": "R-HSA-3928664",
+          "source": "Reactome"
+        },
+        {
+          "id": "R-HSA-3928665",
+          "source": "Reactome"
+        },
+        {
+          "id": "R-HSA-399954",
+          "source": "Reactome"
+        },
+        {
+          "id": "R-HSA-399955",
+          "source": "Reactome"
+        },
+        {
+          "id": "R-HSA-399956",
+          "source": "Reactome"
+        },
+        {
+          "id": "R-HSA-418885",
+          "source": "Reactome"
+        },
+        {
+          "id": "R-HSA-4420097",
+          "source": "Reactome"
+        },
+        {
+          "id": "R-HSA-5621480",
+          "source": "Reactome"
+        },
+        {
+          "id": "R-HSA-5621575",
+          "source": "Reactome"
+        },
+        {
+          "id": "R-HSA-5673001",
+          "source": "Reactome"
+        },
+        {
+          "id": "R-HSA-6811558",
+          "source": "Reactome"
+        },
+        {
+          "id": "R-HSA-75892",
+          "source": "Reactome"
+        },
+        {
+          "id": "R-HSA-8866376",
+          "source": "Reactome"
+        },
+        {
+          "id": "R-HSA-9032500",
+          "source": "Reactome"
+        },
+        {
+          "id": "R-HSA-9032759",
+          "source": "Reactome"
+        },
+        {
+          "id": "R-HSA-912631",
+          "source": "Reactome"
+        },
+        {
+          "id": "R-HSA-9664323",
+          "source": "Reactome"
+        },
+        {
+          "id": "R-HSA-9664422",
+          "source": "Reactome"
+        },
+        {
+          "id": "R-HSA-9670439",
+          "source": "Reactome"
+        },
+        {
+          "id": "R-HSA-9680350",
+          "source": "Reactome"
+        },
+        {
+          "id": "R-HSA-9706374",
+          "source": "Reactome"
+        },
+        {
+          "id": "R-HSA-9766229",
+          "source": "Reactome"
+        },
+        {
+          "id": "R-HSA-983695",
+          "source": "Reactome"
+        },
+        {
+          "id": "R-HSA-9856530",
+          "source": "Reactome"
+        },
+        {
+          "id": "IPR047924",
+          "source": "InterPro"
+        },
+        {
+          "id": "IPR035750",
+          "source": "InterPro"
+        },
+        {
+          "id": "IPR011009",
+          "source": "InterPro"
+        },
+        {
+          "id": "IPR050198",
+          "source": "InterPro"
+        },
+        {
+          "id": "IPR000719",
+          "source": "InterPro"
+        },
+        {
+          "id": "IPR017441",
+          "source": "InterPro"
+        },
+        {
+          "id": "IPR001245",
+          "source": "InterPro"
+        },
+        {
+          "id": "IPR000980",
+          "source": "InterPro"
+        },
+        {
+          "id": "IPR036860",
+          "source": "InterPro"
+        },
+        {
+          "id": "IPR036028",
+          "source": "InterPro"
+        },
+        {
+          "id": "IPR001452",
+          "source": "InterPro"
+        },
+        {
+          "id": "IPR008266",
+          "source": "InterPro"
+        },
+        {
+          "id": "IPR020635",
+          "source": "InterPro"
+        }
+      ],
+      "proteinIds": [
+        {
+          "id": "P06241",
+          "source": "uniprot_swissprot"
+        },
+        {
+          "id": "E5RFM0",
+          "source": "uniprot_trembl"
+        },
+        {
+          "id": "E5RFM4",
+          "source": "uniprot_trembl"
+        },
+        {
+          "id": "E5RFM6",
+          "source": "uniprot_trembl"
+        },
+        {
+          "id": "E5RFS5",
+          "source": "uniprot_trembl"
+        },
+        {
+          "id": "E5RGM6",
+          "source": "uniprot_trembl"
+        },
+        {
+          "id": "E5RGT0",
+          "source": "uniprot_trembl"
+        },
+        {
+          "id": "E5RH71",
+          "source": "uniprot_trembl"
+        },
+        {
+          "id": "E5RHF7",
+          "source": "uniprot_trembl"
+        },
+        {
+          "id": "E5RHX7",
+          "source": "uniprot_trembl"
+        },
+        {
+          "id": "E5RI25",
+          "source": "uniprot_trembl"
+        },
+        {
+          "id": "E5RIX5",
+          "source": "uniprot_trembl"
+        },
+        {
+          "id": "E5RJX7",
+          "source": "uniprot_trembl"
+        },
+        {
+          "id": "E5RK23",
+          "source": "uniprot_trembl"
+        },
+        {
+          "id": "ENSP00000229471",
+          "source": "ensembl_PRO"
+        },
+        {
+          "id": "ENSP00000346671",
+          "source": "ensembl_PRO"
+        },
+        {
+          "id": "ENSP00000357656",
+          "source": "ensembl_PRO"
+        },
+        {
+          "id": "ENSP00000357667",
+          "source": "ensembl_PRO"
+        },
+        {
+          "id": "ENSP00000357671",
+          "source": "ensembl_PRO"
+        },
+        {
+          "id": "ENSP00000427993",
+          "source": "ensembl_PRO"
+        },
+        {
+          "id": "ENSP00000428042",
+          "source": "ensembl_PRO"
+        },
+        {
+          "id": "ENSP00000428045",
+          "source": "ensembl_PRO"
+        },
+        {
+          "id": "ENSP00000428493",
+          "source": "ensembl_PRO"
+        },
+        {
+          "id": "ENSP00000428695",
+          "source": "ensembl_PRO"
+        },
+        {
+          "id": "ENSP00000428983",
+          "source": "ensembl_PRO"
+        },
+        {
+          "id": "ENSP00000429294",
+          "source": "ensembl_PRO"
+        },
+        {
+          "id": "ENSP00000429590",
+          "source": "ensembl_PRO"
+        },
+        {
+          "id": "ENSP00000429813",
+          "source": "ensembl_PRO"
+        },
+        {
+          "id": "ENSP00000429866",
+          "source": "ensembl_PRO"
+        },
+        {
+          "id": "ENSP00000429992",
+          "source": "ensembl_PRO"
+        },
+        {
+          "id": "ENSP00000430364",
+          "source": "ensembl_PRO"
+        },
+        {
+          "id": "ENSP00000430455",
+          "source": "ensembl_PRO"
+        },
+        {
+          "id": "ENSP00000575589",
+          "source": "ensembl_PRO"
+        },
+        {
+          "id": "ENSP00000575590",
+          "source": "ensembl_PRO"
+        },
+        {
+          "id": "ENSP00000575591",
+          "source": "ensembl_PRO"
+        },
+        {
+          "id": "ENSP00000575592",
+          "source": "ensembl_PRO"
+        },
+        {
+          "id": "ENSP00000575593",
+          "source": "ensembl_PRO"
+        },
+        {
+          "id": "ENSP00000575594",
+          "source": "ensembl_PRO"
+        },
+        {
+          "id": "ENSP00000575595",
+          "source": "ensembl_PRO"
+        },
+        {
+          "id": "ENSP00000575596",
+          "source": "ensembl_PRO"
+        },
+        {
+          "id": "ENSP00000575597",
+          "source": "ensembl_PRO"
+        },
+        {
+          "id": "ENSP00000575598",
+          "source": "ensembl_PRO"
+        },
+        {
+          "id": "ENSP00000575599",
+          "source": "ensembl_PRO"
+        },
+        {
+          "id": "ENSP00000575600",
+          "source": "ensembl_PRO"
+        },
+        {
+          "id": "ENSP00000575601",
+          "source": "ensembl_PRO"
+        },
+        {
+          "id": "ENSP00000575602",
+          "source": "ensembl_PRO"
+        },
+        {
+          "id": "ENSP00000575603",
+          "source": "ensembl_PRO"
+        },
+        {
+          "id": "ENSP00000575604",
+          "source": "ensembl_PRO"
+        },
+        {
+          "id": "ENSP00000575605",
+          "source": "ensembl_PRO"
+        },
+        {
+          "id": "ENSP00000575606",
+          "source": "ensembl_PRO"
+        },
+        {
+          "id": "ENSP00000575607",
+          "source": "ensembl_PRO"
+        },
+        {
+          "id": "ENSP00000575608",
+          "source": "ensembl_PRO"
+        },
+        {
+          "id": "ENSP00000575609",
+          "source": "ensembl_PRO"
+        },
+        {
+          "id": "ENSP00000575610",
+          "source": "ensembl_PRO"
+        },
+        {
+          "id": "ENSP00000575611",
+          "source": "ensembl_PRO"
+        },
+        {
+          "id": "ENSP00000582373",
+          "source": "ensembl_PRO"
+        },
+        {
+          "id": "ENSP00000582374",
+          "source": "ensembl_PRO"
+        },
+        {
+          "id": "ENSP00000582375",
+          "source": "ensembl_PRO"
+        },
+        {
+          "id": "ENSP00000582376",
+          "source": "ensembl_PRO"
+        },
+        {
+          "id": "ENSP00000582377",
+          "source": "ensembl_PRO"
+        },
+        {
+          "id": "ENSP00000582378",
+          "source": "ensembl_PRO"
+        },
+        {
+          "id": "ENSP00000582379",
+          "source": "ensembl_PRO"
+        },
+        {
+          "id": "ENSP00000582380",
+          "source": "ensembl_PRO"
+        },
+        {
+          "id": "ENSP00000582381",
+          "source": "ensembl_PRO"
+        },
+        {
+          "id": "ENSP00000582382",
+          "source": "ensembl_PRO"
+        },
+        {
+          "id": "ENSP00000582383",
+          "source": "ensembl_PRO"
+        },
+        {
+          "id": "ENSP00000582384",
+          "source": "ensembl_PRO"
+        },
+        {
+          "id": "ENSP00000582385",
+          "source": "ensembl_PRO"
+        },
+        {
+          "id": "ENSP00000582386",
+          "source": "ensembl_PRO"
+        },
+        {
+          "id": "ENSP00000636620",
+          "source": "ensembl_PRO"
+        },
+        {
+          "id": "ENSP00000636621",
+          "source": "ensembl_PRO"
+        },
+        {
+          "id": "ENSP00000636622",
+          "source": "ensembl_PRO"
+        },
+        {
+          "id": "ENSP00000636623",
+          "source": "ensembl_PRO"
+        },
+        {
+          "id": "ENSP00000636624",
+          "source": "ensembl_PRO"
+        },
+        {
+          "id": "ENSP00000636625",
+          "source": "ensembl_PRO"
+        },
+        {
+          "id": "ENSP00000636626",
+          "source": "ensembl_PRO"
+        },
+        {
+          "id": "ENSP00000636627",
+          "source": "ensembl_PRO"
+        },
+        {
+          "id": "ENSP00000636628",
+          "source": "ensembl_PRO"
+        },
+        {
+          "id": "ENSP00000636629",
+          "source": "ensembl_PRO"
+        },
+        {
+          "id": "ENSP00000636630",
+          "source": "ensembl_PRO"
+        },
+        {
+          "id": "ENSP00000636631",
+          "source": "ensembl_PRO"
+        },
+        {
+          "id": "ENSP00000636632",
+          "source": "ensembl_PRO"
+        },
+        {
+          "id": "ENSP00000636633",
+          "source": "ensembl_PRO"
+        },
+        {
+          "id": "ENSP00000636634",
+          "source": "ensembl_PRO"
+        },
+        {
+          "id": "ENSP00000636635",
+          "source": "ensembl_PRO"
+        },
+        {
+          "id": "ENSP00000636636",
+          "source": "ensembl_PRO"
+        },
+        {
+          "id": "B5BU57",
+          "source": "uniprot_obsolete"
+        },
+        {
+          "id": "E1P557",
+          "source": "uniprot_obsolete"
+        },
+        {
+          "id": "H0UI48",
+          "source": "uniprot_obsolete"
+        },
+        {
+          "id": "Q16248",
+          "source": "uniprot_obsolete"
+        },
+        {
+          "id": "Q5R3A6",
+          "source": "uniprot_obsolete"
+        },
+        {
+          "id": "Q5R3A7",
+          "source": "uniprot_obsolete"
+        },
+        {
+          "id": "Q8N5D7",
+          "source": "uniprot_obsolete"
+        }
+      ],
+      "transcriptIds": [
+        "ENST00000491885",
+        "ENST00000966574",
+        "ENST00000905539",
+        "ENST00000966570",
+        "ENST00000905538",
+        "ENST00000905540",
+        "ENST00000905545",
+        "ENST00000518295",
+        "ENST00000912326",
+        "ENST00000912320",
+        "ENST00000966567",
+        "ENST00000966569",
+        "ENST00000523574",
+        "ENST00000905542",
+        "ENST00000905535",
+        "ENST00000912315",
+        "ENST00000905544",
+        "ENST00000905533",
+        "ENST00000905536",
+        "ENST00000966565",
+        "ENST00000462598",
+        "ENST00000354650",
+        "ENST00000520518",
+        "ENST00000523238",
+        "ENST00000523570",
+        "ENST00000912314",
+        "ENST00000912324",
+        "ENST00000912317",
+        "ENST00000912321",
+        "ENST00000912318",
+        "ENST00000523322",
+        "ENST00000517419",
+        "ENST00000524310",
+        "ENST00000905550",
+        "ENST00000467921",
+        "ENST00000905534",
+        "ENST00000966566",
+        "ENST00000966564",
+        "ENST00000905549",
+        "ENST00000966572",
+        "ENST00000966571",
+        "ENST00000487824",
+        "ENST00000966563",
+        "ENST00000521062",
+        "ENST00000905548",
+        "ENST00000905552",
+        "ENST00000912323",
+        "ENST00000905537",
+        "ENST00000905531",
+        "ENST00000966577",
+        "ENST00000229471",
+        "ENST00000966575",
+        "ENST00000905530",
+        "ENST00000905532",
+        "ENST00000966561",
+        "ENST00000966576",
+        "ENST00000521361",
+        "ENST00000912325",
+        "ENST00000484067",
+        "ENST00000905551",
+        "ENST00000905543",
+        "ENST00000462856",
+        "ENST00000912322",
+        "ENST00000905541",
+        "ENST00000471959",
+        "ENST00000905546",
+        "ENST00000518630",
+        "ENST00000496864",
+        "ENST00000905547",
+        "ENST00000368682",
+        "ENST00000912316",
+        "ENST00000467899",
+        "ENST00000368678",
+        "ENST00000476769",
+        "ENST00000966568",
+        "ENST00000495927",
+        "ENST00000966562",
+        "ENST00000912327",
+        "ENST00000368667",
+        "ENST00000966573",
+        "ENST00000912319",
+        "ENST00000495935"
+      ],
+      "approvedSymbol": "FYN",
+      "approvedName": "FYN proto-oncogene, Src family tyrosine kinase"
+    },
+    "tractability": [
+      {
+        "label": "Approved Drug",
+        "modality": "SM",
+        "value": true
+      },
+      {
+        "label": "Advanced Clinical",
+        "modality": "SM",
+        "value": false
+      },
+      {
+        "label": "Phase 1 Clinical",
+        "modality": "SM",
+        "value": false
+      },
+      {
+        "label": "Structure with Ligand",
+        "modality": "SM",
+        "value": true
+      },
+      {
+        "label": "High-Quality Ligand",
+        "modality": "SM",
+        "value": true
+      },
+      {
+        "label": "High-Quality Pocket",
+        "modality": "SM",
+        "value": false
+      },
+      {
+        "label": "Med-Quality Pocket",
+        "modality": "SM",
+        "value": true
+      },
+      {
+        "label": "Druggable Family",
+        "modality": "SM",
+        "value": true
+      },
+      {
+        "label": "Approved Drug",
+        "modality": "AB",
+        "value": false
+      },
+      {
+        "label": "Advanced Clinical",
+        "modality": "AB",
+        "value": false
+      },
+      {
+        "label": "Phase 1 Clinical",
+        "modality": "AB",
+        "value": false
+      },
+      {
+        "label": "UniProt loc high conf",
+        "modality": "AB",
+        "value": true
+      },
+      {
+        "label": "GO CC high conf",
+        "modality": "AB",
+        "value": true
+      },
+      {
+        "label": "UniProt loc med conf",
+        "modality": "AB",
+        "value": false
+      },
+      {
+        "label": "UniProt SigP or TMHMM",
+        "modality": "AB",
+        "value": false
+      },
+      {
+        "label": "GO CC med conf",
+        "modality": "AB",
+        "value": false
+      },
+      {
+        "label": "Human Protein Atlas loc",
+        "modality": "AB",
+        "value": true
+      },
+      {
+        "label": "Approved Drug",
+        "modality": "PR",
+        "value": false
+      },
+      {
+        "label": "Advanced Clinical",
+        "modality": "PR",
+        "value": false
+      },
+      {
+        "label": "Phase 1 Clinical",
+        "modality": "PR",
+        "value": false
+      },
+      {
+        "label": "Literature",
+        "modality": "PR",
+        "value": true
+      },
+      {
+        "label": "UniProt Ubiquitination",
+        "modality": "PR",
+        "value": false
+      },
+      {
+        "label": "Database Ubiquitination",
+        "modality": "PR",
+        "value": true
+      },
+      {
+        "label": "Half-life Data",
+        "modality": "PR",
+        "value": true
+      },
+      {
+        "label": "Small Molecule Binder",
+        "modality": "PR",
+        "value": true
+      },
+      {
+        "label": "Approved Drug",
+        "modality": "OC",
+        "value": false
+      },
+      {
+        "label": "Advanced Clinical",
+        "modality": "OC",
+        "value": false
+      },
+      {
+        "label": "Phase 1 Clinical",
+        "modality": "OC",
+        "value": false
+      }
+    ]
+  }
+}

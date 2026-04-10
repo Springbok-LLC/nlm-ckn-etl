@@ -10,7 +10,7 @@ from pathlib import Path
 
 from ckn_schema.pydantic.ckn_schema import AnatomicalStructure, CellType
 
-from ExternalApiResultsFetcher import HUBMAP_DIRPATH
+from DataFetcher import HUBMAP_DIRPATH
 
 from LoaderUtilities import (
     DEPRECATED_TERMS,

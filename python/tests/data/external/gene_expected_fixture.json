@@ -1,0 +1,17 @@
+{
+  "10225": {
+    "Gene_ID": "10225",
+    "Official_symbol": "CD96",
+    "Official_full_name": "CD96 molecule",
+    "Gene_type": "protein-coding",
+    "Link_to_UniProt_ID": "https://www.uniprot.org/uniprot/P40200",
+    "Organism": "Homo sapiens",
+    "RefSeq_gene_ID": "GCF_000001405.40-RS_2025_08",
+    "Also_known_as": [
+      "TACTILE"
+    ],
+    "Summary": "The protein encoded by this gene belongs to the immunoglobulin superfamily. It is a type I membrane protein. The protein may play a role in the adhesive interactions of activated T and NK cells during the late phase of the immune response. It may also function in antigen presentation. Alternative splicing generates multiple transcript variants encoding distinct isoforms. [provided by RefSeq, Jan 2016]",
+    "UniProt_name": "P40200",
+    "mRNA_(NM)_and_protein_(NP)_sequences": "NM_005816 -> NP_005807, T-cell surface protein tactile"
+  }
+}
