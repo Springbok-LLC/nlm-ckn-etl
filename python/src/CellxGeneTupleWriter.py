@@ -66,6 +66,10 @@ def create_tuples(cellxgene_results: dict) -> list[tuple]:
         )
         pub = Publication(
             publication_doi=remove_protocols(metadata.get("Link_to_publication")),
+            author_list=metadata.get("Author_list"),
+            year=metadata.get("Year"),
+            title=metadata.get("Title"),
+            journal=metadata.get("Journal"),
         )
         ctx = {"dataset_version_id": dataset_version_id}
 

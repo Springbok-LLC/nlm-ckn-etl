@@ -97,11 +97,26 @@ class CellxGeneTransformer(BaseTransformer):
 
             entry = {}
 
-            # Citation
-            first_author = collection_json["publisher_metadata"]["authors"][0]["family"]
-            published_year = collection_json["publisher_metadata"]["published_year"]
-            journal = collection_json["publisher_metadata"]["journal"]
+            # Publication metadata
+            pub_meta = collection_json.get("publisher_metadata", {})
+            authors = pub_meta.get("authors", [])
+            first_author = authors[0]["family"] if authors else None
+            published_year = pub_meta.get("published_year")
+            journal = pub_meta.get("journal")
+            title = collection_json.get("name")
+
             entry["Citation"] = f"{first_author} ({published_year}) {journal}"
+            entry["Author_list"] = (
+                ", ".join(
+                    f"{a.get('family', '')}, {a.get('given', '')}"
+                    for a in authors
+                )
+                if authors
+                else None
+            )
+            entry["Year"] = str(published_year) if published_year else None
+            entry["Title"] = title
+            entry["Journal"] = journal
 
             # Publication and collection links
             entry["Link_to_publication"] = None
