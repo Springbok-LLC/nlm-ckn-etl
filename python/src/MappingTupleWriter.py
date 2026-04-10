@@ -139,9 +139,9 @@ def create_tuples(
             species="Homo sapiens",
             publication=str(doi) if pd.notna(doi) else None,
             cell_count=int(cluster_size) if pd.notna(cluster_size) else None,
-            biomarker_combination=" ".join(markers) if markers else None,
-            binary_gene_set=" ".join(binary_genes) if binary_genes else None,
-            expressed_genes=" ".join(binary_genes) if binary_genes else None,
+            biomarker_combination=",".join(markers) if markers else None,
+            binary_gene_set=",".join(binary_genes) if binary_genes else None,
+            expressed_genes=",".join(binary_genes) if binary_genes else None,
             cellxgene_collection=(
                 f"cellxgene.cziscience.com/collections/{collection_id}"
                 if pd.notna(collection_id)

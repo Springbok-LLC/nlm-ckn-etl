@@ -112,16 +112,16 @@ def create_tuples(
         )
 
         bmc = BiomarkerCombination(
-            markers=" ".join(markers),
+            markers=",".join(markers),
             f_beta_score=float(row["f_score"]) if pd.notna(row["f_score"]) else None,
         )
-        bgs = BinaryGeneSet(markers=" ".join(binary_genes))
+        bgs = BinaryGeneSet(markers=",".join(binary_genes))
         cell_set = CellSet(
             author_cell_term=cluster_name,
             cell_count=int(cluster_size) if pd.notna(cluster_size) else None,
-            biomarker_combination=" ".join(markers),
-            binary_gene_set=" ".join(binary_genes),
-            expressed_genes=" ".join(binary_genes),
+            biomarker_combination=",".join(markers),
+            binary_gene_set=",".join(binary_genes),
+            expressed_genes=",".join(binary_genes),
             f_beta_score=float(row["f_score"]) if pd.notna(row["f_score"]) else None,
             silhouette_score=(
                 float(row["median"])

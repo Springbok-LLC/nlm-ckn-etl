@@ -92,8 +92,8 @@
         "individual_labels": [
           {
             "field_to_use": "Markers",
-            "to_be_replaced": " ",
-            "replace_with": "|",
+            "to_be_replaced": ",",
+            "replace_with": " | ",
             "make_lower_case": false
           },
           {
@@ -132,8 +132,8 @@
         "individual_labels": [
           {
             "field_to_use": "Markers",
-            "to_be_replaced": " ",
-            "replace_with": "|",
+            "to_be_replaced": ",",
+            "replace_with": " | ",
             "make_lower_case": false
           },
           {
@@ -254,7 +254,7 @@
             "field_to_use": ""
           }
         ],
-        "more_info": "ChEMBL is a manually curated database of bioactive molecules with drug-like properties. It brings together chemical, bioactivity and genomic data to aid the translation of genomic information into effective new drugs."
+s        "more_info": "ChEMBL is a manually curated database of bioactive molecules with drug-like properties. It brings together chemical, bioactivity and genomic data to aid the translation of genomic information into effective new drugs."
       }
     ],
     [
