@@ -11,7 +11,7 @@ import requests
 EUTILS_URL = "https://eutils.ncbi.nlm.nih.gov/entrez/eutils/"
 NCBI_EMAIL = os.environ.get("NCBI_EMAIL")
 NCBI_API_KEY = os.environ.get("NCBI_API_KEY")
-NCBI_API_SLEEP = 1
+NCBI_API_SLEEP = 0.2
 REQUEST_TIMEOUT = 30  # seconds
 
 
