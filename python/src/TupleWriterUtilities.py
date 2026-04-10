@@ -45,11 +45,8 @@ from LoaderUtilities import (
 TUPLES_DIRPATH = DATA_DIRPATH / "tuples"
 
 # Maps Pydantic field names to annotation attribute names where the
-# default capitalization convention does not match.
-FIELD_NAME_MAP: dict[str, str] = {
-    # Example:
-    # "f_beta_score": "F_beta_confidence_score",
-}
+# stored name must differ from the Pydantic field name.
+FIELD_NAME_MAP: dict[str, str] = {}
 
 # Fields to skip when generating vertex annotation triples because
 # their value is already encoded in the vertex term itself.
@@ -348,8 +345,12 @@ def entity_to_term(entity: Any, context: dict[str, Any] | None = None) -> str | 
 def _format_field_name(field_name: str) -> str:
     """Format a Pydantic field name as an annotation attribute name.
 
-    Uses FIELD_NAME_MAP for special cases, otherwise capitalizes the
-    first letter and preserves underscores.
+    Returns the field name as-is so that vertex attributes match the
+    Pydantic schema and ontology conventions. Presentation is handled
+    by the front end via the collection maps.
+
+    Uses FIELD_NAME_MAP for special cases where the attribute name
+    must differ from the Pydantic field name.
 
     Parameters
     ----------
@@ -359,11 +360,11 @@ def _format_field_name(field_name: str) -> str:
     Returns
     -------
     str
-        The formatted attribute name (e.g., "F_beta_confidence_score").
+        The attribute name (e.g., "f_beta_score").
     """
     if field_name in FIELD_NAME_MAP:
         return FIELD_NAME_MAP[field_name]
-    return field_name[0].upper() + field_name[1:]
+    return field_name
 
 
 def entity_to_annotation_triples(

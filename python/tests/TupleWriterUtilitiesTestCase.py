@@ -253,7 +253,7 @@ class AssociationToTuplesTestCase(unittest.TestCase):
         tuples = twu.association_to_tuples(self._make_assoc())
         annotations = [t for t in tuples if len(t) == 3 and "#" in str(t[1])]
         attr_names = [str(t[1]).split("#")[-1] for t in annotations]
-        self.assertIn("Label", attr_names)
+        self.assertIn("label", attr_names)
 
     def test_annotated_terms_deduplication(self):
         assoc = self._make_assoc()
@@ -291,9 +291,9 @@ class EntityToAnnotationTriplesTestCase(unittest.TestCase):
         )
         triples = twu.entity_to_annotation_triples(gene, "GS_TP53")
         attr_names = [str(t[1]).split("#")[-1] for t in triples]
-        self.assertIn("Gene_symbol", attr_names)
-        self.assertIn("Label", attr_names)
-        self.assertIn("Gene_type", attr_names)
+        self.assertIn("gene_symbol", attr_names)
+        self.assertIn("label", attr_names)
+        self.assertIn("gene_type", attr_names)
 
     def test_none_fields_skipped(self):
         gene = Gene(gene_symbol="TP53")
@@ -301,7 +301,7 @@ class EntityToAnnotationTriplesTestCase(unittest.TestCase):
         # Only gene_symbol is populated; None fields are skipped
         self.assertEqual(len(triples), 1)
         attr_name = str(triples[0][1]).split("#")[-1]
-        self.assertEqual(attr_name, "Gene_symbol")
+        self.assertEqual(attr_name, "gene_symbol")
 
     def test_edge_fields_skipped(self):
         bmc = BiomarkerCombination(markers="TP53 BRCA1", f_beta_score=0.85)
@@ -309,8 +309,8 @@ class EntityToAnnotationTriplesTestCase(unittest.TestCase):
             bmc, "BMC_abc", edge_fields={"f_beta_score"}
         )
         attr_names = [str(t[1]).split("#")[-1] for t in triples]
-        self.assertIn("Markers", attr_names)
-        self.assertNotIn("F_beta_confidence_score", attr_names)
+        self.assertIn("markers", attr_names)
+        self.assertNotIn("f_beta_score", attr_names)
 
     def test_field_name_mapping(self):
         csd = CellSetDataset(
@@ -320,8 +320,8 @@ class EntityToAnnotationTriplesTestCase(unittest.TestCase):
         )
         triples = twu.entity_to_annotation_triples(csd, "CSD_abc")
         attr_names = [str(t[1]).split("#")[-1] for t in triples]
-        self.assertIn("Dataset_name", attr_names)
-        self.assertIn("Disease_status", attr_names)
+        self.assertIn("dataset_name", attr_names)
+        self.assertIn("disease_status", attr_names)
 
 
 class PurlToCurieInContextTestCase(unittest.TestCase):

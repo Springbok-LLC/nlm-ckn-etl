@@ -47,7 +47,7 @@ class HuBMAPTupleWriterTestCase(unittest.TestCase):
 
     def test_label_annotations(self):
         tuples = create_tuples(self._make_data(), {"CL_0000235"})
-        labels = [t for t in tuples if len(t) == 3 and "Label" in str(t[1])]
+        labels = [t for t in tuples if len(t) == 3 and "#label" in str(t[1])]
         self.assertGreater(len(labels), 0)
 
 
