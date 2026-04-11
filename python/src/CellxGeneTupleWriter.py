@@ -9,7 +9,7 @@ import json
 from ckn_schema.pydantic.ckn_schema import CellSetDataset, Publication
 from rdflib.term import Literal, URIRef
 
-from ExternalApiResultsFetcher import CELLXGENE_PATH
+from DataFetcher import CELLXGENE_PATH
 
 from LoaderUtilities import PURLBASE, RDFSBASE
 

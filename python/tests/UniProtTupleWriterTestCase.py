@@ -46,10 +46,10 @@ class UniProtTupleWriterTestCase(unittest.TestCase):
         attrs = [str(t[1]).split("#")[-1] for t in tuples]
         self.assertNotIn("Protein_function", attrs)
 
-    def test_uniprot_id_term_encoded(self):
+    def test_uniprot_id_included(self):
         tuples = create_tuples(self._make_data())
         attrs = [str(t[1]).split("#")[-1] for t in tuples]
-        self.assertNotIn("Uniprot_id", attrs)
+        self.assertIn("Uniprot_id", attrs)
 
 
 if __name__ == "__main__":

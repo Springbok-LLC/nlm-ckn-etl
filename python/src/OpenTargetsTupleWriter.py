@@ -18,7 +18,7 @@ from ckn_schema.pydantic.ckn_schema import (
     Protein,
 )
 
-from ExternalApiResultsFetcher import (
+from DataFetcher import (
     OPENTARGETS_PATH,
     GENE_PATH,
 )
