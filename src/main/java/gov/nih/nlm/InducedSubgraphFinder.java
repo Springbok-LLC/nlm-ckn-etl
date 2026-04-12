@@ -14,8 +14,13 @@ import java.util.stream.Collectors;
 
 public class InducedSubgraphFinder {
 
-    // Collections to skip during BFS traversal
-    private static final Set<String> IGNORED_COLLECTIONS = Set.of("CHEBI", "NCT");
+    // Vertex collections to skip during BFS traversal
+    private static final Set<String> IGNORED_VERTEX_COLLECTIONS = Set.of("CHEBI", "NCT");
+
+    // Edge collections to skip entirely during BFS traversal. Use this to cut specific
+    // high-fanout connections (e.g., PR-NCBITaxon pulls in most of UniProt's PR vertices
+    // because every protein is annotated with its source organism).
+    private static final Set<String> IGNORED_EDGE_COLLECTIONS = Set.of("PR-NCBITaxon");
     private static final Map<String, HierarchyConfig> HIERARCHY_CONFIG = Map.ofEntries(Map.entry("CL",
                     new HierarchyConfig("all", null)),
             Map.entry("GO", new HierarchyConfig("walk", "SUB_CLASS_OF")),
@@ -205,15 +210,17 @@ public class InducedSubgraphFinder {
             if (depth < maxDepth) {
                 for (ArangoEdge edge : graph.outgoingEdgesOf(node)) {
                     if (isSelfReferentialEdge(edge)) continue;
+                    if (IGNORED_EDGE_COLLECTIONS.contains(edge.collection())) continue;
                     ArangoVertex neighbor = graph.getEdgeTarget(edge);
-                    if (!IGNORED_COLLECTIONS.contains(neighbor.collection()) && visited.add(neighbor)) {
+                    if (!IGNORED_VERTEX_COLLECTIONS.contains(neighbor.collection()) && visited.add(neighbor)) {
                         queue.add(Map.entry(neighbor, depth + 1));
                     }
                 }
                 for (ArangoEdge edge : graph.incomingEdgesOf(node)) {
                     if (isSelfReferentialEdge(edge)) continue;
+                    if (IGNORED_EDGE_COLLECTIONS.contains(edge.collection())) continue;
                     ArangoVertex neighbor = graph.getEdgeSource(edge);
-                    if (!IGNORED_COLLECTIONS.contains(neighbor.collection()) && visited.add(neighbor)) {
+                    if (!IGNORED_VERTEX_COLLECTIONS.contains(neighbor.collection()) && visited.add(neighbor)) {
                         queue.add(Map.entry(neighbor, depth + 1));
                     }
                 }
