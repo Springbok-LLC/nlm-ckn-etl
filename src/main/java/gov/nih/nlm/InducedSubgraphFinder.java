@@ -14,16 +14,10 @@ import java.util.stream.Collectors;
 
 public class InducedSubgraphFinder {
 
-    // Ontology hierarchy traversal configuration
-    // "all": include entire vertex and edge collection (CL special case)
-    // "walk": BFS walk following edges with the given Label to root
-    private record HierarchyConfig(String strategy, String label) {}
-
     // Collections to skip during BFS traversal
     private static final Set<String> IGNORED_COLLECTIONS = Set.of("CHEBI", "NCT");
-
-    private static final Map<String, HierarchyConfig> HIERARCHY_CONFIG = Map.ofEntries(
-            Map.entry("CL", new HierarchyConfig("all", null)),
+    private static final Map<String, HierarchyConfig> HIERARCHY_CONFIG = Map.ofEntries(Map.entry("CL",
+                    new HierarchyConfig("all", null)),
             Map.entry("GO", new HierarchyConfig("walk", "SUB_CLASS_OF")),
             Map.entry("MONDO", new HierarchyConfig("walk", "SUB_CLASS_OF")),
             Map.entry("HP", new HierarchyConfig("walk", "SUB_CLASS_OF")),
@@ -31,12 +25,9 @@ public class InducedSubgraphFinder {
             Map.entry("HsapDv", new HierarchyConfig("walk", "SUB_CLASS_OF")),
             Map.entry("NCBITaxon", new HierarchyConfig("walk", "SUB_CLASS_OF")),
             Map.entry("Orphanet", new HierarchyConfig("walk", "SUB_CLASS_OF")),
-            Map.entry("PR", new HierarchyConfig("walk", "SUB_CLASS_OF")),
+            Map.entry("PR", new HierarchyConfig("none", "SUB_CLASS_OF")),
             Map.entry("CHEBI", new HierarchyConfig("walk", "SUB_CLASS_OF")),
-            Map.entry("UBERON", new HierarchyConfig("walk", "PART_OF"))
-    );
-
-    private record HierarchyResult(Set<ArangoVertex> ancestors, Set<ArangoEdge> edges) {}
+            Map.entry("UBERON", new HierarchyConfig("walk", "PART_OF")));
 
     /**
      * Multi-source BFS up to maxDepth, then extract the induced subgraph.
@@ -70,8 +61,8 @@ public class InducedSubgraphFinder {
     }
 
     /**
-     * For every ontology vertex in the induced subgraph, add hierarchy
-     * paths (child->parent to root) based on HIERARCHY_CONFIG rules.
+     * For every ontology vertex in the induced subgraph, add hierarchy paths (child->parent to root) based on
+     * HIERARCHY_CONFIG rules.
      *
      * @param fullGraph the full source graph
      * @param induced   the induced subgraph to enrich with hierarchy paths
@@ -80,17 +71,19 @@ public class InducedSubgraphFinder {
                                           DirectedPseudograph<ArangoVertex, ArangoEdge> induced) {
 
         // Identify which ontology prefixes are present in the induced subgraph
-        Set<String> prefixesPresent = induced.vertexSet().stream()
-                .map(ArangoVertex::collection)
-                .filter(HIERARCHY_CONFIG::containsKey)
-                .collect(Collectors.toCollection(TreeSet::new));
+        Set<String> prefixesPresent = induced.vertexSet().stream().map(ArangoVertex::collection).filter(HIERARCHY_CONFIG::containsKey).collect(
+                Collectors.toCollection(TreeSet::new));
 
         Set<ArangoVertex> verticesToAdd = new HashSet<>();
         Set<ArangoEdge> edgesToAdd = new HashSet<>();
 
         for (String prefix : prefixesPresent) {
             HierarchyConfig config = HIERARCHY_CONFIG.get(prefix);
-            System.out.println("Adding hierarchy paths for " + prefix + " (strategy: " + config.strategy() + ")");
+            if ("none".equals(config.strategy)) {
+                System.out.println("Skipping hierarchy paths for " + prefix + " (strategy: " + config.strategy() + ")");
+            } else {
+                System.out.println("Adding hierarchy paths for " + prefix + " (strategy: " + config.strategy() + ")");
+            }
 
             if ("all".equals(config.strategy())) {
                 HierarchyResult result = collectAllOntologyNodesAndEdges(fullGraph, prefix);
@@ -98,9 +91,8 @@ public class InducedSubgraphFinder {
                 edgesToAdd.addAll(result.edges());
 
             } else if ("walk".equals(config.strategy())) {
-                Set<ArangoVertex> ontologyVertices = induced.vertexSet().stream()
-                        .filter(v -> v.collection().equals(prefix))
-                        .collect(Collectors.toSet());
+                Set<ArangoVertex> ontologyVertices = induced.vertexSet().stream().filter(v -> v.collection().equals(
+                        prefix)).collect(Collectors.toSet());
 
                 for (ArangoVertex vertex : ontologyVertices) {
                     HierarchyResult result = walkHierarchyToRoot(fullGraph, vertex, prefix, config.label());
@@ -134,8 +126,7 @@ public class InducedSubgraphFinder {
     }
 
     /**
-     * BFS walk from startNode to root, following only self-referential
-     * edges (e.g., GO-GO) with the specified Label.
+     * BFS walk from startNode to root, following only self-referential edges (e.g., GO-GO) with the specified Label.
      */
     private HierarchyResult walkHierarchyToRoot(DirectedPseudograph<ArangoVertex, ArangoEdge> fullGraph,
                                                 ArangoVertex startNode,
@@ -171,29 +162,25 @@ public class InducedSubgraphFinder {
     }
 
     /**
-     * Collect ALL vertices with the given prefix and ALL edges in the
-     * self-referential edge collection (e.g., CL-CL).
+     * Collect ALL vertices with the given prefix and ALL edges in the self-referential edge collection (e.g., CL-CL).
      */
     private HierarchyResult collectAllOntologyNodesAndEdges(DirectedPseudograph<ArangoVertex, ArangoEdge> fullGraph,
                                                             String ontologyPrefix) {
 
         String edgeCollection = ontologyPrefix + "-" + ontologyPrefix;
 
-        Set<ArangoVertex> allNodes = fullGraph.vertexSet().stream()
-                .filter(v -> v.collection().equals(ontologyPrefix))
-                .collect(Collectors.toSet());
+        Set<ArangoVertex> allNodes = fullGraph.vertexSet().stream().filter(v -> v.collection().equals(ontologyPrefix)).collect(
+                Collectors.toSet());
 
-        Set<ArangoEdge> allEdges = fullGraph.edgeSet().stream()
-                .filter(e -> e.collection().equals(edgeCollection))
-                .collect(Collectors.toSet());
+        Set<ArangoEdge> allEdges = fullGraph.edgeSet().stream().filter(e -> e.collection().equals(edgeCollection)).collect(
+                Collectors.toSet());
 
         return new HierarchyResult(allNodes, allEdges);
     }
 
     /**
-     * Returns true if the edge connects two vertices in the same ontology collection
-     * (e.g., CL-CL, GO-GO). These are skipped during BFS since hierarchy enrichment
-     * handles them separately.
+     * Returns true if the edge connects two vertices in the same ontology collection (e.g., CL-CL, GO-GO). These are
+     * skipped during BFS since hierarchy enrichment handles them separately.
      */
     private boolean isSelfReferentialEdge(ArangoEdge edge) {
         String col = edge.collection();
@@ -267,5 +254,14 @@ public class InducedSubgraphFinder {
             if (v.id().equals(id)) return v;
         }
         return null;
+    }
+
+    // Ontology hierarchy traversal configuration
+    // "all": include entire vertex and edge collection (CL special case)
+    // "walk": BFS walk following edges with the given Label to root
+    private record HierarchyConfig(String strategy, String label) {
+    }
+
+    private record HierarchyResult(Set<ArangoVertex> ancestors, Set<ArangoEdge> edges) {
     }
 }
