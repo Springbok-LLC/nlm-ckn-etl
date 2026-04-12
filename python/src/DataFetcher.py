@@ -40,6 +40,7 @@ class DataFetcher:
     output_path: Path
     batch_size: int = 25
     max_per_second: int = 5
+    request_timeout: int = REQUEST_TIMEOUT
 
     def get_ids(self, context):
         """Return the list of IDs to iterate over.
@@ -357,6 +358,8 @@ class OpenTargetsFetcher(DataFetcher):
 
     name = "opentargets"
     output_path = EXTERNAL_DIRPATH / "opentargets.json"
+    max_per_second = 2
+    request_timeout = 120
 
     def get_ids(self, context):
         """Return gene Ensembl IDs."""
@@ -385,7 +388,7 @@ class OpenTargetsFetcher(DataFetcher):
                 "query": query["query_string"],
                 "variables": variables,
             },
-            timeout=REQUEST_TIMEOUT,
+            timeout=self.request_timeout,
         )
         response.raise_for_status()
         print(
