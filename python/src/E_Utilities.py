@@ -11,7 +11,7 @@ import requests
 EUTILS_URL = "https://eutils.ncbi.nlm.nih.gov/entrez/eutils/"
 NCBI_EMAIL = os.environ.get("NCBI_EMAIL")
 NCBI_API_KEY = os.environ.get("NCBI_API_KEY")
-NCBI_API_SLEEP = 1
+NCBI_API_SLEEP = 0.2
 REQUEST_TIMEOUT = 30  # seconds
 
 
@@ -78,7 +78,9 @@ def get_data_for_pmid(pmid, do_write=False):
         "api_key": NCBI_API_KEY,
     }
     sleep(NCBI_API_SLEEP)
-    response = requests.get(fetch_url, params=parse.urlencode(params, safe=","), timeout=REQUEST_TIMEOUT)
+    response = requests.get(
+        fetch_url, params=parse.urlencode(params, safe=","), timeout=REQUEST_TIMEOUT
+    )
     if response.status_code == 200:
         xml_data = response.text
         if do_write:
@@ -135,7 +137,9 @@ def find_gene_id_for_gene_name(name, do_write=False):
         "api_key": NCBI_API_KEY,
     }
     sleep(NCBI_API_SLEEP)
-    response = requests.get(search_url, params=parse.urlencode(params, safe=","), timeout=REQUEST_TIMEOUT)
+    response = requests.get(
+        search_url, params=parse.urlencode(params, safe=","), timeout=REQUEST_TIMEOUT
+    )
     if response.status_code == 200:
         json_data = response.json()
         if do_write:
@@ -181,7 +185,9 @@ def fetch_xml_for_gene_id(gene_id):
         "api_key": NCBI_API_KEY,
     }
     sleep(NCBI_API_SLEEP)
-    response = requests.get(fetch_url, params=parse.urlencode(params, safe=","), timeout=REQUEST_TIMEOUT)
+    response = requests.get(
+        fetch_url, params=parse.urlencode(params, safe=","), timeout=REQUEST_TIMEOUT
+    )
     if response.status_code == 200:
         return response.text
     else:
@@ -229,9 +235,8 @@ def parse_xml_for_gene_id(gene_id, xml_data):
             "Gene-nomenclature_name",
         ],
     )
-    data["Gene_type"] = find_names_or_none(
-        root, ["Entrezgene_type"], attribute="value"
-    )
+    data["Gene_type"] = find_names_or_none(root, ["Entrezgene_type"], attribute="value")
+    data["Link_to_UniProt_ID"] = None
     for child in root.find_all("Other-source_url"):
         if "www.uniprot.org" in child.text:
             data["Link_to_UniProt_ID"] = child.text
@@ -256,9 +261,12 @@ def parse_xml_for_gene_id(gene_id, xml_data):
         data["Also_known_as"].append(child.text)
     data["Summary"] = find_names_or_none(root, ["Entrezgene_summary"])
     pr_desc = find_names_or_none(root, ["Entrezgene_prot", "Prot-ref_desc"])
-    data["UniProt_name"] = Path(
-        parse.urlparse(data["Link_to_UniProt_ID"]).path
-    ).stem
+    if data["Link_to_UniProt_ID"]:
+        data["UniProt_name"] = Path(
+            parse.urlparse(data["Link_to_UniProt_ID"]).path
+        ).stem
+    else:
+        data["UniProt_name"] = None
     for product in root.find_all("Gene-commentary_products"):
         if find_names_or_none(product, ["Gene-commentary_type"], "value") == "mRNA":
             nm_id = None
