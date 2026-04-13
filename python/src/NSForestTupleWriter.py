@@ -122,7 +122,6 @@ def create_tuples(
             biomarker_combination=",".join(markers),
             binary_gene_set=",".join(binary_genes),
             expressed_genes=",".join(binary_genes),
-            f_beta_score=float(row["f_score"]) if pd.notna(row["f_score"]) else None,
             silhouette_score=(
                 float(row["median"])
                 if "median" in row and pd.notna(row.get("median"))
