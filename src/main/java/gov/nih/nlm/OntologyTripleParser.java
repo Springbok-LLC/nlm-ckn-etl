@@ -39,13 +39,16 @@ public class OntologyTripleParser {
 
     // Additional class namespaces to include per ontology file, beyond the root namespace.
     // Key: OWL filename, Value: set of namespace prefixes to include.
-    private static final Map<String, Set<String>> EXTRA_NAMESPACES = Map.of(
-            "cl.owl", Set.of("http://purl.obolibrary.org/obo/PR")
-    );
+    private static final Map<String, Set<String>> EXTRA_NAMESPACES = Map.of("cl.owl",
+            Set.of("http://purl.obolibrary.org/obo/PR"));
+
+    // Assign selected predicates to exclude
+    private static final List<String> EXCLUDED_PREDICATES = List.of(
+            "http://purl.obolibrary.org/obo/mondo#curated_content_resource");
 
     /**
-     * Build the set of namespaces for a given ontology file. Includes the root namespace
-     * plus any additional namespaces configured in EXTRA_NAMESPACES.
+     * Build the set of namespaces for a given ontology file. Includes the root namespace plus any additional namespaces
+     * configured in EXTRA_NAMESPACES.
      *
      * @param rootNS   Root namespace derived from the ontology
      * @param fileName Name of the OWL file
@@ -76,8 +79,8 @@ public class OntologyTripleParser {
     }
 
     /**
-     * Test whether a triple is valid by checking that the subject matches one of the accepted namespaces,
-     * and optionally that any named object also matches.
+     * Test whether a triple is valid by checking that the subject matches one of the accepted namespaces, and
+     * optionally that any named object also matches.
      *
      * @param triple             Triple to validate
      * @param namespaces         Set of namespace prefixes to accept
@@ -86,12 +89,14 @@ public class OntologyTripleParser {
      */
     public static boolean isValidTriple(Triple triple, Set<String> namespaces, boolean testObjectInRootNS) {
         boolean subjectIsValid = matchesAnyNamespace(triple.getSubject().toString(), namespaces);
+        // triple.getPredicate().getURI().equals("http://purl.obolibrary.org/obo/mondo#curated_content_resource")
+        boolean predicateIsValid = !EXCLUDED_PREDICATES.stream().anyMatch(ep -> triple.getPredicate().getURI().equals(ep));
         if (testObjectInRootNS) {
             boolean objectIsNamedResource = triple.getObject().isURI();
             boolean objectMatchesNS = matchesAnyNamespace(triple.getObject().toString(), namespaces);
-            return subjectIsValid && (!objectIsNamedResource || objectMatchesNS);
+            return subjectIsValid && predicateIsValid && (!objectIsNamedResource || objectMatchesNS);
         }
-        return subjectIsValid;
+        return subjectIsValid && predicateIsValid;
     }
 
     /**
@@ -142,6 +147,9 @@ public class OntologyTripleParser {
                         // selected name spaces
                         Triple triple = classStatement.asTriple();
                         if (isValidTriple(triple, namespaces, testObjectInRootNS)) {
+                            if (triple.getPredicate().getURI().contains("curated")) {
+                                System.out.println("Stop here");
+                            }
                             triples.add(triple);
                         }
                     }
@@ -208,9 +216,8 @@ public class OntologyTripleParser {
     }
 
     /**
-     * Extract owl:imports URIs from an ontology model and derive namespace prefixes from them.
-     * For example, an import of "http://purl.obolibrary.org/obo/go.owl" yields prefix
-     * "http://purl.obolibrary.org/obo/GO".
+     * Extract owl:imports URIs from an ontology model and derive namespace prefixes from them. For example, an import
+     * of "http://purl.obolibrary.org/obo/go.owl" yields prefix "http://purl.obolibrary.org/obo/GO".
      *
      * @param ontModel An ontology model created on reading an OWL file
      * @return Sorted set of namespace prefixes derived from owl:imports
@@ -237,9 +244,8 @@ public class OntologyTripleParser {
     }
 
     /**
-     * Collect all unique namespace prefixes from class URIs in the model. The prefix is derived
-     * by splitting on "_" and taking the portion before the first underscore.
-     * For example, "http://purl.obolibrary.org/obo/CL_0000235" yields
+     * Collect all unique namespace prefixes from class URIs in the model. The prefix is derived by splitting on "_" and
+     * taking the portion before the first underscore. For example, "http://purl.obolibrary.org/obo/CL_0000235" yields
      * "http://purl.obolibrary.org/obo/CL".
      *
      * @param ontModel An ontology model created on reading an OWL file
@@ -257,9 +263,8 @@ public class OntologyTripleParser {
     }
 
     /**
-     * Report namespace prefixes for each OWL file. Prints the root namespace, any owl:imports,
-     * and all class namespace prefixes found in the file. Use this to decide which namespaces
-     * to include per ontology.
+     * Report namespace prefixes for each OWL file. Prints the root namespace, any owl:imports, and all class namespace
+     * prefixes found in the file. Use this to decide which namespaces to include per ontology.
      *
      * @param files Paths to ontology files
      */
@@ -315,8 +320,8 @@ public class OntologyTripleParser {
     }
 
     /**
-     * Parse each ontology file in the data/obo directory to collect unique triples.
-     * Pass "--report-imports" to print owl:imports for each ontology file instead.
+     * Parse each ontology file in the data/obo directory to collect unique triples. Pass "--report-imports" to print
+     * owl:imports for each ontology file instead.
      *
      * @param args Optional: "--report-imports" to print import namespaces
      */

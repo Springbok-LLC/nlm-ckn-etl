@@ -17,6 +17,7 @@ from TupleWriterUtilities import (
     ASSOCIATION_CLASSES,
     TUPLES_DIRPATH,
     association_to_tuples,
+    entity_to_term,
     remove_protocols,
     write_tuples,
 )
@@ -67,7 +68,7 @@ def create_tuples(cellxgene_results: dict) -> list[tuple]:
         pub = Publication(
             publication_doi=remove_protocols(metadata.get("Link_to_publication")),
             author_list=metadata.get("Author_list"),
-            year=metadata.get("Year"),
+            year=str(metadata.get("Year")),
             title=metadata.get("Title"),
             journal=metadata.get("Journal"),
         )
@@ -78,22 +79,20 @@ def create_tuples(cellxgene_results: dict) -> list[tuple]:
             predicate="source",
             object=pub,
         )
-        tuples.extend(
-            association_to_tuples(assoc, ctx, source="CELLxGENE")
-        )
+        tuples.extend(association_to_tuples(assoc, ctx, source="CELLxGENE"))
 
-        # Additional PUB annotations not on the Publication entity
-        pub_term = f"PUB_{dataset_version_id}"
-
+        # Additional annotations not on the PUB and CSD entities
         citation = metadata.get("Citation")
         if citation:
-            tuples.append(
-                (
-                    URIRef(f"{PURLBASE}/{pub_term}"),
-                    URIRef(f"{RDFSBASE}#Citation"),
-                    Literal(citation),
+            for entity in [csd, pub]:
+                term = entity_to_term(entity, ctx)
+                tuples.append(
+                    (
+                        URIRef(f"{PURLBASE}/{term}"),
+                        URIRef(f"{RDFSBASE}#Citation"),
+                        Literal(citation),
+                    )
                 )
-            )
 
     return tuples
 
