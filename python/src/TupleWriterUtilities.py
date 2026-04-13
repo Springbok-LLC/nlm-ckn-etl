@@ -495,9 +495,14 @@ def association_to_tuples(
     source : str, optional
         Source label for the source quintuple.
     annotated_terms : set[str], optional
-        Set of entity terms that have already been annotated. Terms
-        annotated by this call are added to the set. Pass a shared
-        set across multiple calls to avoid duplicate vertex annotations.
+        Deprecated and ignored. Previously used to suppress duplicate
+        vertex annotations by skipping all annotation triples for any
+        term already in the set. That caused fields populated by a later
+        instance to be silently dropped when an earlier instance of the
+        same term was sparser. Vertex-annotation dedup is now performed
+        by ``write_tuples`` with last-non-None-wins semantics per
+        ``(term, attribute)``. The parameter is retained so existing
+        call sites continue to work.
 
     Returns
     -------
@@ -536,16 +541,10 @@ def association_to_tuples(
     subj_edge_fields = edge_mapping.get("subject", set())
     obj_edge_fields = edge_mapping.get("object", set())
 
-    # Vertex annotation triples (skip already-annotated terms, or allow duplication)
-    if annotated_terms is None or s_term not in annotated_terms:
-        tuples.extend(entity_to_annotation_triples(subj, s_term, subj_edge_fields))
-        if annotated_terms is not None:
-            annotated_terms.add(s_term)
-
-    if annotated_terms is None or o_term not in annotated_terms:
-        tuples.extend(entity_to_annotation_triples(obj, o_term, obj_edge_fields))
-        if annotated_terms is not None:
-            annotated_terms.add(o_term)
+    # Vertex annotation triples (emitted unconditionally; dedup with
+    # last-non-None-wins semantics happens in write_tuples).
+    tuples.extend(entity_to_annotation_triples(subj, s_term, subj_edge_fields))
+    tuples.extend(entity_to_annotation_triples(obj, o_term, obj_edge_fields))
 
     # Edge annotation quintuples from entity fields
     tuples.extend(_extract_edge_annotations(association, s_uri, pred_uri, o_uri))
@@ -553,8 +552,42 @@ def association_to_tuples(
     return tuples
 
 
+def _dedupe_annotation_triples_last_wins(tuples: list[tuple]) -> list[tuple]:
+    """Collapse duplicate vertex annotation triples to the last occurrence.
+
+    A vertex annotation triple is a 3-element tuple whose predicate URI
+    starts with ``RDFSBASE + "#"`` — the scheme used by
+    ``entity_to_annotation_triples``. For each ``(subject, predicate)``
+    pair only the last such triple in input order is kept, so a later
+    non-None value for a given ``(term, attribute)`` wins. Non-annotation
+    tuples (core relationship 3-tuples with OBO predicates, and 5-tuples)
+    pass through unchanged and preserve their original ordering.
+    """
+    annotation_prefix = f"{RDFSBASE}#"
+
+    def _is_annotation(t: tuple) -> bool:
+        return len(t) == 3 and str(t[1]).startswith(annotation_prefix)
+
+    last_idx: dict[tuple[str, str], int] = {}
+    for i, t in enumerate(tuples):
+        if _is_annotation(t):
+            last_idx[(str(t[0]), str(t[1]))] = i
+
+    out: list[tuple] = []
+    for i, t in enumerate(tuples):
+        if _is_annotation(t):
+            if last_idx[(str(t[0]), str(t[1]))] == i:
+                out.append(t)
+        else:
+            out.append(t)
+    return out
+
+
 def write_tuples(tuples: list[tuple], output_path: Path) -> None:
     """Serialize tuples to JSON for ResultsGraphBuilder.
+
+    Vertex annotation triples are deduplicated with last-non-None-wins
+    semantics per ``(term, attribute)`` before serialization.
 
     Parameters
     ----------
@@ -563,6 +596,7 @@ def write_tuples(tuples: list[tuple], output_path: Path) -> None:
     output_path : Path
         Path to the output JSON file.
     """
+    tuples = _dedupe_annotation_triples_last_wins(tuples)
     output_path.parent.mkdir(parents=True, exist_ok=True)
     with open(output_path, "w") as f:
         json.dump({"tuples": tuples}, f, indent=4)

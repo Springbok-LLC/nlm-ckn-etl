@@ -1,10 +1,12 @@
+import json
 import sys
+import tempfile
 from pathlib import Path
 import unittest
 
 sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 
-from rdflib.term import URIRef
+from rdflib.term import Literal, URIRef
 
 from ckn_schema.pydantic.ckn_schema import (
     AnatomicalStructure,
@@ -255,7 +257,9 @@ class AssociationToTuplesTestCase(unittest.TestCase):
         attr_names = [str(t[1]).split("#")[-1] for t in annotations]
         self.assertIn("label", attr_names)
 
-    def test_annotated_terms_deduplication(self):
+    def test_annotated_terms_parameter_is_noop(self):
+        # annotated_terms is retained for backward compatibility but is
+        # no longer consulted: both calls must emit annotation triples.
         assoc = self._make_assoc()
         annotated = set()
         tuples1 = twu.association_to_tuples(assoc, annotated_terms=annotated)
@@ -265,13 +269,7 @@ class AssociationToTuplesTestCase(unittest.TestCase):
         annotations2 = [t for t in tuples2 if len(t) == 3 and "#" in str(t[1])]
 
         self.assertGreater(len(annotations1), 0)
-        self.assertEqual(len(annotations2), 0)
-
-    def test_annotated_terms_tracks_terms(self):
-        annotated = set()
-        twu.association_to_tuples(self._make_assoc(), annotated_terms=annotated)
-        self.assertIn("CL_0000235", annotated)
-        self.assertIn("UBERON_0000955", annotated)
+        self.assertEqual(len(annotations1), len(annotations2))
 
     def test_none_subject_returns_empty(self):
         assoc = twu.ASSOCIATION_CLASSES["CellTypePartOfAnatomicalStructure"](
@@ -334,6 +332,171 @@ class PurlToCurieInContextTestCase(unittest.TestCase):
         ct = CellType(ontology_purl=curie, label="macrophage")
         self.assertEqual(ct.ontology_purl, "CL:0000235")
         self.assertEqual(ct.label, "macrophage")
+
+
+class DedupeAnnotationTriplesLastWinsTestCase(unittest.TestCase):
+    """Tests for _dedupe_annotation_triples_last_wins."""
+
+    def _annot(self, term, attr, value):
+        from LoaderUtilities import PURLBASE, RDFSBASE
+
+        return (
+            URIRef(f"{PURLBASE}/{term}"),
+            URIRef(f"{RDFSBASE}#{attr}"),
+            Literal(str(value)),
+        )
+
+    def test_keeps_last_value_per_term_attr(self):
+        t1 = self._annot("CHEMBL_941", "label", "Imatinib")
+        t2 = self._annot("CHEMBL_941", "label", "IMATINIB")
+        out = twu._dedupe_annotation_triples_last_wins([t1, t2])
+        self.assertEqual(out, [t2])
+
+    def test_keeps_disjoint_attrs(self):
+        t_label = self._annot("CHEMBL_941", "label", "Imatinib")
+        t_moa = self._annot("CHEMBL_941", "mechanism_of_action", "BCR-ABL inhibitor")
+        out = twu._dedupe_annotation_triples_last_wins([t_label, t_moa])
+        self.assertEqual(out, [t_label, t_moa])
+
+    def test_non_annotation_tuples_preserved(self):
+        from LoaderUtilities import PURLBASE, RDFSBASE
+
+        core = (
+            URIRef(f"{PURLBASE}/CL_0000235"),
+            URIRef(f"{PURLBASE}/BFO_0000050"),
+            URIRef(f"{PURLBASE}/UBERON_0000955"),
+        )
+        quint = (
+            URIRef(f"{PURLBASE}/CL_0000235"),
+            URIRef(f"{PURLBASE}/BFO_0000050"),
+            URIRef(f"{PURLBASE}/UBERON_0000955"),
+            URIRef(f"{RDFSBASE}#Source"),
+            Literal("TestSource"),
+        )
+        ann = self._annot("CL_0000235", "label", "macrophage")
+        out = twu._dedupe_annotation_triples_last_wins([core, ann, quint, core])
+        self.assertEqual(out, [core, ann, quint, core])
+
+    def test_empty_input(self):
+        self.assertEqual(twu._dedupe_annotation_triples_last_wins([]), [])
+
+
+class WriteTuplesDedupeTestCase(unittest.TestCase):
+    """End-to-end: write_tuples applies last-wins dedup before json.dump."""
+
+    def _make_drug_assoc(self, drug, mutation_rsid="rs12345"):
+        return twu.ASSOCIATION_CLASSES["MutationHasPharmacologicalEffectDrug"](
+            subject=Mutation(reference_sequence_identifier=mutation_rsid),
+            predicate="has_pharmacological_effect",
+            object=drug,
+        )
+
+    def _write_and_read(self, tuples):
+        with tempfile.TemporaryDirectory() as d:
+            out = Path(d) / "out.json"
+            twu.write_tuples(tuples, out)
+            with open(out) as f:
+                return json.load(f)["tuples"]
+
+    def _annotation_attrs_for(self, rows, term):
+        from LoaderUtilities import PURLBASE, RDFSBASE
+
+        subj = f"{PURLBASE}/{term}"
+        prefix = f"{RDFSBASE}#"
+        attrs = {}
+        for r in rows:
+            if len(r) == 3 and r[0] == subj and r[1].startswith(prefix):
+                attrs[r[1][len(prefix):]] = r[2]
+        return attrs
+
+    def test_sparse_then_rich_same_term(self):
+        ctx = {"chembl_id": "941"}
+        sparse = self._make_drug_assoc(Drug(label="Imatinib"))
+        rich = self._make_drug_assoc(
+            Drug(
+                label="Imatinib",
+                mechanism_of_action="BCR-ABL inhibitor",
+                trade_names="Gleevec",
+            )
+        )
+        tuples = []
+        tuples.extend(twu.association_to_tuples(sparse, ctx))
+        tuples.extend(twu.association_to_tuples(rich, ctx))
+
+        rows = self._write_and_read(tuples)
+        attrs = self._annotation_attrs_for(rows, "CHEMBL_941")
+        self.assertEqual(attrs.get("label"), "Imatinib")
+        self.assertEqual(attrs.get("mechanism_of_action"), "BCR-ABL inhibitor")
+        self.assertEqual(attrs.get("trade_names"), "Gleevec")
+
+    def test_rich_then_sparse_same_term(self):
+        ctx = {"chembl_id": "941"}
+        rich = self._make_drug_assoc(
+            Drug(
+                label="Imatinib",
+                mechanism_of_action="BCR-ABL inhibitor",
+                trade_names="Gleevec",
+            )
+        )
+        sparse = self._make_drug_assoc(Drug(label="IMATINIB"))
+        tuples = []
+        tuples.extend(twu.association_to_tuples(rich, ctx))
+        tuples.extend(twu.association_to_tuples(sparse, ctx))
+
+        rows = self._write_and_read(tuples)
+        attrs = self._annotation_attrs_for(rows, "CHEMBL_941")
+        # Rich attributes survive; label takes the later (sparse) value.
+        self.assertEqual(attrs.get("mechanism_of_action"), "BCR-ABL inhibitor")
+        self.assertEqual(attrs.get("trade_names"), "Gleevec")
+        self.assertEqual(attrs.get("label"), "IMATINIB")
+
+    def test_conflicting_label_values_last_wins(self):
+        ctx = {"chembl_id": "941"}
+        a = self._make_drug_assoc(Drug(label="First"))
+        b = self._make_drug_assoc(Drug(label="Second"))
+        tuples = twu.association_to_tuples(a, ctx) + twu.association_to_tuples(b, ctx)
+
+        rows = self._write_and_read(tuples)
+        attrs = self._annotation_attrs_for(rows, "CHEMBL_941")
+        self.assertEqual(attrs.get("label"), "Second")
+
+        # And only one label row remains.
+        from LoaderUtilities import RDFSBASE
+
+        label_rows = [
+            r for r in rows if len(r) == 3 and r[1] == f"{RDFSBASE}#label"
+            and r[0].endswith("CHEMBL_941")
+        ]
+        self.assertEqual(len(label_rows), 1)
+
+    def test_unique_term_attribute_pairs_in_output(self):
+        ctx = {"chembl_id": "941"}
+        a = self._make_drug_assoc(Drug(label="Imatinib", trade_names="Gleevec"))
+        b = self._make_drug_assoc(Drug(label="Imatinib", mechanism_of_action="moa"))
+        tuples = twu.association_to_tuples(a, ctx) + twu.association_to_tuples(b, ctx)
+
+        rows = self._write_and_read(tuples)
+        from LoaderUtilities import RDFSBASE
+
+        seen = set()
+        for r in rows:
+            if len(r) == 3 and r[1].startswith(f"{RDFSBASE}#"):
+                key = (r[0], r[1])
+                self.assertNotIn(key, seen)
+                seen.add(key)
+
+    def test_core_and_quintuples_not_deduped(self):
+        ctx = {"chembl_id": "941"}
+        a = self._make_drug_assoc(Drug(label="Imatinib"))
+        tuples = twu.association_to_tuples(a, ctx, source="S1") + twu.association_to_tuples(
+            a, ctx, source="S2"
+        )
+
+        rows = self._write_and_read(tuples)
+        core = [r for r in rows if len(r) == 3 and "#" not in r[1]]
+        quints = [r for r in rows if len(r) == 5]
+        self.assertEqual(len(core), 2)
+        self.assertEqual(len(quints), 2)
 
 
 if __name__ == "__main__":
