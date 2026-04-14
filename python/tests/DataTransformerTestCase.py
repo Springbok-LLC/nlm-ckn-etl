@@ -54,6 +54,10 @@ class CellxGeneTransformerTestCase(unittest.TestCase):
         entry = result[key]
         expected_fields = [
             "Citation",
+            "Author_list",
+            "Year",
+            "Title",
+            "Journal",
             "Link_to_publication",
             "Link_to_CELLxGENE_collection",
             "Link_to_CELLxGENE_dataset",

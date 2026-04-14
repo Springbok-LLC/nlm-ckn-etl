@@ -17,6 +17,7 @@ from LoaderUtilities import (
     get_cellxgene_harvester_data,
     get_dataset_file_paths,
     get_dataset_version_id_lists,
+    get_gene_ensembl_id_to_names_map,
     get_results_sources,
     hyphenate,
     load_results,
@@ -37,6 +38,7 @@ from TupleWriterUtilities import (
     curie_to_term,
     parse_string_list,
     purl_to_curie,
+    resolve_gene_names,
     write_tuples,
 )
 
@@ -75,6 +77,7 @@ def create_tuples(
         List of 3-element and 5-element RDF tuples.
     """
     tuples = []
+    ensembl_id_to_names = get_gene_ensembl_id_to_names_map()
 
     for _, row in author_to_cl_results.iterrows():
         uuid = row["uuid"]
@@ -115,8 +118,14 @@ def create_tuples(
             print(f"Warning: UBERON term {uberon_term} deprecated")
 
         author_cell_set = hyphenate(str(row.get("author_cell_set", "")))
-        markers = parse_string_list(str(row.get("NSForest_markers", "[]")))
-        binary_genes = parse_string_list(str(row.get("binary_genes", "[]")))
+        markers = resolve_gene_names(
+            parse_string_list(str(row.get("NSForest_markers", "[]"))),
+            ensembl_id_to_names,
+        )
+        binary_genes = resolve_gene_names(
+            parse_string_list(str(row.get("binary_genes", "[]"))),
+            ensembl_id_to_names,
+        )
 
         doi = row.get("DOI")
         collection_id = row.get("collection_id")
@@ -130,9 +139,9 @@ def create_tuples(
             species="Homo sapiens",
             publication=str(doi) if pd.notna(doi) else None,
             cell_count=int(cluster_size) if pd.notna(cluster_size) else None,
-            biomarker_combination=" ".join(markers) if markers else None,
-            binary_gene_set=" ".join(binary_genes) if binary_genes else None,
-            expressed_genes=" ".join(binary_genes) if binary_genes else None,
+            biomarker_combination=",".join(markers) if markers else None,
+            binary_gene_set=",".join(binary_genes) if binary_genes else None,
+            expressed_genes=",".join(binary_genes) if binary_genes else None,
             cellxgene_collection=(
                 f"cellxgene.cziscience.com/collections/{collection_id}"
                 if pd.notna(collection_id)

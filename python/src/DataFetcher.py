@@ -1,6 +1,5 @@
 import argparse
 import json
-import logging
 import os
 from glob import glob
 from pathlib import Path
@@ -18,7 +17,6 @@ from OpenTargetsGGetQueries import gget_queries
 from LoaderUtilities import (
     EXTERNAL_DIRPATH,
     OPENTARGETS_RESOURCES,
-    get_cellxgene_harvester_data,
     get_dataset_file_paths,
     get_dataset_version_id_lists,
     get_results_sources,
@@ -27,6 +25,7 @@ from LoaderUtilities import (
 
 
 REQUEST_TIMEOUT = 30  # seconds
+
 
 class DataFetcher:
     """Base class for all external API data fetchers. Subclasses implement
@@ -134,13 +133,17 @@ class DataFetcher:
 
                 try:
                     results[id_value] = self.fetch_one(id_value)
-                except (requests.RequestException, ValueError, KeyError, RuntimeError) as exc:
+                except (
+                    requests.RequestException,
+                    ValueError,
+                    KeyError,
+                    RuntimeError,
+                ) as exc:
                     print(f"[{self.name}] Error fetching {id_value}: {exc}")
                     results[id_value] = self.on_fetch_error(id_value)
                 except Exception as exc:
                     warnings.warn(
-                        f"[{self.name}] Unexpected error fetching"
-                        f" {id_value}: {exc!r}"
+                        f"[{self.name}] Unexpected error fetching {id_value}: {exc!r}"
                     )
                     results[id_value] = self.on_fetch_error(id_value)
 
@@ -224,6 +227,8 @@ class CellxGeneFetcher(DataFetcher):
 
 
 OPENTARGETS_BASE_URL = "https://api.platform.opentargets.org/api/v4/graphql"
+
+
 class OpenTargetsFetcher(DataFetcher):
     """Fetches target and resource data from the Open Targets Platform
     GraphQL API."""
@@ -234,9 +239,7 @@ class OpenTargetsFetcher(DataFetcher):
     def get_ids(self, context):
         """Return gene Ensembl IDs."""
         if "gene_data" not in context:
-            raise ValueError(
-                "OpenTargetsFetcher requires 'gene_data' in context"
-            )
+            raise ValueError("OpenTargetsFetcher requires 'gene_data' in context")
         return context["gene_data"]["gene_ensembl_ids"]
 
     def fetch_one(self, gene_ensembl_id):
@@ -293,9 +296,7 @@ class GeneFetcher(DataFetcher):
     def get_ids(self, context):
         """Return gene Entrez IDs."""
         if "gene_data" not in context:
-            raise ValueError(
-                "GeneFetcher requires 'gene_data' in context"
-            )
+            raise ValueError("GeneFetcher requires 'gene_data' in context")
         return context["gene_data"]["gene_entrez_ids"]
 
     def fetch_one(self, gene_entrez_id):
@@ -312,10 +313,7 @@ class GeneFetcher(DataFetcher):
         dict
             Dict with 'xml_gz_b64' key containing compressed XML
         """
-        print(
-            f"[{self.name}] Fetching gene XML for "
-            f"gene Entrez id {gene_entrez_id}"
-        )
+        print(f"[{self.name}] Fetching gene XML for gene Entrez id {gene_entrez_id}")
         xml_data = fetch_xml_for_gene_id(gene_entrez_id)
         if xml_data is None:
             raise RuntimeError(
@@ -389,8 +387,7 @@ class UniProtFetcher(DataFetcher):
         )
         response.raise_for_status()
         print(
-            f"[{self.name}] Assigning results for "
-            f"protein accession {protein_accession}"
+            f"[{self.name}] Assigning results for protein accession {protein_accession}"
         )
         return response.json()
 
@@ -402,10 +399,18 @@ class UniProtFetcher(DataFetcher):
 HUBMAP_DIRPATH = EXTERNAL_DIRPATH / "hubmap"
 HUBMAP_LATEST_URLS = [
     "https://lod.humanatlas.io/asct-b/allen-brain/latest/",
+    "https://lod.humanatlas.io/asct-b/bone-marrow/latest/",
     "https://lod.humanatlas.io/asct-b/eye/latest/",
+    "https://lod.humanatlas.io/asct-b/heart/latest/",
     "https://lod.humanatlas.io/asct-b/kidney/latest/",
+    "https://lod.humanatlas.io/asct-b/large-intestine/latest/",
+    "https://lod.humanatlas.io/asct-b/liver/latest/",
     "https://lod.humanatlas.io/asct-b/lung/latest/",
+    "https://lod.humanatlas.io/asct-b/mouth/latest/",
+    "https://lod.humanatlas.io/asct-b/palatine-tonsil/latest/",
     "https://lod.humanatlas.io/asct-b/pancreas/latest/",
+    "https://lod.humanatlas.io/asct-b/skin/latest/",
+    "https://lod.humanatlas.io/asct-b/small-intestine/latest/",
 ]
 
 
@@ -549,7 +554,6 @@ def main():
         if args.results_sources
         else get_results_sources()
     )
-    harvester_data = get_cellxgene_harvester_data(results_sources)
     file_paths = get_dataset_file_paths(results_sources)
     dataset_version_id_lists = get_dataset_version_id_lists(file_paths)
     gene_data = get_unique_gene_names_and_ids(file_paths["nsforest_paths"])

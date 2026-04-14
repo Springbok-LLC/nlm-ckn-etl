@@ -20,7 +20,6 @@ from TupleWriterUtilities import (
     TUPLES_DIRPATH,
     association_to_tuples,
     entity_to_annotation_triples,
-    remove_protocols,
     write_tuples,
 )
 
@@ -38,7 +37,7 @@ def create_tuples(gene_results: dict) -> list[tuple]:
         Dictionary containing NCBI Gene results keyed by gene Entrez
         id, with a 'gene_entrez_ids' key listing all ids. Each gene
         entry contains fields such as Gene_ID, Official_full_name,
-        Gene_type, UniProt_name, Also_known_as, Summary, etc.
+        Gene_type, UniProt_ID, Also_known_as, Summary, etc.
 
     Returns
     -------
@@ -80,18 +79,18 @@ def create_tuples(gene_results: dict) -> list[tuple]:
             gene_id=str(data["Gene_ID"]) if data.get("Gene_ID") is not None else None,
             exact_synonym=exact_synonym,
             refseq_summary=data.get("Summary"),
-            uniprot_name=data.get("UniProt_name"),
+            uniprot_id=data.get("UniProt_ID"),
             reference_sequence_identifier=data.get("RefSeq_gene_ID"),
             species=data.get("Organism"),
             mrna__nm__and_protein__np__sequences=mrna_pro_seq,
         )
 
         # Gene produces Protein
-        uniprot_name = data.get("UniProt_name")
-        if uniprot_name:
+        uniprot_id = data.get("UniProt_ID")
+        if uniprot_id:
             protein_entity = Protein(
                 gene_symbol=gene_name,
-                uniprot_id=uniprot_name,
+                uniprot_id=uniprot_id,
             )
             assoc = ASSOCIATION_CLASSES["GeneProducesProtein"](
                 subject=gene_entity,

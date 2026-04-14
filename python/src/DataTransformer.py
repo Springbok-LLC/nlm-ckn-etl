@@ -22,6 +22,23 @@ class BaseTransformer:
     name: str
     input_path: object  # Path to raw JSON from the corresponding fetcher
 
+    @property
+    def output_path(self):
+        """Path where transformed results are saved."""
+        return self.input_path.parent / f"{self.name}_transformed.json"
+
+    def is_stale(self):
+        """Check whether the transformer needs to run.
+
+        Returns
+        -------
+        bool
+            True if the output is missing or older than the input
+        """
+        if not self.output_path.exists():
+            return True
+        return self.input_path.stat().st_mtime > self.output_path.stat().st_mtime
+
     def load(self):
         """Load raw results from disk.
 
@@ -33,6 +50,18 @@ class BaseTransformer:
         print(f"[{self.name}] Loading raw results from {self.input_path}")
         with open(self.input_path, "r") as fp:
             return json.load(fp)
+
+    def save(self, results):
+        """Save transformed results to disk.
+
+        Parameters
+        ----------
+        results : dict
+            Transformed results to persist
+        """
+        print(f"[{self.name}] Saving transformed results to {self.output_path}")
+        with open(self.output_path, "w") as fp:
+            json.dump(results, fp)
 
     def transform(self, raw_results):
         """Transform raw API results into the shape expected by tuple
@@ -50,16 +79,27 @@ class BaseTransformer:
         """
         raise NotImplementedError
 
-    def run(self):
-        """Load raw results and transform them.
+    def run(self, force=False):
+        """Load raw results, transform, and save them.
+
+        Parameters
+        ----------
+        force : bool
+            If True, run even when the output is up to date
 
         Returns
         -------
         dict
-            Transformed results (in-memory, not saved to disk)
+            Transformed results
         """
+        if not force and not self.is_stale():
+            print(f"[{self.name}] Output is up to date, skipping")
+            with open(self.output_path, "r") as fp:
+                return json.load(fp)
         raw = self.load()
-        return self.transform(raw)
+        results = self.transform(raw)
+        self.save(results)
+        return results
 
 
 class CellxGeneTransformer(BaseTransformer):
@@ -97,11 +137,26 @@ class CellxGeneTransformer(BaseTransformer):
 
             entry = {}
 
-            # Citation
-            first_author = collection_json["publisher_metadata"]["authors"][0]["family"]
-            published_year = collection_json["publisher_metadata"]["published_year"]
-            journal = collection_json["publisher_metadata"]["journal"]
+            # Publication metadata
+            pub_meta = collection_json.get("publisher_metadata", {})
+            authors = pub_meta.get("authors", [])
+            first_author = authors[0]["family"] if authors else None
+            published_year = pub_meta.get("published_year")
+            journal = pub_meta.get("journal")
+            title = collection_json.get("name")
+
             entry["Citation"] = f"{first_author} ({published_year}) {journal}"
+            entry["Author_list"] = (
+                ", ".join(
+                    f"{a.get('family', '')}, {a.get('given', '')}"
+                    for a in authors
+                )
+                if authors
+                else None
+            )
+            entry["Year"] = str(published_year) if published_year else None
+            entry["Title"] = title
+            entry["Journal"] = journal
 
             # Publication and collection links
             entry["Link_to_publication"] = None
@@ -352,13 +407,18 @@ def main():
         nargs="*",
         help="source names to transform (default: all)",
     )
+    parser.add_argument(
+        "--force",
+        action="store_true",
+        help="re-run transformers even if output is up to date",
+    )
     args = parser.parse_args()
 
     source_names = args.sources or [t.name for t in TRANSFORMER_REGISTRY]
 
     for transformer in TRANSFORMER_REGISTRY:
         if transformer.name in source_names:
-            result = transformer.run()
+            result = transformer.run(force=args.force)
             print(f"[{transformer.name}] Transformed {len(result)} entries")
 
 

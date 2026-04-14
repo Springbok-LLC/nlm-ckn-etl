@@ -32,24 +32,24 @@ class UniProtTupleWriterTestCase(unittest.TestCase):
         tuples = create_tuples(self._make_data())
         self.assertTrue(all(len(t) == 3 for t in tuples))
         attrs = [str(t[1]).split("#")[-1] for t in tuples]
-        self.assertIn("Label", attrs)
-        self.assertIn("Protein_function", attrs)
-        self.assertIn("Species", attrs)
-        self.assertIn("Gene_symbol", attrs)
-        self.assertIn("Annotation_score", attrs)
-        self.assertIn("Number_of_amino_acids", attrs)
+        self.assertIn("label", attrs)
+        self.assertIn("protein_function", attrs)
+        self.assertIn("species", attrs)
+        self.assertIn("gene_symbol", attrs)
+        self.assertIn("annotation_score", attrs)
+        self.assertIn("number_of_amino_acids", attrs)
 
     def test_skips_none_function(self):
         data = self._make_data()
         data["P19022"]["Function"] = None
         tuples = create_tuples(data)
         attrs = [str(t[1]).split("#")[-1] for t in tuples]
-        self.assertNotIn("Protein_function", attrs)
+        self.assertNotIn("protein_function", attrs)
 
     def test_uniprot_id_included(self):
         tuples = create_tuples(self._make_data())
         attrs = [str(t[1]).split("#")[-1] for t in tuples]
-        self.assertIn("Uniprot_id", attrs)
+        self.assertIn("uniprot_id", attrs)
 
 
 if __name__ == "__main__":
