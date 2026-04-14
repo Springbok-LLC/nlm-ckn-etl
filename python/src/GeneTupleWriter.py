@@ -86,7 +86,7 @@ def create_tuples(gene_results: dict) -> list[tuple]:
         )
 
         # Gene produces Protein
-        uniprot_id = data.get("UniProt_ID")
+        uniprot_id = data.get("UniProt_name")
         if uniprot_id:
             protein_entity = Protein(
                 gene_symbol=gene_name,
