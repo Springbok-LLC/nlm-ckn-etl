@@ -444,13 +444,13 @@ class GeneFetcherTestCase(unittest.TestCase):
 
     @patch("DataFetcher.fetch_xml_for_gene_id")
     def test_fetch_one_no_uniprot_url(self, mock_fetch):
-        """fetch_one omits UniProt_name when XML has no UniProt URL."""
+        """fetch_one sets UniProt_name to None when XML has no UniProt URL."""
         mock_fetch.return_value = "<Entrezgene><summary>test</summary></Entrezgene>"
 
         fetcher = GeneFetcher()
         result = fetcher.fetch_one("999")
 
-        self.assertNotIn("UniProt_name", result)
+        self.assertIsNone(result["UniProt_name"])
         self.assertIn("xml_gz_b64", result)
 
     def test_before_dump_stores_ids(self):

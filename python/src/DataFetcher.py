@@ -14,7 +14,7 @@ import requests
 import base64
 import gzip
 
-from E_Utilities import fetch_xml_for_gene_id
+from E_Utilities import extract_uniprot_name, fetch_xml_for_gene_id
 from OpenTargetsGGetQueries import gget_queries
 from LoaderUtilities import (
     EXTERNAL_DIRPATH,
@@ -425,11 +425,6 @@ class GeneFetcher(DataFetcher):
             raise ValueError("GeneFetcher requires 'gene_data' in context")
         return context["gene_data"]["gene_entrez_ids"]
 
-    # Pattern to extract UniProt accession from Gene XML
-    _UNIPROT_URL_RE = re.compile(
-        r"<Other-source_url>[^<]*www\.uniprot\.org/uniprot(?:kb)?/([^</ ]+)"
-    )
-
     def fetch_one(self, gene_entrez_id):
         """Fetch raw XML for a gene Entrez ID, compress, and base64
         encode for JSON storage. Also extracts the UniProt accession
@@ -443,8 +438,8 @@ class GeneFetcher(DataFetcher):
         Returns
         -------
         dict
-            Dict with 'xml_gz_b64' (compressed XML) and optionally
-            'UniProt_name' (protein accession)
+            Dict with 'xml_gz_b64' (compressed XML) and
+            'UniProt_name' (protein accession, or None)
         """
         print(f"[{self.name}] Fetching gene XML for gene Entrez id {gene_entrez_id}")
         xml_data = fetch_xml_for_gene_id(gene_entrez_id)
@@ -453,13 +448,10 @@ class GeneFetcher(DataFetcher):
                 f"Failed to fetch gene XML for Entrez id {gene_entrez_id}"
             )
         compressed = gzip.compress(xml_data.encode("utf-8"))
-        result = {"xml_gz_b64": base64.b64encode(compressed).decode("ascii")}
-
-        m = self._UNIPROT_URL_RE.search(xml_data)
-        if m:
-            result["UniProt_name"] = m.group(1)
-
-        return result
+        return {
+            "xml_gz_b64": base64.b64encode(compressed).decode("ascii"),
+            "UniProt_name": extract_uniprot_name(xml_data),
+        }
 
     def on_fetch_error(self, gene_entrez_id):
         """Return empty dict on error."""
@@ -503,7 +495,7 @@ class UniProtFetcher(DataFetcher):
         for gene_id, gene_data in gene_results.items():
             if gene_id == "gene_entrez_ids" or not gene_data:
                 continue
-            if "UniProt_name" in gene_data:
+            if gene_data.get("UniProt_name"):
                 accessions.add(gene_data["UniProt_name"])
         return sorted(accessions)
 

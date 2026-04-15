@@ -15,6 +15,35 @@ NCBI_API_SLEEP = 0.2
 REQUEST_TIMEOUT = 30  # seconds
 
 
+def extract_uniprot_name(xml_data):
+    """Extract the UniProt accession from raw Entrezgene XML.
+
+    Scans all ``<Other-source_url>`` elements for a uniprot.org URL and
+    returns the accession from the last match in document order. For
+    genes with a single UniProt cross-reference this is unambiguous; for
+    isoformic genes with multiple cross-references, the choice is
+    arbitrary-but-stable and matches the historical behavior of the
+    deprecated fetcher and ``parse_xml_for_gene_id``.
+
+    Parameters
+    ----------
+    xml_data : str
+        Raw Entrezgene XML response text
+
+    Returns
+    -------
+    str or None
+        UniProt accession, or None if no uniprot.org URL is present
+    """
+    link = None
+    for child in bs4.BeautifulSoup(xml_data, "xml").find_all("Other-source_url"):
+        if "www.uniprot.org" in child.text:
+            link = child.text
+    if link is None:
+        return None
+    return Path(parse.urlparse(link).path).stem
+
+
 def find_names_or_none(soup, names, attribute=None):
     """Find the text, or specified attribute, in the last named tag,
     if all previously named tags are found.
@@ -260,12 +289,7 @@ def parse_xml_for_gene_id(gene_id, xml_data):
         data["Also_known_as"].append(child.text)
     data["Summary"] = find_names_or_none(root, ["Entrezgene_summary"])
     pr_desc = find_names_or_none(root, ["Entrezgene_prot", "Prot-ref_desc"])
-    if data["Link_to_UniProt_ID"]:
-        data["UniProt_name"] = Path(
-            parse.urlparse(data["Link_to_UniProt_ID"]).path
-        ).stem
-    else:
-        data["UniProt_name"] = None
+    data["UniProt_name"] = extract_uniprot_name(xml_data)
     for product in root.find_all("Gene-commentary_products"):
         if find_names_or_none(product, ["Gene-commentary_type"], "value") == "mRNA":
             nm_id = None
