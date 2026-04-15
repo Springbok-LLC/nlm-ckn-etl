@@ -1,10 +1,12 @@
 import argparse
+from concurrent.futures import ThreadPoolExecutor, as_completed
 import json
 import os
 from glob import glob
 from pathlib import Path
 import re
 import shutil
+from time import sleep
 import warnings
 
 import requests
@@ -12,19 +14,22 @@ import requests
 import base64
 import gzip
 
-from E_Utilities import fetch_xml_for_gene_id
+from E_Utilities import extract_uniprot_name, fetch_xml_for_gene_id
 from OpenTargetsGGetQueries import gget_queries
 from LoaderUtilities import (
-    EXTERNAL_DIRPATH,
     OPENTARGETS_RESOURCES,
+    get_current_run,
     get_dataset_file_paths,
     get_dataset_version_id_lists,
     get_results_sources,
     get_unique_gene_names_and_ids,
+    set_current_run,
 )
 
 
 REQUEST_TIMEOUT = 30  # seconds
+MAX_RETRIES = 3
+DEFAULT_RETRY_AFTER = 5  # seconds
 
 
 class DataFetcher:
@@ -33,8 +38,24 @@ class DataFetcher:
     integration are handled here."""
 
     name: str
-    output_path: Path
     batch_size: int = 25
+    max_per_second: int = 5
+    request_timeout: int = REQUEST_TIMEOUT
+
+    _output_path_override = None
+
+    @property
+    def output_path(self):
+        """Path where final results are written. Defaults to
+        ``<run external_dir>/<name>.json`` but may be overridden by
+        assignment (e.g. from tests)."""
+        if self._output_path_override is not None:
+            return self._output_path_override
+        return get_current_run().external_dir / f"{self.name}.json"
+
+    @output_path.setter
+    def output_path(self, value):
+        self._output_path_override = value
 
     def get_ids(self, context):
         """Return the list of IDs to iterate over.
@@ -94,8 +115,54 @@ class DataFetcher:
         """
         pass
 
+    def _fetch_with_retry(self, id_value):
+        """Call fetch_one, retrying on HTTP 429 (Too Many Requests).
+
+        Respects the Retry-After header if present, otherwise waits
+        DEFAULT_RETRY_AFTER seconds.  Gives up after MAX_RETRIES
+        consecutive 429s.
+
+        Parameters
+        ----------
+        id_value : str
+            The identifier to fetch
+
+        Returns
+        -------
+        dict
+            Raw API response data
+        """
+        for attempt in range(1, MAX_RETRIES + 1):
+            try:
+                return self.fetch_one(id_value)
+            except requests.HTTPError as exc:
+                if exc.response is not None and exc.response.status_code == 429:
+                    wait = int(
+                        exc.response.headers.get("Retry-After", DEFAULT_RETRY_AFTER)
+                    )
+                    print(
+                        f"[{self.name}] 429 for {id_value},"
+                        f" retry {attempt}/{MAX_RETRIES}"
+                        f" after {wait}s"
+                    )
+                    sleep(wait)
+                else:
+                    raise
+        return self.fetch_one(id_value)
+
+    @property
+    def checkpoint_path(self):
+        """Path to the JSONL checkpoint file."""
+        return self.output_path.with_suffix(".jsonl")
+
     def run(self, context, force=False):
         """Execute the fetch loop with batch-save checkpointing.
+
+        Fetches are submitted to a thread pool at a rate of
+        ``max_per_second`` to stay under API rate limits. New results
+        are appended to a JSONL checkpoint file every ``batch_size``
+        completions. Once all fetches are done, the final JSON output
+        is written and the checkpoint is removed.
 
         Parameters
         ----------
@@ -109,67 +176,140 @@ class DataFetcher:
         dict
             The full results dict
         """
-        if not self.output_path.exists() or force:
+        if force:
             results = {}
+            if self.checkpoint_path.exists():
+                self.checkpoint_path.unlink()
         else:
             results = self._load()
 
         ids = self.get_ids(context)
-        total_size = len(ids)
-        n_so_far = 0
-        do_dump = False
-        n_in_batch = 0
+        pending_ids = [id_val for id_val in ids if id_val not in results]
+        total = len(ids)
 
-        for id_value in ids:
-            n_so_far += 1
+        if not pending_ids:
+            print(f"[{self.name}] All {total} IDs already fetched")
+            return results
 
-            if id_value not in results:
-                n_in_batch += 1
+        print(
+            f"[{self.name}] {total - len(pending_ids)} already fetched,"
+            f" {len(pending_ids)} remaining"
+        )
+
+        interval = 1.0 / self.max_per_second
+        n_completed = 0
+
+        with ThreadPoolExecutor(max_workers=self.max_per_second) as pool:
+            for batch_start in range(0, len(pending_ids), self.batch_size):
+                batch_ids = pending_ids[batch_start : batch_start + self.batch_size]
+                futures = {}
+                for id_value in batch_ids:
+                    futures[pool.submit(self._fetch_with_retry, id_value)] = id_value
+                    sleep(interval)
+
+                batch = {}
+                for future in as_completed(futures):
+                    id_value = futures[future]
+                    n_completed += 1
+
+                    try:
+                        result = future.result()
+                    except (
+                        requests.RequestException,
+                        ValueError,
+                        KeyError,
+                        RuntimeError,
+                    ) as exc:
+                        print(f"[{self.name}] Error fetching {id_value}: {exc}")
+                        result = self.on_fetch_error(id_value)
+                    except Exception as exc:
+                        warnings.warn(
+                            f"[{self.name}] Unexpected error fetching"
+                            f" {id_value}: {exc!r}"
+                        )
+                        result = self.on_fetch_error(id_value)
+
+                    results[id_value] = result
+                    batch[id_value] = result
+
                 print(
-                    f"[{self.name}] Fetched {n_in_batch}/{self.batch_size} in batch"
-                    f" - {n_so_far}/{total_size} so far"
+                    f"[{self.name}] Completed"
+                    f" {n_completed}/{len(pending_ids)}"
+                    f" - {total - len(pending_ids) + n_completed}"
+                    f"/{total} total"
                 )
-                do_dump = True
 
-                try:
-                    results[id_value] = self.fetch_one(id_value)
-                except (
-                    requests.RequestException,
-                    ValueError,
-                    KeyError,
-                    RuntimeError,
-                ) as exc:
-                    print(f"[{self.name}] Error fetching {id_value}: {exc}")
-                    results[id_value] = self.on_fetch_error(id_value)
-                except Exception as exc:
-                    warnings.warn(
-                        f"[{self.name}] Unexpected error fetching {id_value}: {exc!r}"
-                    )
-                    results[id_value] = self.on_fetch_error(id_value)
+                self._save_checkpoint(batch)
 
-            else:
-                if id_value != ids[-1]:
-                    continue
-
-            if do_dump and (n_in_batch >= self.batch_size or id_value == ids[-1]):
-                do_dump = False
-                n_in_batch = 0
-                self.before_dump(results, ids)
-                self._save(results)
-
+        self._save_final(results, ids)
         return results
 
     def _load(self):
-        """Load results from the output path."""
-        print(f"[{self.name}] Loading results from {self.output_path}")
-        with open(self.output_path, "r") as fp:
-            return json.load(fp)
+        """Load results from the JSONL checkpoint (if an incomplete run
+        exists) or from the final JSON output.
 
-    def _save(self, results):
-        """Save results to the output path."""
-        print(f"[{self.name}] Dumping results to {self.output_path}")
+        Returns
+        -------
+        dict
+            Previously fetched results, or empty dict
+        """
+        if self.checkpoint_path.exists():
+            print(f"[{self.name}] Resuming from checkpoint {self.checkpoint_path}")
+            results = {}
+            with open(self.checkpoint_path, "r") as fp:
+                for line in fp:
+                    line = line.strip()
+                    if line:
+                        record = json.loads(line)
+                        results[record["id"]] = record["data"]
+            if self.output_path.exists():
+                print(
+                    f"[{self.name}] Merging with prior results from {self.output_path}"
+                )
+                with open(self.output_path, "r") as fp:
+                    prior = json.load(fp)
+                for key, value in prior.items():
+                    if key not in results:
+                        results[key] = value
+            return results
+        elif self.output_path.exists():
+            print(f"[{self.name}] Loading results from {self.output_path}")
+            with open(self.output_path, "r") as fp:
+                return json.load(fp)
+        return {}
+
+    def _save_checkpoint(self, batch):
+        """Append a batch of new results to the JSONL checkpoint file.
+
+        Parameters
+        ----------
+        batch : dict
+            Mapping of ID to result data for newly completed fetches
+        """
+        self.checkpoint_path.parent.mkdir(parents=True, exist_ok=True)
+        print(f"[{self.name}] Appending {len(batch)} records to {self.checkpoint_path}")
+        with open(self.checkpoint_path, "a") as fp:
+            for id_value, data in batch.items():
+                fp.write(json.dumps({"id": id_value, "data": data}) + "\n")
+
+    def _save_final(self, results, ids):
+        """Write the final JSON output and remove the checkpoint.
+
+        Parameters
+        ----------
+        results : dict
+            The full results dict
+        ids : list
+            The full list of IDs (passed to before_dump)
+        """
+        self.before_dump(results, ids)
+        self.output_path.parent.mkdir(parents=True, exist_ok=True)
+        print(f"[{self.name}] Writing final results to {self.output_path}")
         with open(self.output_path, "w") as fp:
             json.dump(results, fp, indent=4)
+        if self.checkpoint_path.exists():
+            self.checkpoint_path.unlink()
+            print(f"[{self.name}] Removed checkpoint {self.checkpoint_path}")
 
 
 class CellxGeneFetcher(DataFetcher):
@@ -177,7 +317,6 @@ class CellxGeneFetcher(DataFetcher):
     curation API."""
 
     name = "cellxgene"
-    output_path = EXTERNAL_DIRPATH / "cellxgene.json"
 
     BASE_URL = "https://api.cellxgene.cziscience.com/curation/v1"
 
@@ -234,7 +373,8 @@ class OpenTargetsFetcher(DataFetcher):
     GraphQL API."""
 
     name = "opentargets"
-    output_path = EXTERNAL_DIRPATH / "opentargets.json"
+    max_per_second = 2
+    request_timeout = 120
 
     def get_ids(self, context):
         """Return gene Ensembl IDs."""
@@ -256,14 +396,14 @@ class OpenTargetsFetcher(DataFetcher):
             Raw GraphQL 'data' dict
         """
         query = gget_queries["target"]
-        query["variables"]["ensemblId"] = gene_ensembl_id
+        variables = {**query["variables"], "ensemblId": gene_ensembl_id}
         response = requests.post(
             OPENTARGETS_BASE_URL,
             json={
                 "query": query["query_string"],
-                "variables": query["variables"],
+                "variables": variables,
             },
-            timeout=REQUEST_TIMEOUT,
+            timeout=self.request_timeout,
         )
         response.raise_for_status()
         print(
@@ -291,7 +431,7 @@ class GeneFetcher(DataFetcher):
     """Fetches gene data from NCBI Gene via E-Utilities."""
 
     name = "gene"
-    output_path = EXTERNAL_DIRPATH / "gene.json"
+    # max_per_second = 10  # NCBI allows 10 req/s with API key, but seems to return 429 at times
 
     def get_ids(self, context):
         """Return gene Entrez IDs."""
@@ -301,7 +441,8 @@ class GeneFetcher(DataFetcher):
 
     def fetch_one(self, gene_entrez_id):
         """Fetch raw XML for a gene Entrez ID, compress, and base64
-        encode for JSON storage.
+        encode for JSON storage. Also extracts the UniProt accession
+        so that UniProtFetcher can run without a prior parse step.
 
         Parameters
         ----------
@@ -311,7 +452,8 @@ class GeneFetcher(DataFetcher):
         Returns
         -------
         dict
-            Dict with 'xml_gz_b64' key containing compressed XML
+            Dict with 'xml_gz_b64' (compressed XML) and
+            'UniProt_name' (protein accession, or None)
         """
         print(f"[{self.name}] Fetching gene XML for gene Entrez id {gene_entrez_id}")
         xml_data = fetch_xml_for_gene_id(gene_entrez_id)
@@ -320,7 +462,10 @@ class GeneFetcher(DataFetcher):
                 f"Failed to fetch gene XML for Entrez id {gene_entrez_id}"
             )
         compressed = gzip.compress(xml_data.encode("utf-8"))
-        return {"xml_gz_b64": base64.b64encode(compressed).decode("ascii")}
+        return {
+            "xml_gz_b64": base64.b64encode(compressed).decode("ascii"),
+            "UniProt_name": extract_uniprot_name(xml_data),
+        }
 
     def on_fetch_error(self, gene_entrez_id):
         """Return empty dict on error."""
@@ -339,7 +484,6 @@ class UniProtFetcher(DataFetcher):
     """Fetches protein data from the UniProt REST API."""
 
     name = "uniprot"
-    output_path = EXTERNAL_DIRPATH / "uniprot.json"
 
     def get_ids(self, context):
         """Derive unique protein accessions from gene results.
@@ -364,7 +508,7 @@ class UniProtFetcher(DataFetcher):
         for gene_id, gene_data in gene_results.items():
             if gene_id == "gene_entrez_ids" or not gene_data:
                 continue
-            if "UniProt_name" in gene_data:
+            if gene_data.get("UniProt_name"):
                 accessions.add(gene_data["UniProt_name"])
         return sorted(accessions)
 
@@ -396,30 +540,22 @@ class UniProtFetcher(DataFetcher):
         results["protein_accessions"] = ids
 
 
-HUBMAP_DIRPATH = EXTERNAL_DIRPATH / "hubmap"
-HUBMAP_LATEST_URLS = [
-    "https://lod.humanatlas.io/asct-b/allen-brain/latest/",
-    "https://lod.humanatlas.io/asct-b/bone-marrow/latest/",
-    "https://lod.humanatlas.io/asct-b/eye/latest/",
-    "https://lod.humanatlas.io/asct-b/heart/latest/",
-    "https://lod.humanatlas.io/asct-b/kidney/latest/",
-    "https://lod.humanatlas.io/asct-b/large-intestine/latest/",
-    "https://lod.humanatlas.io/asct-b/liver/latest/",
-    "https://lod.humanatlas.io/asct-b/lung/latest/",
-    "https://lod.humanatlas.io/asct-b/mouth/latest/",
-    "https://lod.humanatlas.io/asct-b/palatine-tonsil/latest/",
-    "https://lod.humanatlas.io/asct-b/pancreas/latest/",
-    "https://lod.humanatlas.io/asct-b/skin/latest/",
-    "https://lod.humanatlas.io/asct-b/small-intestine/latest/",
-]
-
-
 class HuBMAPFetcher(DataFetcher):
     """Downloads HuBMAP ASCT+B data table JSON files, archiving
     earlier versions."""
 
     name = "hubmap"
-    output_path = HUBMAP_DIRPATH
+
+    @property
+    def output_path(self):
+        """Directory where HuBMAP JSON files are written."""
+        if self._output_path_override is not None:
+            return self._output_path_override
+        return get_current_run().external_dir / "hubmap"
+
+    @output_path.setter
+    def output_path(self, value):
+        self._output_path_override = value
 
     def get_ids(self, context):
         """Not used -- HuBMAP overrides run()."""
@@ -445,16 +581,18 @@ class HuBMAPFetcher(DataFetcher):
         dict
             Empty dict (files are saved directly to disk)
         """
+        hubmap_dir = self.output_path
+        hubmap_dir.mkdir(parents=True, exist_ok=True)
         json_urls = self._get_hubmap_json_urls()
         for org, ver, url in json_urls:
-            hubmap_filepath = HUBMAP_DIRPATH / f"{org}-v{ver}.json"
+            hubmap_filepath = hubmap_dir / f"{org}-v{ver}.json"
             if hubmap_filepath.exists():
                 print(f"HuBMAP data table {hubmap_filepath} already exists")
                 continue
 
-            archive_dirpath = HUBMAP_DIRPATH / ".archive"
+            archive_dirpath = hubmap_dir / ".archive"
             os.makedirs(archive_dirpath, exist_ok=True)
-            for pathname in glob(str(HUBMAP_DIRPATH / f"{org}-v*.json")):
+            for pathname in glob(str(hubmap_dir / f"{org}-v*.json")):
                 try:
                     shutil.move(Path(pathname), archive_dirpath)
                     print(f"Archived HuBMAP data table {pathname}")
@@ -473,18 +611,26 @@ class HuBMAPFetcher(DataFetcher):
         return {}
 
     @staticmethod
-    def _get_hubmap_json_urls():
+    def _get_hubmap_json_urls(urls=None):
         """Get the URL to specified HuBMAP data table JSON files.
+
+        Parameters
+        ----------
+        urls : list of str, optional
+            HuBMAP "latest" URLs to resolve. Defaults to the list in
+            the current run config.
 
         Returns
         -------
         list
             List of (organ, version, url) tuples
         """
+        if urls is None:
+            urls = get_current_run().hubmap_urls
         json_urls = []
         p_org = re.compile(r"asct-b\/(.*)\/latest")
         p_url = re.compile(r"https:\/\/.*\/v(\d\.\d)\/graph.json")
-        for latest_url in HUBMAP_LATEST_URLS:
+        for latest_url in urls:
             m_org = p_org.search(latest_url)
             if m_org is not None:
                 org = m_org.group(1)
@@ -515,12 +661,6 @@ FETCHER_REGISTRY = [
 ]
 
 
-CELLXGENE_PATH = CellxGeneFetcher.output_path
-OPENTARGETS_PATH = OpenTargetsFetcher.output_path
-GENE_PATH = GeneFetcher.output_path
-UNIPROT_PATH = UniProtFetcher.output_path
-
-
 def main():
     """Fetch external API results for all registered sources.
 
@@ -541,19 +681,17 @@ def main():
         help="force fetching of all results",
     )
     parser.add_argument(
-        "--results-sources",
-        type=Path,
+        "--run",
         default=None,
-        help="path to results-sources JSON file (default: use LoaderUtilities default)",
+        help="run name (selects data/run-<name>.json; "
+        "defaults to $CKN_RUN or 'full')",
     )
     args = parser.parse_args()
 
+    set_current_run(args.run)
+
     # Build shared context
-    results_sources = (
-        get_results_sources(args.results_sources)
-        if args.results_sources
-        else get_results_sources()
-    )
+    results_sources = get_results_sources()
     file_paths = get_dataset_file_paths(results_sources)
     dataset_version_id_lists = get_dataset_version_id_lists(file_paths)
     gene_data = get_unique_gene_names_and_ids(file_paths["nsforest_paths"])

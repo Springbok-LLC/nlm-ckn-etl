@@ -8,18 +8,17 @@ import json
 
 from ckn_schema.pydantic.ckn_schema import Gene, Protein
 
-from DataFetcher import GENE_PATH
-
 from LoaderUtilities import (
+    get_current_run,
     get_gene_entrez_id_to_names_map,
     map_gene_entrez_id_to_names,
 )
 
 from TupleWriterUtilities import (
     ASSOCIATION_CLASSES,
-    TUPLES_DIRPATH,
     association_to_tuples,
     entity_to_annotation_triples,
+    get_tuples_dir,
     write_tuples,
 )
 
@@ -86,7 +85,7 @@ def create_tuples(gene_results: dict) -> list[tuple]:
         )
 
         # Gene produces Protein
-        uniprot_id = data.get("UniProt_ID")
+        uniprot_id = data.get("UniProt_name")
         if uniprot_id:
             protein_entity = Protein(
                 gene_symbol=gene_name,
@@ -109,21 +108,22 @@ def create_tuples(gene_results: dict) -> list[tuple]:
 def main():
     """Run Gene tuple writer.
 
-    Loads NCBI Gene results from the fetched JSON file and creates tuples for
-    each gene and its associated protein. Writes output to a single JSON tuple
-    file.
+    Loads transformed NCBI Gene results and creates tuples for each
+    gene and its associated protein. Writes output to a single JSON
+    tuple file.
     """
-    if not GENE_PATH.exists():
-        print(f"Gene results not found at {GENE_PATH}")
+    gene_path = get_current_run().external_dir / "gene_transformed.json"
+    if not gene_path.exists():
+        print(f"Gene results not found at {gene_path}")
         return
 
-    print(f"Creating Gene tuples from {GENE_PATH}")
-    with open(GENE_PATH, "r") as fp:
+    print(f"Creating Gene tuples from {gene_path}")
+    with open(gene_path, "r") as fp:
         gene_results = json.load(fp)
 
     tuples = create_tuples(gene_results)
     if tuples:
-        write_tuples(tuples, TUPLES_DIRPATH / "gene.json")
+        write_tuples(tuples, get_tuples_dir() / "gene.json")
 
 
 if __name__ == "__main__":
