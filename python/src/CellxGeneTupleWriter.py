@@ -9,15 +9,13 @@ import json
 from ckn_schema.pydantic.ckn_schema import CellSetDataset, Publication
 from rdflib.term import Literal, URIRef
 
-from DataFetcher import CELLXGENE_PATH
-
-from LoaderUtilities import PURLBASE, RDFSBASE
+from LoaderUtilities import PURLBASE, RDFSBASE, get_current_run
 
 from TupleWriterUtilities import (
     ASSOCIATION_CLASSES,
-    TUPLES_DIRPATH,
     association_to_tuples,
     entity_to_term,
+    get_tuples_dir,
     remove_protocols,
     write_tuples,
 )
@@ -100,20 +98,21 @@ def create_tuples(cellxgene_results: dict) -> list[tuple]:
 def main():
     """Run CELLxGENE tuple writer.
 
-    Loads CELLxGENE metadata from the fetched JSON file and creates tuples for
-    each dataset. Writes output to a single JSON tuple file.
+    Loads transformed CELLxGENE metadata and creates tuples for each
+    dataset. Writes output to a single JSON tuple file.
     """
-    if not CELLXGENE_PATH.exists():
-        print(f"CELLxGENE results not found at {CELLXGENE_PATH}")
+    cellxgene_path = get_current_run().external_dir / "cellxgene_transformed.json"
+    if not cellxgene_path.exists():
+        print(f"CELLxGENE results not found at {cellxgene_path}")
         return
 
-    print(f"Creating CELLxGENE tuples from {CELLXGENE_PATH}")
-    with open(CELLXGENE_PATH, "r") as fp:
+    print(f"Creating CELLxGENE tuples from {cellxgene_path}")
+    with open(cellxgene_path, "r") as fp:
         cellxgene_results = json.load(fp)
 
     tuples = create_tuples(cellxgene_results)
     if tuples:
-        write_tuples(tuples, TUPLES_DIRPATH / "cellxgene.json")
+        write_tuples(tuples, get_tuples_dir() / "cellxgene.json")
 
 
 if __name__ == "__main__":

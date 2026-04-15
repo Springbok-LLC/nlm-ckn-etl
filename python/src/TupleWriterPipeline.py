@@ -10,6 +10,10 @@ Executes each data-source-specific tuple writer in sequence:
 7. HuBMAP
 """
 
+import argparse
+
+from LoaderUtilities import set_current_run
+
 import NSForestTupleWriter
 import MappingTupleWriter
 import CellxGeneTupleWriter
@@ -21,6 +25,16 @@ import HuBMAPTupleWriter
 
 def main():
     """Run all tuple writers."""
+    parser = argparse.ArgumentParser(description="Run all tuple writers")
+    parser.add_argument(
+        "--run",
+        default=None,
+        help="run name (selects data/run-<name>.json; "
+        "defaults to $CKN_RUN or 'full')",
+    )
+    args = parser.parse_args()
+    set_current_run(args.run)
+
     print("=" * 70)
     print("Running NSForest tuple writer")
     print("=" * 70)

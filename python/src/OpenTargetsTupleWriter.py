@@ -18,16 +18,12 @@ from ckn_schema.pydantic.ckn_schema import (
     Protein,
 )
 
-from DataFetcher import (
-    OPENTARGETS_PATH,
-    GENE_PATH,
-)
-
 from LoaderUtilities import (
     DEPRECATED_TERMS,
     PURLBASE,
     RDFSBASE,
     get_chembl_to_pubchem_map,
+    get_current_run,
     get_efo_to_mondo_map,
     get_gene_ensembl_id_to_names_map,
     get_gene_name_to_entrez_ids_map,
@@ -39,8 +35,8 @@ from LoaderUtilities import (
 
 from TupleWriterUtilities import (
     ASSOCIATION_CLASSES,
-    TUPLES_DIRPATH,
     association_to_tuples,
+    get_tuples_dir,
     remove_protocols,
     write_tuples,
 )
@@ -452,26 +448,29 @@ def create_tuples(opentargets_results: dict, gene_results: dict) -> list[tuple]:
 def main():
     """Run Open Targets tuple writer.
 
-    Loads Open Targets and Gene results from their fetched JSON files and
-    creates tuples for each target, disease, drug, interaction, and
-    pharmacogenetic resource. Writes output to a single JSON tuple file.
+    Loads transformed Open Targets and Gene results and creates tuples
+    for each target, disease, drug, interaction, and pharmacogenetic
+    resource. Writes output to a single JSON tuple file.
     """
-    if not OPENTARGETS_PATH.exists():
-        print(f"Open Targets results not found at {OPENTARGETS_PATH}")
+    external_dir = get_current_run().external_dir
+    opentargets_path = external_dir / "opentargets_transformed.json"
+    gene_path = external_dir / "gene_transformed.json"
+    if not opentargets_path.exists():
+        print(f"Open Targets results not found at {opentargets_path}")
         return
-    if not GENE_PATH.exists():
-        print(f"Gene results not found at {GENE_PATH}")
+    if not gene_path.exists():
+        print(f"Gene results not found at {gene_path}")
         return
 
-    print(f"Creating Open Targets tuples from {OPENTARGETS_PATH}")
-    with open(OPENTARGETS_PATH, "r") as fp:
+    print(f"Creating Open Targets tuples from {opentargets_path}")
+    with open(opentargets_path, "r") as fp:
         opentargets_results = json.load(fp)
-    with open(GENE_PATH, "r") as fp:
+    with open(gene_path, "r") as fp:
         gene_results = json.load(fp)
 
     tuples = create_tuples(opentargets_results, gene_results)
     if tuples:
-        write_tuples(tuples, TUPLES_DIRPATH / "opentargets.json")
+        write_tuples(tuples, get_tuples_dir() / "opentargets.json")
 
 
 if __name__ == "__main__":
