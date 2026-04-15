@@ -10,19 +10,18 @@ from pathlib import Path
 
 from ckn_schema.pydantic.ckn_schema import AnatomicalStructure, CellType
 
-from DataFetcher import HUBMAP_DIRPATH
-
 from LoaderUtilities import (
     DEPRECATED_TERMS,
     get_cl_terms,
+    get_current_run,
     get_dataset_file_paths,
     get_results_sources,
 )
 
 from TupleWriterUtilities import (
     ASSOCIATION_CLASSES,
-    TUPLES_DIRPATH,
     association_to_tuples,
+    get_tuples_dir,
     write_tuples,
 )
 
@@ -129,8 +128,9 @@ def main():
     HuBMAP JSON data file. Writes one JSON tuple file per HuBMAP
     source file.
     """
-    if not HUBMAP_DIRPATH.exists():
-        print(f"HuBMAP data not found at {HUBMAP_DIRPATH}")
+    hubmap_dir = get_current_run().external_dir / "hubmap"
+    if not hubmap_dir.exists():
+        print(f"HuBMAP data not found at {hubmap_dir}")
         return
 
     # Get CL terms from mapping files
@@ -138,7 +138,8 @@ def main():
     file_paths = get_dataset_file_paths(results_sources)
     cl_terms = get_cl_terms(file_paths["mapping_paths"])
 
-    hubmap_paths = [Path(p).resolve() for p in glob(str(HUBMAP_DIRPATH / "*.json"))]
+    tuples_dir = get_tuples_dir()
+    hubmap_paths = [Path(p).resolve() for p in glob(str(hubmap_dir / "*.json"))]
     for hubmap_path in hubmap_paths:
         print(f"Creating HuBMAP tuples from {hubmap_path.name}")
         with open(hubmap_path, "r") as fp:
@@ -147,7 +148,7 @@ def main():
         tuples = create_tuples(hubmap_data, cl_terms)
         if tuples:
             output_name = f"hubmap-{hubmap_path.name}"
-            write_tuples(tuples, TUPLES_DIRPATH / output_name)
+            write_tuples(tuples, tuples_dir / output_name)
 
 
 if __name__ == "__main__":

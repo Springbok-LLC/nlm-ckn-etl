@@ -32,10 +32,10 @@ from ckn_schema.pydantic.ckn_schema import (
 
 from TupleWriterUtilities import (
     ASSOCIATION_CLASSES,
-    TUPLES_DIRPATH,
     association_to_tuples,
     build_cell_set_dataset,
     curie_to_term,
+    get_tuples_dir,
     parse_string_list,
     purl_to_curie,
     resolve_gene_names,
@@ -313,7 +313,7 @@ def main():
         tuples = create_tuples(author_to_cl_results, dvids, harvester_data)
         if tuples:
             output_name = author_to_cl_path.name.replace(".csv", "-mapping.json")
-            write_tuples(tuples, TUPLES_DIRPATH / output_name)
+            write_tuples(tuples, get_tuples_dir() / output_name)
 
 
 if __name__ == "__main__":

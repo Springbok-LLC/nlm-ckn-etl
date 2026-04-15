@@ -32,9 +32,9 @@ from ckn_schema.pydantic.ckn_schema import (
 )
 
 from LoaderUtilities import (
-    DATA_DIRPATH,
     PURLBASE,
     RDFSBASE,
+    get_current_run,
     map_gene_ensembl_id_to_names,
 )
 
@@ -42,7 +42,12 @@ from LoaderUtilities import (
 # Constants
 # ---------------------------------------------------------------------------
 
-TUPLES_DIRPATH = DATA_DIRPATH / "tuples"
+
+def get_tuples_dir():
+    """Return the current run's tuples directory, creating it if needed."""
+    tuples_dir = get_current_run().tuples_dir
+    tuples_dir.mkdir(parents=True, exist_ok=True)
+    return tuples_dir
 
 # Maps Pydantic field names to annotation attribute names where the
 # stored name must differ from the Pydantic field name.

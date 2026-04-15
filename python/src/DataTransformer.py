@@ -7,10 +7,11 @@ import re
 from E_Utilities import parse_xml_for_gene_id
 
 from LoaderUtilities import (
-    EXTERNAL_DIRPATH,
     OPENTARGETS_RESOURCES,
+    get_current_run,
     get_value_or_none,
     get_values_or_none,
+    set_current_run,
 )
 
 
@@ -20,7 +21,21 @@ class BaseTransformer:
     transform()."""
 
     name: str
-    input_path: object  # Path to raw JSON from the corresponding fetcher
+
+    _input_path_override = None
+
+    @property
+    def input_path(self):
+        """Path to raw JSON from the corresponding fetcher. Defaults to
+        ``<run external_dir>/<name>.json`` but may be overridden by
+        assignment (e.g. from tests)."""
+        if self._input_path_override is not None:
+            return self._input_path_override
+        return get_current_run().external_dir / f"{self.name}.json"
+
+    @input_path.setter
+    def input_path(self, value):
+        self._input_path_override = value
 
     @property
     def output_path(self):
@@ -107,7 +122,6 @@ class CellxGeneTransformer(BaseTransformer):
     fields from raw CELLxGENE dataset and collection JSON."""
 
     name = "cellxgene"
-    input_path = EXTERNAL_DIRPATH / "cellxgene.json"
 
     def transform(self, raw_results):
         """Transform raw CELLxGENE results.
@@ -212,7 +226,6 @@ class OpenTargetsTransformer(BaseTransformer):
     drugs, interactions, etc.)."""
 
     name = "opentargets"
-    input_path = EXTERNAL_DIRPATH / "opentargets.json"
 
     def transform(self, raw_results):
         """Transform raw Open Targets results.
@@ -271,7 +284,6 @@ class GeneTransformer(BaseTransformer):
     E_Utilities parsing."""
 
     name = "gene"
-    input_path = EXTERNAL_DIRPATH / "gene.json"
 
     def transform(self, raw_results):
         """Decompress and parse stored XML for each gene.
@@ -312,7 +324,6 @@ class UniProtTransformer(BaseTransformer):
     from raw UniProt API responses."""
 
     name = "uniprot"
-    input_path = EXTERNAL_DIRPATH / "uniprot.json"
 
     def transform(self, raw_results):
         """Transform raw UniProt results.
@@ -412,7 +423,15 @@ def main():
         action="store_true",
         help="re-run transformers even if output is up to date",
     )
+    parser.add_argument(
+        "--run",
+        default=None,
+        help="run name (selects data/run-<name>.json; "
+        "defaults to $CKN_RUN or 'full')",
+    )
     args = parser.parse_args()
+
+    set_current_run(args.run)
 
     source_names = args.sources or [t.name for t in TRANSFORMER_REGISTRY]
 

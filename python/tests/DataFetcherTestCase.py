@@ -543,10 +543,9 @@ class HuBMAPFetcherTestCase(unittest.TestCase):
         html = '<a href="https://cdn.humanatlas.io/digital-objects/asct-b/kidney/v2.1/graph.json">link</a>'
         mock_get.return_value = MagicMock(status_code=200, text=html)
 
-        with patch("DataFetcher.HUBMAP_LATEST_URLS", [
-            "https://lod.humanatlas.io/asct-b/kidney/latest/",
-        ]):
-            urls = HuBMAPFetcher._get_hubmap_json_urls()
+        urls = HuBMAPFetcher._get_hubmap_json_urls(
+            urls=["https://lod.humanatlas.io/asct-b/kidney/latest/"]
+        )
 
         self.assertEqual(len(urls), 1)
         org, ver, url = urls[0]
@@ -559,22 +558,20 @@ class HuBMAPFetcherTestCase(unittest.TestCase):
         """_get_hubmap_json_urls raises when latest URL returns non-200."""
         mock_get.return_value = MagicMock(status_code=500)
 
-        with patch("DataFetcher.HUBMAP_LATEST_URLS", [
-            "https://lod.humanatlas.io/asct-b/kidney/latest/",
-        ]):
-            with self.assertRaises(Exception, msg="Could not get HuBMAP latest URL"):
-                HuBMAPFetcher._get_hubmap_json_urls()
+        with self.assertRaises(Exception, msg="Could not get HuBMAP latest URL"):
+            HuBMAPFetcher._get_hubmap_json_urls(
+                urls=["https://lod.humanatlas.io/asct-b/kidney/latest/"]
+            )
 
     @patch("DataFetcher.requests.get")
     def test_get_hubmap_json_urls_raises_on_no_url_match(self, mock_get):
         """_get_hubmap_json_urls raises when response has no matching URL."""
         mock_get.return_value = MagicMock(status_code=200, text="no link here")
 
-        with patch("DataFetcher.HUBMAP_LATEST_URLS", [
-            "https://lod.humanatlas.io/asct-b/kidney/latest/",
-        ]):
-            with self.assertRaises(Exception, msg="Could not find HuBMAP JSON URL or version"):
-                HuBMAPFetcher._get_hubmap_json_urls()
+        with self.assertRaises(Exception, msg="Could not find HuBMAP JSON URL or version"):
+            HuBMAPFetcher._get_hubmap_json_urls(
+                urls=["https://lod.humanatlas.io/asct-b/kidney/latest/"]
+            )
 
     @patch("DataFetcher.requests.get")
     @patch.object(HuBMAPFetcher, "_get_hubmap_json_urls")
@@ -584,8 +581,8 @@ class HuBMAPFetcherTestCase(unittest.TestCase):
         mock_get.return_value = MagicMock(status_code=200, text='{"data": "test"}')
 
         fetcher = self._make_fetcher()
-        with patch("DataFetcher.HUBMAP_DIRPATH", self.hubmap_dir):
-            fetcher.run({})
+        fetcher.output_path = self.hubmap_dir
+        fetcher.run({})
 
         filepath = self.hubmap_dir / "kidney-v2.1.json"
         self.assertTrue(filepath.exists())
@@ -602,8 +599,8 @@ class HuBMAPFetcherTestCase(unittest.TestCase):
         filepath.write_text('{"existing": true}')
 
         fetcher = self._make_fetcher()
-        with patch("DataFetcher.HUBMAP_DIRPATH", self.hubmap_dir):
-            fetcher.run({})
+        fetcher.output_path = self.hubmap_dir
+        fetcher.run({})
 
         # File content unchanged (no download occurred)
         with open(filepath) as fp:
@@ -621,8 +618,8 @@ class HuBMAPFetcherTestCase(unittest.TestCase):
         old_file.write_text('{"old": true}')
 
         fetcher = self._make_fetcher()
-        with patch("DataFetcher.HUBMAP_DIRPATH", self.hubmap_dir):
-            fetcher.run({})
+        fetcher.output_path = self.hubmap_dir
+        fetcher.run({})
 
         # Old file archived
         self.assertFalse(old_file.exists())
@@ -641,8 +638,8 @@ class HuBMAPFetcherTestCase(unittest.TestCase):
         mock_get.return_value = MagicMock(status_code=500)
 
         fetcher = self._make_fetcher()
-        with patch("DataFetcher.HUBMAP_DIRPATH", self.hubmap_dir):
-            fetcher.run({})
+        fetcher.output_path = self.hubmap_dir
+        fetcher.run({})
 
         filepath = self.hubmap_dir / "kidney-v2.1.json"
         self.assertFalse(filepath.exists())

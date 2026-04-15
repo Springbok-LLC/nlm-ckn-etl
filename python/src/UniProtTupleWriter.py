@@ -7,11 +7,11 @@ import json
 
 from ckn_schema.pydantic.ckn_schema import Protein
 
-from DataFetcher import UNIPROT_PATH
+from LoaderUtilities import get_current_run
 
 from TupleWriterUtilities import (
-    TUPLES_DIRPATH,
     entity_to_annotation_triples,
+    get_tuples_dir,
     write_tuples,
 )
 
@@ -69,20 +69,21 @@ def create_tuples(uniprot_results: dict) -> list[tuple]:
 def main():
     """Run UniProt tuple writer.
 
-    Loads UniProt results from the fetched JSON file and creates tuples for
-    each protein. Writes output to a single JSON tuple file.
+    Loads transformed UniProt results and creates tuples for each
+    protein. Writes output to a single JSON tuple file.
     """
-    if not UNIPROT_PATH.exists():
-        print(f"UniProt results not found at {UNIPROT_PATH}")
+    uniprot_path = get_current_run().external_dir / "uniprot_transformed.json"
+    if not uniprot_path.exists():
+        print(f"UniProt results not found at {uniprot_path}")
         return
 
-    print(f"Creating UniProt tuples from {UNIPROT_PATH}")
-    with open(UNIPROT_PATH, "r") as fp:
+    print(f"Creating UniProt tuples from {uniprot_path}")
+    with open(uniprot_path, "r") as fp:
         uniprot_results = json.load(fp)
 
     tuples = create_tuples(uniprot_results)
     if tuples:
-        write_tuples(tuples, TUPLES_DIRPATH / "uniprot.json")
+        write_tuples(tuples, get_tuples_dir() / "uniprot.json")
 
 
 if __name__ == "__main__":

@@ -17,12 +17,13 @@ import gzip
 from E_Utilities import extract_uniprot_name, fetch_xml_for_gene_id
 from OpenTargetsGGetQueries import gget_queries
 from LoaderUtilities import (
-    EXTERNAL_DIRPATH,
     OPENTARGETS_RESOURCES,
+    get_current_run,
     get_dataset_file_paths,
     get_dataset_version_id_lists,
     get_results_sources,
     get_unique_gene_names_and_ids,
+    set_current_run,
 )
 
 
@@ -37,10 +38,24 @@ class DataFetcher:
     integration are handled here."""
 
     name: str
-    output_path: Path
     batch_size: int = 25
     max_per_second: int = 5
     request_timeout: int = REQUEST_TIMEOUT
+
+    _output_path_override = None
+
+    @property
+    def output_path(self):
+        """Path where final results are written. Defaults to
+        ``<run external_dir>/<name>.json`` but may be overridden by
+        assignment (e.g. from tests)."""
+        if self._output_path_override is not None:
+            return self._output_path_override
+        return get_current_run().external_dir / f"{self.name}.json"
+
+    @output_path.setter
+    def output_path(self, value):
+        self._output_path_override = value
 
     def get_ids(self, context):
         """Return the list of IDs to iterate over.
@@ -271,6 +286,7 @@ class DataFetcher:
         batch : dict
             Mapping of ID to result data for newly completed fetches
         """
+        self.checkpoint_path.parent.mkdir(parents=True, exist_ok=True)
         print(f"[{self.name}] Appending {len(batch)} records to {self.checkpoint_path}")
         with open(self.checkpoint_path, "a") as fp:
             for id_value, data in batch.items():
@@ -287,6 +303,7 @@ class DataFetcher:
             The full list of IDs (passed to before_dump)
         """
         self.before_dump(results, ids)
+        self.output_path.parent.mkdir(parents=True, exist_ok=True)
         print(f"[{self.name}] Writing final results to {self.output_path}")
         with open(self.output_path, "w") as fp:
             json.dump(results, fp, indent=4)
@@ -300,7 +317,6 @@ class CellxGeneFetcher(DataFetcher):
     curation API."""
 
     name = "cellxgene"
-    output_path = EXTERNAL_DIRPATH / "cellxgene.json"
 
     BASE_URL = "https://api.cellxgene.cziscience.com/curation/v1"
 
@@ -357,7 +373,6 @@ class OpenTargetsFetcher(DataFetcher):
     GraphQL API."""
 
     name = "opentargets"
-    output_path = EXTERNAL_DIRPATH / "opentargets.json"
     max_per_second = 2
     request_timeout = 120
 
@@ -416,7 +431,6 @@ class GeneFetcher(DataFetcher):
     """Fetches gene data from NCBI Gene via E-Utilities."""
 
     name = "gene"
-    output_path = EXTERNAL_DIRPATH / "gene.json"
     # max_per_second = 10  # NCBI allows 10 req/s with API key, but seems to return 429 at times
 
     def get_ids(self, context):
@@ -470,7 +484,6 @@ class UniProtFetcher(DataFetcher):
     """Fetches protein data from the UniProt REST API."""
 
     name = "uniprot"
-    output_path = EXTERNAL_DIRPATH / "uniprot.json"
 
     def get_ids(self, context):
         """Derive unique protein accessions from gene results.
@@ -527,30 +540,22 @@ class UniProtFetcher(DataFetcher):
         results["protein_accessions"] = ids
 
 
-HUBMAP_DIRPATH = EXTERNAL_DIRPATH / "hubmap"
-HUBMAP_LATEST_URLS = [
-    "https://lod.humanatlas.io/asct-b/allen-brain/latest/",
-    "https://lod.humanatlas.io/asct-b/bone-marrow/latest/",
-    "https://lod.humanatlas.io/asct-b/eye/latest/",
-    "https://lod.humanatlas.io/asct-b/heart/latest/",
-    "https://lod.humanatlas.io/asct-b/kidney/latest/",
-    "https://lod.humanatlas.io/asct-b/large-intestine/latest/",
-    "https://lod.humanatlas.io/asct-b/liver/latest/",
-    "https://lod.humanatlas.io/asct-b/lung/latest/",
-    "https://lod.humanatlas.io/asct-b/mouth/latest/",
-    "https://lod.humanatlas.io/asct-b/palatine-tonsil/latest/",
-    "https://lod.humanatlas.io/asct-b/pancreas/latest/",
-    "https://lod.humanatlas.io/asct-b/skin/latest/",
-    "https://lod.humanatlas.io/asct-b/small-intestine/latest/",
-]
-
-
 class HuBMAPFetcher(DataFetcher):
     """Downloads HuBMAP ASCT+B data table JSON files, archiving
     earlier versions."""
 
     name = "hubmap"
-    output_path = HUBMAP_DIRPATH
+
+    @property
+    def output_path(self):
+        """Directory where HuBMAP JSON files are written."""
+        if self._output_path_override is not None:
+            return self._output_path_override
+        return get_current_run().external_dir / "hubmap"
+
+    @output_path.setter
+    def output_path(self, value):
+        self._output_path_override = value
 
     def get_ids(self, context):
         """Not used -- HuBMAP overrides run()."""
@@ -576,16 +581,18 @@ class HuBMAPFetcher(DataFetcher):
         dict
             Empty dict (files are saved directly to disk)
         """
+        hubmap_dir = self.output_path
+        hubmap_dir.mkdir(parents=True, exist_ok=True)
         json_urls = self._get_hubmap_json_urls()
         for org, ver, url in json_urls:
-            hubmap_filepath = HUBMAP_DIRPATH / f"{org}-v{ver}.json"
+            hubmap_filepath = hubmap_dir / f"{org}-v{ver}.json"
             if hubmap_filepath.exists():
                 print(f"HuBMAP data table {hubmap_filepath} already exists")
                 continue
 
-            archive_dirpath = HUBMAP_DIRPATH / ".archive"
+            archive_dirpath = hubmap_dir / ".archive"
             os.makedirs(archive_dirpath, exist_ok=True)
-            for pathname in glob(str(HUBMAP_DIRPATH / f"{org}-v*.json")):
+            for pathname in glob(str(hubmap_dir / f"{org}-v*.json")):
                 try:
                     shutil.move(Path(pathname), archive_dirpath)
                     print(f"Archived HuBMAP data table {pathname}")
@@ -604,18 +611,26 @@ class HuBMAPFetcher(DataFetcher):
         return {}
 
     @staticmethod
-    def _get_hubmap_json_urls():
+    def _get_hubmap_json_urls(urls=None):
         """Get the URL to specified HuBMAP data table JSON files.
+
+        Parameters
+        ----------
+        urls : list of str, optional
+            HuBMAP "latest" URLs to resolve. Defaults to the list in
+            the current run config.
 
         Returns
         -------
         list
             List of (organ, version, url) tuples
         """
+        if urls is None:
+            urls = get_current_run().hubmap_urls
         json_urls = []
         p_org = re.compile(r"asct-b\/(.*)\/latest")
         p_url = re.compile(r"https:\/\/.*\/v(\d\.\d)\/graph.json")
-        for latest_url in HUBMAP_LATEST_URLS:
+        for latest_url in urls:
             m_org = p_org.search(latest_url)
             if m_org is not None:
                 org = m_org.group(1)
@@ -646,12 +661,6 @@ FETCHER_REGISTRY = [
 ]
 
 
-CELLXGENE_PATH = CellxGeneFetcher.output_path
-OPENTARGETS_PATH = OpenTargetsFetcher.output_path
-GENE_PATH = GeneFetcher.output_path
-UNIPROT_PATH = UniProtFetcher.output_path
-
-
 def main():
     """Fetch external API results for all registered sources.
 
@@ -672,19 +681,17 @@ def main():
         help="force fetching of all results",
     )
     parser.add_argument(
-        "--results-sources",
-        type=Path,
+        "--run",
         default=None,
-        help="path to results-sources JSON file (default: use LoaderUtilities default)",
+        help="run name (selects data/run-<name>.json; "
+        "defaults to $CKN_RUN or 'full')",
     )
     args = parser.parse_args()
 
+    set_current_run(args.run)
+
     # Build shared context
-    results_sources = (
-        get_results_sources(args.results_sources)
-        if args.results_sources
-        else get_results_sources()
-    )
+    results_sources = get_results_sources()
     file_paths = get_dataset_file_paths(results_sources)
     dataset_version_id_lists = get_dataset_version_id_lists(file_paths)
     gene_data = get_unique_gene_names_and_ids(file_paths["nsforest_paths"])

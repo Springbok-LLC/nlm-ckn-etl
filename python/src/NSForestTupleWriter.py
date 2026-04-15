@@ -30,9 +30,9 @@ from LoaderUtilities import (
 
 from TupleWriterUtilities import (
     ASSOCIATION_CLASSES,
-    TUPLES_DIRPATH,
     association_to_tuples,
     build_cell_set_dataset,
+    get_tuples_dir,
     parse_string_list,
     resolve_gene_names,
     write_tuples,
@@ -293,7 +293,7 @@ def main():
         tuples = create_tuples(nsforest_results, summary_data, dvids, harvester_data)
         if tuples:
             output_name = nsforest_path.name.replace(".csv", "-nsforest.json")
-            write_tuples(tuples, TUPLES_DIRPATH / output_name)
+            write_tuples(tuples, get_tuples_dir() / output_name)
 
 
 if __name__ == "__main__":

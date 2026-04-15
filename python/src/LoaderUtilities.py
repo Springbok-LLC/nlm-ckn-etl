@@ -1,6 +1,8 @@
 import ast
+from dataclasses import dataclass, field
 from glob import glob
 import json
+import os
 from pathlib import Path
 import random
 import re
@@ -39,10 +41,72 @@ OBO_IN_OWL_NS = "{http://www.geneontology.org/formats/oboInOwl#}"
 RDF_NS = "{http://www.w3.org/1999/02/22-rdf-syntax-ns#}"
 
 DATA_DIRPATH = Path(__file__).resolve().parents[2] / "data"
-RESULTS_SOURCES_PATH = DATA_DIRPATH / "results-sources-2026-01-06-6253d09e2fc7.json"
-EXTERNAL_DIRPATH = DATA_DIRPATH / "external"
-BIOMART_DIRPATH = EXTERNAL_DIRPATH / "biomart"
+BIOMART_DIRPATH = DATA_DIRPATH / "biomart"
 GENE_MAPPING_PATH = BIOMART_DIRPATH / "gene_mapping.csv"
+
+DEFAULT_RUN_NAME = "full"
+
+
+@dataclass(frozen=True)
+class RunConfig:
+    """Per-run configuration describing which sources feed the
+    pipeline and where its outputs land."""
+
+    run_name: str
+    results_sources_path: Path
+    external_dir: Path
+    tuples_dir: Path
+    hubmap_urls: list = field(default_factory=list)
+
+    @classmethod
+    def load(cls, run_name):
+        """Load ``data/run-<run_name>.json`` and resolve derived paths."""
+        config_path = DATA_DIRPATH / f"run-{run_name}.json"
+        if not config_path.exists():
+            raise FileNotFoundError(
+                f"Run config not found: {config_path}. "
+                f"Expected file {config_path.name} under {DATA_DIRPATH}."
+            )
+        with open(config_path, "r") as fp:
+            cfg = json.load(fp)
+        results_sources = cfg.get("results_sources")
+        if not results_sources:
+            raise ValueError(
+                f"Run config {config_path} missing required 'results_sources' key"
+            )
+        return cls(
+            run_name=run_name,
+            results_sources_path=DATA_DIRPATH / results_sources,
+            external_dir=DATA_DIRPATH / f"external-{run_name}",
+            tuples_dir=DATA_DIRPATH / f"tuples-{run_name}",
+            hubmap_urls=list(cfg.get("hubmap_urls", [])),
+        )
+
+
+_CURRENT_RUN = None
+
+
+def set_current_run(run_name=None):
+    """Set the process-wide run config. Resolution order:
+
+    1. ``run_name`` argument, if provided
+    2. ``CKN_RUN`` environment variable, if set
+    3. :data:`DEFAULT_RUN_NAME`
+
+    Returns the resolved :class:`RunConfig`.
+    """
+    global _CURRENT_RUN
+    name = run_name or os.environ.get("CKN_RUN") or DEFAULT_RUN_NAME
+    _CURRENT_RUN = RunConfig.load(name)
+    return _CURRENT_RUN
+
+
+def get_current_run():
+    """Return the current :class:`RunConfig`, initializing it from the
+    env var or default run if not already set."""
+    if _CURRENT_RUN is None:
+        set_current_run()
+    return _CURRENT_RUN
 
 with open(DATA_DIRPATH / "obo" / "deprecated_terms.txt", "r") as fp:
     DEPRECATED_TERMS = fp.read().splitlines()
@@ -116,20 +180,24 @@ def parse_term(term, ro=None):
         return None, None, None, Path(path).stem, "literal"
 
 
-def get_results_sources(results_sources_path=RESULTS_SOURCES_PATH):
-    """Get results sources directories and patterns from the specified path, or
-    use the default.
+def get_results_sources(results_sources_path=None):
+    """Get results sources directories and patterns. When no path is
+    given, the current run config's ``results_sources_path`` is used.
 
     Parameters
     ----------
-    results_sources_path : Path
-        Path to results sources file
+    results_sources_path : Path, optional
+        Path to results sources file. Defaults to the current run's
+        configured results-sources file.
 
     Returns
     -------
     results_sources : dict
         Dictionary containing results sources
     """
+    if results_sources_path is None:
+        results_sources_path = get_current_run().results_sources_path
+
     results_sources = {}
 
     if results_sources_path.exists():
