@@ -55,12 +55,13 @@ public class OntologySlimmer {
             XMLEventReader reader = inputFactory.createXMLEventReader(fis);
             XMLEventWriter writer = outputFactory.createXMLEventWriter(fos, "UTF-8");
 
+            // State machine: buffer each owl:Class, check for taxon match, then flush or discard
             List<XMLEvent> buffer = new ArrayList<>();
-            boolean inClass = false;
-            boolean inAxiom = false;
-            boolean hasTaxon = false;
-            int depth = 0;
-            int elementStartDepth = 0;
+            boolean inClass = false;   // inside a top-level owl:Class (has rdf:about)
+            boolean inAxiom = false;   // inside an owl:Axiom (always discarded)
+            boolean hasTaxon = false;  // current class has an owl:someValuesFrom matching the taxon
+            int depth = 0;             // XML nesting depth
+            int elementStartDepth = 0; // depth when the current class/axiom opened
 
             while (reader.hasNext()) {
                 XMLEvent event = reader.nextEvent();
@@ -70,8 +71,8 @@ public class OntologySlimmer {
                     String localName = event.asStartElement().getName().getLocalPart();
                     String nsURI = event.asStartElement().getName().getNamespaceURI();
 
+                    // Start buffering a top-level owl:Class; we decide keep/discard at its end tag
                     if (nsURI.equals(OWL_NS) && localName.equals("Class") && !inClass && !inAxiom) {
-                        // Check if this is a top-level owl:Class (has rdf:about attribute)
                         var aboutAttr = event.asStartElement().getAttributeByName(
                                 new javax.xml.namespace.QName(RDF_NS, "about"));
                         if (aboutAttr != null) {
@@ -84,6 +85,7 @@ public class OntologySlimmer {
                         }
                     }
 
+                    // Skip owl:Axiom elements entirely
                     if (nsURI.equals(OWL_NS) && localName.equals("Axiom") && !inClass) {
                         inAxiom = true;
                         elementStartDepth = depth;
@@ -91,7 +93,7 @@ public class OntologySlimmer {
                     }
 
                     if (inClass) {
-                        // Check for owl:someValuesFrom with taxon URI
+                        // Detect taxon restriction: owl:someValuesFrom pointing to the target taxon URI
                         if (nsURI.equals(OWL_NS) && localName.equals("someValuesFrom")) {
                             var resourceAttr = event.asStartElement().getAttributeByName(
                                     new javax.xml.namespace.QName(RDF_NS, "resource"));
@@ -107,11 +109,13 @@ public class OntologySlimmer {
                         continue;
                     }
 
+                    // Top-level non-class, non-axiom elements pass through (header, properties, etc.)
                     writer.add(event);
 
                 } else if (event.isEndElement()) {
                     if (inClass) {
                         buffer.add(event);
+                        // Class fully parsed: flush buffer if taxon matched, otherwise discard
                         if (depth == elementStartDepth) {
                             inClass = false;
                             if (hasTaxon) {
