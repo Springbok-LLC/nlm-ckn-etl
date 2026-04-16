@@ -20,10 +20,11 @@ class PathUtilitiesTest {
     void listFilesMatchingPattern_owlFiles() throws IOException {
         List<Path> files = PathUtilities.listFilesMatchingPattern(testOboDir.toString(), ".*\\.owl");
         assertNotNull(files);
-        assertEquals(5, files.size());
+        assertEquals(6, files.size());
         List<String> names = files.stream().map(p -> p.getFileName().toString()).sorted().toList();
         assertTrue(names.contains("macrophage.owl"));
         assertTrue(names.contains("no-IAO_0000700-test.owl"));
+        assertTrue(names.contains("pr-test.owl"));
         assertTrue(names.contains("ro.owl"));
         assertTrue(names.contains("version-info-test.owl"));
         assertTrue(names.contains("no-version-test.owl"));

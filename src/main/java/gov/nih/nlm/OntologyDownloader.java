@@ -25,6 +25,7 @@ public class OntologyDownloader {
     // Assign OBO Foundry PURLs
     static final List<String> OBO_PURLS = List.of("http://purl.obolibrary.org/obo/cl.owl",
             "http://purl.obolibrary.org/obo/go.owl",
+            "http://purl.obolibrary.org/obo/pr.owl",
             "http://purl.obolibrary.org/obo/uberon/uberon-base.owl",
             "http://purl.obolibrary.org/obo/ncbitaxon/subsets/taxslim.owl",
             "http://purl.obolibrary.org/obo/mondo/mondo-simple.owl",
