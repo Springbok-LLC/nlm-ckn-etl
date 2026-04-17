@@ -1,6 +1,6 @@
 [
   {
-    "results_dir": "results-6253d09e2fc7-test",
+    "results_dir": "results-sample",
     "harvester_pattern": "*_harvester_final.csv",
     "nsforest_pattern": "*_results.csv",
     "mapping_substrs": [
