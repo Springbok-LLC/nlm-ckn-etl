@@ -137,6 +137,33 @@ public class OntologyGraphBuilder {
     }
 
     /**
+     * Store the first value for an attribute as a String; promote to an ArrayList on collision, deduplicating so the
+     * same value is not stored twice.
+     *
+     * @param doc       Document on which to set the attribute
+     * @param attribute Attribute name
+     * @param value     Value to store or append
+     */
+    public static void addOrPromoteAttribute(BaseDocument doc, String attribute, String value) {
+        Object existing = doc.getAttribute(attribute);
+        if (existing == null) {
+            doc.addAttribute(attribute, value);
+        } else if (existing instanceof String s) {
+            if (!s.equals(value)) {
+                ArrayList<String> values = new ArrayList<>();
+                values.add(s);
+                values.add(value);
+                doc.updateAttribute(attribute, values);
+            }
+        } else if (existing instanceof List<?> list) {
+            @SuppressWarnings("unchecked") ArrayList<String> values = (ArrayList<String>) list;
+            if (!values.contains(value)) {
+                values.add(value);
+            }
+        }
+    }
+
+    /**
      * Construct vertices using triples parsed from specified ontology files that contain a named subject and object
      * which contain an ontology ID contained in the valid vertices' collection.
      *
@@ -226,13 +253,8 @@ public class OntologyGraphBuilder {
                     // Get the vertex to update
                     updatedVertices.add(vtuple.id + "-" + vtuple.number);
                     BaseDocument doc = vertexDocuments.get(vtuple.id).get(vtuple.number);
-
-                    // Handle each attribute as a single literal value
-                    if (doc.getAttribute(attribute) == null) {
-                        doc.addAttribute(attribute, literal);
-                    } else {
-                        doc.updateAttribute(attribute, literal);
-                    }
+                    // Store the first value for an attribute as a String; promote to an ArrayList on collision
+                    addOrPromoteAttribute(doc, attribute, literal);
                 }
             }
         }
@@ -389,9 +411,10 @@ public class OntologyGraphBuilder {
             } else {
                 doc = edgeDocuments.get(idPair).get(key);
             }
-            // Assigns the last label and source
-            doc.addAttribute("Label", normalizeEdgeLabel(pTuple.label()));
-            doc.addAttribute("Source", normalizeEdgeSource(subjectVTuple.id));
+
+            // Store the first value for an attribute as a String; promote to an ArrayList on collision
+            addOrPromoteAttribute(doc, "Label", normalizeEdgeLabel(pTuple.label()));
+            addOrPromoteAttribute(doc, "Source", normalizeEdgeSource(subjectVTuple.id));
         }
         long stopTime = System.nanoTime();
         System.out.println("Constructed " + nEdges + " edges from " + triples.size() + " triples in " + (stopTime - startTime) / 1e9 + " s");

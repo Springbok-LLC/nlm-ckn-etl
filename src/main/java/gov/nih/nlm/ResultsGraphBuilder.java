@@ -39,7 +39,7 @@ import static gov.nih.nlm.PathUtilities.listFilesMatchingPattern;
 public class ResultsGraphBuilder {
 
     // Assign location of tuples and schema files
-    public static final Path TUPLES_DIR = USR_DIR.resolve("data/tuples");
+    public static final Path TUPLES_DIR = USR_DIR.resolve("data/tuples-full");
 
     // Connect to a local ArangoDB server instance
     private static final ArangoDbUtilities arangoDbUtilities = new ArangoDbUtilities();

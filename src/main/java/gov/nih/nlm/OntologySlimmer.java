@@ -14,6 +14,7 @@ import java.io.FileOutputStream;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.StandardCopyOption;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -182,7 +183,7 @@ public class OntologySlimmer {
             // Move pr.owl to .archive/pr.owl
             Files.createDirectories(archiveDir);
             System.out.println("Moving " + fullFile + " to " + archiveFile);
-            Files.move(fullFile, archiveFile);
+            Files.move(fullFile, archiveFile, StandardCopyOption.REPLACE_EXISTING);
 
         } catch (IOException | XMLStreamException e) {
             throw new RuntimeException(e);
