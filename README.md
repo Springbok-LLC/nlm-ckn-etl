@@ -37,6 +37,9 @@ eliminating the need for git submodules and system-scoped JAR dependencies.
 
 ## Project Structure
 
+
+
+
 ```
 nlm-ckn-etl/
 ├── pom.xml                          # Maven POM (all Java dependencies)
@@ -47,8 +50,8 @@ nlm-ckn-etl/
 │   └── test/
 │       ├── java/gov/nih/nlm/        # Java test classes
 │       └── data/
-│           ├── obo/                 # Test .owl files
-│           └── tuples/              # Test .json triple files
+│           ├── results-2026-01-06/  # Manually curated data
+│           └── results-sample/      # Sample of pipeline data
 ├── python/
 │   ├── pyproject.toml               # Poetry configuration
 │   ├── src/                         # Python modules
@@ -126,6 +129,7 @@ The Python and Java classes require the ontology files to reside in
 ```
 $ export CP="target/nlm-ckn-etl-1.0.jar"
 $ java -cp $CP gov.nih.nlm.OntologyDownloader
+$ java -cp $CP gov.nih.nlm.OntologySlimmer
 ```
 
 The Python classes also require data in the
@@ -165,6 +169,7 @@ $ python -m pytest *.py
    ```
    $ export CP="target/nlm-ckn-etl-1.0.jar"
    $ java -cp $CP gov.nih.nlm.OntologyDownloader
+   $ java -cp $CP gov.nih.nlm.OntologySlimmer
    ```
 
 2. **Load ontologies into ArangoDB (Java):**
