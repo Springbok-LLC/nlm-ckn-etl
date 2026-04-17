@@ -156,8 +156,7 @@ public class OntologyGraphBuilder {
                 doc.updateAttribute(attribute, values);
             }
         } else if (existing instanceof List<?> list) {
-            @SuppressWarnings("unchecked")
-            ArrayList<String> values = (ArrayList<String>) list;
+            @SuppressWarnings("unchecked") ArrayList<String> values = (ArrayList<String>) list;
             if (!values.contains(value)) {
                 values.add(value);
             }
@@ -254,7 +253,7 @@ public class OntologyGraphBuilder {
                     // Get the vertex to update
                     updatedVertices.add(vtuple.id + "-" + vtuple.number);
                     BaseDocument doc = vertexDocuments.get(vtuple.id).get(vtuple.number);
-
+                    // Store the first value for an attribute as a String; promote to an ArrayList on collision
                     addOrPromoteAttribute(doc, attribute, literal);
                 }
             }
@@ -412,6 +411,8 @@ public class OntologyGraphBuilder {
             } else {
                 doc = edgeDocuments.get(idPair).get(key);
             }
+
+            // Store the first value for an attribute as a String; promote to an ArrayList on collision
             addOrPromoteAttribute(doc, "Label", normalizeEdgeLabel(pTuple.label()));
             addOrPromoteAttribute(doc, "Source", normalizeEdgeSource(subjectVTuple.id));
         }
