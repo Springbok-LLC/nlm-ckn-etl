@@ -56,12 +56,15 @@ CLAUDE.md
 docs/java/
 log/
 data/arangodb/
+
 data/external*/
+data/neo4j/
 data/obo/
 data/results*/
 data/scores*/
 data/tuples*/
 python/tests/arangodb/
+src/main/shell/arangodb-download/
 # archives
 *.csv
 *.tar.gz
