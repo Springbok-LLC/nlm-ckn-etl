@@ -4,9 +4,9 @@ set -euo pipefail
 : "${ARANGO_DB_PASSWORD:?ARANGO_DB_PASSWORD must be set (see .env.example)}"
 kgx arangodb-download \
     -l http://localhost:8529 \
-    -d ${ARANGO_PHENOTYPE_DB_NAME} \
+    -d "${ARANGO_PHENOTYPE_DB_NAME}" \
     -u root \
-    -p ${ARANGO_DB_PASSWORD} \
-    -o arangodb-download/${ARANGO_PHENOTYPE_DB_NAME} \
+    -p "${ARANGO_DB_PASSWORD}" \
+    -o "arangodb-download/${ARANGO_PHENOTYPE_DB_NAME}" \
     -f tsv \
     --all-collections

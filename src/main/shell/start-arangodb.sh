@@ -8,9 +8,9 @@ if [ -z "$container_id" ]; then
     docker run \
            --name arangodb \
            --restart always \
-           -e ARANGO_ROOT_PASSWORD=${ARANGO_DB_PASSWORD} \
+           -e ARANGO_ROOT_PASSWORD="${ARANGO_DB_PASSWORD}" \
            -p 8529:8529 \
            -d \
-           -v ${ARANGO_DB_HOME}:/var/lib/arangodb3 \
+           -v "${ARANGO_DB_HOME}":/var/lib/arangodb3 \
            arangodb/arangodb:latest > /dev/null
 fi

@@ -4,7 +4,7 @@ set -euo pipefail
 kgx neo4j-upload \
     -l bolt://localhost:7687 \
     -u neo4j \
-    -p "$NEO4J_PASSWORD" \
+    -p "${NEO4J_PASSWORD}" \
     -i tsv \
-    arangodb-download/${ARANGO_PHENOTYPE_DB_NAME}_nodes.tsv \
-    arangodb-download/${ARANGO_PHENOTYPE_DB_NAME}_edges.tsv
+    "arangodb-download/${ARANGO_PHENOTYPE_DB_NAME}_nodes.tsv" \
+    "arangodb-download/${ARANGO_PHENOTYPE_DB_NAME}_edges.tsv"

@@ -10,11 +10,11 @@ if [ -z "$container_id" ]; then
            --platform linux/amd64 \
            --name fuseki \
            --restart always \
-           -e ADMIN_PASSWORD=${JENA_PASSWORD} \
+           -e ADMIN_PASSWORD="${JENA_PASSWORD}" \
            -e TDB=2 \
-           -e FUSEKI_DATASET_1=${ARANGO_PHENOTYPE_DB_NAME} \
+           -e FUSEKI_DATASET_1="${ARANGO_PHENOTYPE_DB_NAME}" \
            -p 3030:3030 \
            -d \
-           -v ${JENA_HOME}:/fuseki \
+           -v "${JENA_HOME}":/fuseki \
            stain/jena-fuseki:latest > /dev/null
 fi
