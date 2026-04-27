@@ -112,6 +112,24 @@ $ cd src/main/shell
 $ ./start-arangodb.sh
 ```
 
+### Apache Jena (TDB2)
+
+An Apache Jena Fuseki docker image (with a TDB2 backend) can be downloaded
+and a container started as follows:
+```
+$ export JENA_HOME="<some-path>/jena"
+$ export JENA_PASSWORD="<some-password>"
+$ cd src/main/shell
+$ ./start-jena.sh
+```
+The Fuseki admin UI and SPARQL endpoint are exposed at
+`http://localhost:3030`. Once an ArangoDB download has been produced (see
+`download-arangodb.sh`), the resulting TSV files can be transformed to
+N-Triples and loaded into the Fuseki dataset via:
+```
+$ ./upload-jena.sh
+```
+
 ### Java
 
 Java SE 21 and Maven 3 or compatible are required to generate the Javadocs,
