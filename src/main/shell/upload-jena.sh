@@ -1,13 +1,15 @@
 #!/usr/bin/env bash
-db="Cell-KN-Phenotypes"
+set -euo pipefail
+: "${ARANGO_PHENOTYPE_DB_NAME:?ARANGO_PHENOTYPE_DB_NAME must be set (see .env.example)}"
+: "${JENA_PASSWORD:?JENA_PASSWORD must be set (see .env.example)}"
 kgx transform \
     -i tsv \
     -f nt \
-    -o arangodb-download/${db}.nt \
-    arangodb-download/${db}_nodes.tsv \
-    arangodb-download/${db}_edges.tsv
-curl -X POST \
+    -o arangodb-download/${ARANGO_PHENOTYPE_DB_NAME}.nt \
+    arangodb-download/${ARANGO_PHENOTYPE_DB_NAME}_nodes.tsv \
+    arangodb-download/${ARANGO_PHENOTYPE_DB_NAME}_edges.tsv
+curl --fail -X POST \
      -H "Content-Type: application/n-triples" \
-     --data-binary @arangodb-download/${db}.nt \
-     -u admin:$JENA_PASSWORD \
-     "http://localhost:3030/${db}/data?default"
+     --data-binary @arangodb-download/${ARANGO_PHENOTYPE_DB_NAME}.nt \
+     -u "admin:${JENA_PASSWORD}" \
+     "http://localhost:3030/${ARANGO_PHENOTYPE_DB_NAME}/data?default"

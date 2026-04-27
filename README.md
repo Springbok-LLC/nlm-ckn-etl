@@ -112,6 +112,23 @@ $ cd src/main/shell
 $ ./start-arangodb.sh
 ```
 
+### Neo4j
+
+A Neo4j docker image can be downloaded and a container started as follows:
+```
+$ export NEO4J_HOME="<some-path>/neo4j"
+$ export NEO4J_PASSWORD="<some-password>"
+$ cd src/main/shell
+$ ./start-neo4j.sh
+```
+The Neo4j browser is exposed at `http://localhost:7474` and the Bolt
+endpoint at `bolt://localhost:7687`. Once an ArangoDB download has been
+produced (see `download-arangodb.sh`), the resulting TSV files can be
+loaded into Neo4j via:
+```
+$ ./upload-neo4j.sh
+```
+
 ### Apache Jena (TDB2)
 
 An Apache Jena Fuseki docker image (with a TDB2 backend) can be downloaded

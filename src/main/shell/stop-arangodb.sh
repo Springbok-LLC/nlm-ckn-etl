@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
-container_id=$(docker ps | grep arangodb | cut -d " " -f 1)
+set -euo pipefail
+container_id=$(docker ps -q -f "name=^arangodb$")
 if [ -n "$container_id" ]; then
-   docker container stop $container_id > /dev/null
-   docker container rm $container_id > /dev/null
+   docker container stop "$container_id" > /dev/null
+   docker container rm "$container_id" > /dev/null
 fi
