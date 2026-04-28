@@ -58,6 +58,7 @@ log/
 data/arangodb/
 
 data/external*/
+data/jena/
 data/neo4j/
 data/obo/
 data/results*/
