@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 set -euo pipefail
-container_id=$(docker ps -q -f "name=^arangodb$")
+container_id=$(docker ps -q -f "name=^fuseki$")
 if [ -n "$container_id" ]; then
    docker container stop "$container_id" > /dev/null
    docker container rm "$container_id" > /dev/null

@@ -112,6 +112,41 @@ $ cd src/main/shell
 $ ./start-arangodb.sh
 ```
 
+### Neo4j
+
+A Neo4j docker image can be downloaded and a container started as follows:
+```
+$ export NEO4J_HOME="<some-path>/neo4j"
+$ export NEO4J_PASSWORD="<some-password>"
+$ cd src/main/shell
+$ ./start-neo4j.sh
+```
+The Neo4j browser is exposed at `http://localhost:7474` and the Bolt
+endpoint at `bolt://localhost:7687`. Once an ArangoDB download has been
+produced (see `download-arangodb.sh`), the resulting TSV files can be
+loaded into Neo4j via:
+```
+$ ./upload-neo4j.sh
+```
+
+### Apache Jena (TDB2)
+
+An Apache Jena Fuseki docker image (with a TDB2 backend) can be downloaded
+and a container started as follows:
+```
+$ export JENA_HOME="<some-path>/jena"
+$ export JENA_PASSWORD="<some-password>"
+$ cd src/main/shell
+$ ./start-jena.sh
+```
+The Fuseki admin UI and SPARQL endpoint are exposed at
+`http://localhost:3030`. Once an ArangoDB download has been produced (see
+`download-arangodb.sh`), the resulting TSV files can be transformed to
+N-Triples and loaded into the Fuseki dataset via:
+```
+$ ./upload-jena.sh
+```
+
 ### Java
 
 Java SE 21 and Maven 3 or compatible are required to generate the Javadocs,
