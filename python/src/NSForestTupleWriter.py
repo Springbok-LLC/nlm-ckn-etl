@@ -30,6 +30,9 @@ from LoaderUtilities import (
 
 from TupleWriterUtilities import (
     ASSOCIATION_CLASSES,
+    as_float,
+    as_int,
+    as_str,
     association_to_tuples,
     build_cell_set_dataset,
     get_tuples_dir,
@@ -89,6 +92,10 @@ def create_tuples(
     tuples = []
     ensembl_id_to_names = get_gene_ensembl_id_to_names_map()
 
+    # Skip the dataset entirely if no cluster passes the size filter.
+    if not (nsforest_results["clusterSize"] >= MIN_CLUSTER_SIZE).any():
+        return tuples
+
     if summary_data.empty:
         uberon_terms = []
     else:
@@ -96,6 +103,35 @@ def create_tuples(
             t.replace(":", "_").strip()
             for t in str(summary_data.iloc[0]["tissue_ontology_term_id"]).split("|")
         ]
+
+    # Build CellSetDataset entities once per dvid (reused across clusters).
+    csd_by_dvid: dict[str, tuple] = {}
+    for dvid in dataset_version_ids:
+        harvester_row = None
+        if harvester_data is not None and not harvester_data.empty:
+            match = harvester_data[harvester_data["dataset_version_id"] == dvid]
+            if not match.empty:
+                harvester_row = match.iloc[0]
+        csd_by_dvid[dvid] = build_cell_set_dataset(dvid, summary_data, harvester_row)
+
+    # CellSetDataset is_about AnatomicalStructure (dataset-scope)
+    for dvid, (csd, citation) in csd_by_dvid.items():
+        for uberon_term in uberon_terms:
+            anat = AnatomicalStructure(ontology_purl=uberon_term.replace("_", ":"))
+            assoc = ASSOCIATION_CLASSES["CellSetDatasetIsAboutAnatomicalStructure"](
+                subject=csd,
+                predicate="is_about",
+                object=anat,
+            )
+            tuples.extend(association_to_tuples(assoc, source="NSForest"))
+        if citation:
+            tuples.append(
+                (
+                    URIRef(f"{PURLBASE}/CSD_{dvid}"),
+                    URIRef(f"{RDFSBASE}#Citation"),
+                    Literal(citation),
+                )
+            )
 
     for _, row in nsforest_results.iterrows():
         uuid = row["uuid"]
@@ -118,15 +154,24 @@ def create_tuples(
         bgs = BinaryGeneSet(markers=",".join(binary_genes))
         cell_set = CellSet(
             author_cell_term=cluster_name,
-            cell_count=int(cluster_size) if pd.notna(cluster_size) else None,
+            cell_count=as_int(row, "clusterSize"),
+            cluster_cell_count=as_int(row, "clusterSize"),
             biomarker_combination=",".join(markers),
             binary_gene_set=",".join(binary_genes),
             expressed_genes=",".join(binary_genes),
-            silhouette_score=(
-                float(row["median"])
-                if "median" in row and pd.notna(row.get("median"))
-                else None
-            ),
+            silhouette_score=as_float(row, "median"),
+            median_silhouette=as_float(row, "median"),
+            mean_silhouette=as_float(row, "mean"),
+            standard_deviation_of_silhouette=as_float(row, "std"),
+            first_quartile_silhouette=as_float(row, "q1"),
+            third_quartile_silhouette=as_float(row, "q3"),
+            f_score=as_float(row, "f_score"),
+            precision=as_float(row, "precision"),
+            recall=as_float(row, "recall"),
+            true_positive=as_int(row, "TP"),
+            false_positive=as_int(row, "FP"),
+            false_negative=as_int(row, "FN"),
+            on_target=as_str(row, "onTarget"),
         )
         ctx = {"uuid": uuid}
         annotated = set()
@@ -197,14 +242,7 @@ def create_tuples(
                 )
 
         # CellSet source CellSetDataset (for each dataset_version_id)
-        for dvid in dataset_version_ids:
-            harvester_row = None
-            if harvester_data is not None and not harvester_data.empty:
-                match = harvester_data[harvester_data["dataset_version_id"] == dvid]
-                if not match.empty:
-                    harvester_row = match.iloc[0]
-
-            csd, citation = build_cell_set_dataset(dvid, summary_data, harvester_row)
+        for dvid, (csd, _) in csd_by_dvid.items():
             assoc = ASSOCIATION_CLASSES["CellSetHasSourceCellSetDataset"](
                 subject=cell_set,
                 predicate="source",
@@ -215,15 +253,6 @@ def create_tuples(
                     assoc, ctx, source="NSForest", annotated_terms=annotated
                 )
             )
-            if citation:
-                csd_term = f"CSD_{dvid}"
-                tuples.append(
-                    (
-                        URIRef(f"{PURLBASE}/{csd_term}"),
-                        URIRef(f"{RDFSBASE}#Citation"),
-                        Literal(citation),
-                    )
-                )
 
         # Gene part_of BiomarkerCombination (for each marker)
         for gene_symbol in markers:
@@ -281,8 +310,9 @@ def main():
             silhouette_scores = load_results(scores_path[0]).sort_values(
                 cluster_header, ignore_index=True
             )
+            silhouette_cols = [cluster_header, "median", "mean", "std", "q1", "q3"]
             nsforest_results = nsforest_results.merge(
-                silhouette_scores[[cluster_header, "median"]].copy(),
+                silhouette_scores[silhouette_cols].copy(),
                 left_on="clusterName",
                 right_on=cluster_header,
             )

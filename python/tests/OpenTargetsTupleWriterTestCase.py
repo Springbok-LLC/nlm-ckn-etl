@@ -218,8 +218,8 @@ class OpenTargetsTupleWriterTestCase(unittest.TestCase):
         ot["ENSG00000001626"]["interactions"] = [self._make_interaction()]
         tuples = create_tuples(ot, self._make_gene_results())
         preds = [str(t[1]) for t in tuples if len(t) == 3]
-        # genetically_interacts_with = RO_0002435
-        self.assertTrue(any("RO_0002435" in p for p in preds))
+        # molecularly_interacts_with = RO_0002436
+        self.assertTrue(any("RO_0002436" in p for p in preds))
 
     def test_skips_interaction_missing_target(self):
         ot = self._make_ot_base()
@@ -228,7 +228,7 @@ class OpenTargetsTupleWriterTestCase(unittest.TestCase):
         ]
         tuples = create_tuples(ot, self._make_gene_results())
         preds = [str(t[1]) for t in tuples if len(t) == 3]
-        self.assertFalse(any("RO_0002435" in p for p in preds))
+        self.assertFalse(any("RO_0002436" in p for p in preds))
 
     def test_skips_interaction_no_approved_symbol(self):
         ot = self._make_ot_base()
@@ -237,7 +237,7 @@ class OpenTargetsTupleWriterTestCase(unittest.TestCase):
         ]
         tuples = create_tuples(ot, self._make_gene_results())
         preds = [str(t[1]) for t in tuples if len(t) == 3]
-        self.assertFalse(any("RO_0002435" in p for p in preds))
+        self.assertFalse(any("RO_0002436" in p for p in preds))
 
     # ----- Pharmacogenetics tests -----
 
