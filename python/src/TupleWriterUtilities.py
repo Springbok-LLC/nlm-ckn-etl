@@ -638,7 +638,7 @@ def build_cell_set_dataset(
     doi: str | None = None,
     collection_id: str | None = None,
     collection_version_id: str | None = None,
-) -> CellSetDataset:
+) -> tuple[CellSetDataset, str | None]:
     """Build a CellSetDataset by merging summary and harvester data.
 
     Extracts and transforms fields from a dataset summary DataFrame

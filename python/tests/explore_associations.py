@@ -605,18 +605,19 @@ def from_external_api(data: dict) -> None:
     # --- GeneMolecularlyInteractsWithGene ---
     if interactions:
         ix = interactions[0]
-        target_b = ix.get("targetB", {})
-        gene_b_symbol = target_b.get("approvedSymbol", "")
-        inst, err = try_create(
-            ASSOCIATION_CLASSES["GeneMolecularlyInteractsWithGene"],
-            subject=gene_symbol,
-            predicate="molecularly_interacts_with",
-            object=gene_b_symbol,
-        )
-        record("GeneMolecularlyInteractsWithGene",
-               "Created" if inst else "FAILED",
-               "external-api (opentargets)", inst, err,
-               f"{gene_symbol} <-> {gene_b_symbol}")
+        target_b = ix.get("targetB")
+        if target_b is not None:
+            gene_b_symbol = target_b.get("approvedSymbol", "")
+            inst, err = try_create(
+                ASSOCIATION_CLASSES["GeneMolecularlyInteractsWithGene"],
+                subject=gene_symbol,
+                predicate="molecularly_interacts_with",
+                object=gene_b_symbol,
+            )
+            record("GeneMolecularlyInteractsWithGene",
+                   "Created" if inst else "FAILED",
+                   "external-api (opentargets)", inst, err,
+                   f"{gene_symbol} <-> {gene_b_symbol}")
 
     # --- GeneHasQualityMutation ---
     if pharmacogenetics:
