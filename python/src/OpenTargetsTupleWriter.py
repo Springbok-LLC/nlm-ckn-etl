@@ -79,7 +79,7 @@ def create_tuples(opentargets_results: dict, gene_results: dict) -> list[tuple]:
     - DrugIsSubstanceThatTreatsDisease
     - DrugEvaluatedInClinicalTrial
     - DrugMolecularlyInteractsWithGene
-    - GeneGeneticallyInteractsWithGene
+    - GeneMolecularlyInteractsWithGene
     - GeneHasQualityMutation
     - MutationHasPharmacologicalEffectDrug
 
@@ -311,7 +311,7 @@ def create_tuples(opentargets_results: dict, gene_results: dict) -> list[tuple]:
                 )
             )
 
-        # Gene genetically_interacts_with Gene
+        # Gene molecularly_interacts_with Gene
         for interaction in ot_data.get("interactions", []):
             target_b = interaction.get("targetB")
             if target_b is None:
@@ -324,9 +324,9 @@ def create_tuples(opentargets_results: dict, gene_results: dict) -> list[tuple]:
                 )
                 continue
             gene_b_entity = Gene(gene_symbol=gene_b_symbol)
-            assoc = ASSOCIATION_CLASSES["GeneGeneticallyInteractsWithGene"](
+            assoc = ASSOCIATION_CLASSES["GeneMolecularlyInteractsWithGene"](
                 subject=gene_entity,
-                predicate="genetically_interacts_with",
+                predicate="molecularly_interacts_with",
                 object=gene_b_entity,
             )
             tuples.extend(
