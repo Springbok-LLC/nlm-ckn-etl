@@ -688,6 +688,12 @@ def build_cell_set_dataset(
         n_cells = s.get("n_cells")
         if pd.notna(n_cells):
             kwargs["cell_count"] = int(n_cells)
+        kwargs["embedding"] = as_str(s, "embedding")
+        kwargs["cluster_annotation"] = as_str(s, "cluster_header")
+        kwargs["mean_silhouette"] = as_float(s, "mean_silhouette")
+        kwargs["standard_deviation_of_silhouette"] = as_float(s, "std_silhouette")
+        kwargs["mean_f_score"] = as_float(s, "mean_fscore")
+        kwargs["median_of_f_scores"] = as_float(s, "median_fscore")
         first_author = s.get("first_author")
         year = s.get("year")
         journal = s.get("journal")
@@ -698,24 +704,24 @@ def build_cell_set_dataset(
 
     if harvester_row is not None:
         h = harvester_row
-
-        def _hstr(key):
-            v = h.get(key)
-            return str(v) if pd.notna(v) else None
-
-        kwargs.setdefault("dataset_name", _hstr("dataset_title"))
-        kwargs.setdefault("anatomical_structure", _hstr("tissue_ontology_term_id"))
-        disease = _hstr("disease")
+        kwargs.setdefault("dataset_name", as_str(h, "dataset_title"))
+        kwargs.setdefault("anatomical_structure", as_str(h, "tissue_ontology_term_id"))
+        disease = as_str(h, "disease")
         if disease:
             kwargs["disease_status"] = disease
         total = h.get("total_cell_count")
         if pd.notna(total):
             kwargs.setdefault("cell_count", int(total))
-        kwargs.setdefault("cellxgene_collection", _hstr("collection_url"))
-        kwargs.setdefault("cellxgene_dataset", _hstr("explorer_url"))
-        first_author = _hstr("first_author")
-        year = _hstr("year")
-        journal = _hstr("journal")
+        kwargs.setdefault("cellxgene_collection", as_str(h, "collection_url"))
+        kwargs.setdefault("cellxgene_dataset", as_str(h, "explorer_url"))
+        kwargs.setdefault("embedding", as_str(h, "embedding"))
+        kwargs["normal_cell_count"] = as_str(h, "normal_cell_count")
+        kwargs["donor_id_count"] = as_int(h, "donor_id_count")
+        kwargs["assay_summary"] = as_str(h, "assay_ontology_summary")
+        kwargs["tissue_annotation"] = as_str(h, "tissue_ontology_summary")
+        first_author = as_str(h, "first_author")
+        year = as_str(h, "year")
+        journal = as_str(h, "journal")
         if first_author and year and citation is None:
             citation = f"{first_author} et al. ({year})"
             if journal:
