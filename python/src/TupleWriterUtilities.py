@@ -62,7 +62,7 @@ TERM_ENCODED_FIELDS: dict[str, set[str]] = {
     "BiologicalProcess": {"ontology_purl"},
     "CellularComponent": {"ontology_purl"},
     "MolecularFunction": {"ontology_purl"},
-    "Species": {"ontology_purl"},
+    "Taxon": {"ontology_purl"},
     "LifeCycleStage": {"ontology_purl"},
 }
 
