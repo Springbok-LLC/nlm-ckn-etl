@@ -32,7 +32,7 @@ import static gov.nih.nlm.OntologyGraphBuilder.getDocumentCollectionName;
  * UBERON, NCBITaxon, and MONDO nodes are included. Collects unique vertex and edge documents, then inserts them in the
  * phenotype ArangoDB.
  *
- * @deprecated Replaced by {@link InducedGraphBuilder}. This class will be removed in a future release.
+ * @deprecated Replaced by {@link InducedSubgraphBuilder}. This class will be removed in a future release.
  */
 @Deprecated
 public class PhenotypeGraphBuilder {

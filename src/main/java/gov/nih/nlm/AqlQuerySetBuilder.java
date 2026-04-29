@@ -13,7 +13,7 @@ import java.util.stream.Collectors;
  * Defines sets of AQL query strings and bind variables for obtaining paths between specified nodes, including paths
  * outbound from the last node in ontologies.
  *
- * @deprecated Replaced by {@link InducedGraphBuilder}. This class will be removed in a future release.
+ * @deprecated Replaced by {@link InducedSubgraphBuilder}. This class will be removed in a future release.
  */
 @Deprecated
 public class AqlQuerySetBuilder {

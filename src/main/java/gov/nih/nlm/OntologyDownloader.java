@@ -81,6 +81,7 @@ public class OntologyDownloader {
      * @throws InterruptedException if the download is interrupted
      */
     public static void updateDownloads(List<String> urls, Path downloadDir) throws IOException, InterruptedException {
+        Files.createDirectories(downloadDir);
         HttpClient client = HttpClient.newBuilder().followRedirects(Redirect.NORMAL).build();
 
         for (String url : urls) {
