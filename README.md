@@ -37,9 +37,6 @@ eliminating the need for git submodules and system-scoped JAR dependencies.
 
 ## Project Structure
 
-
-
-
 ```
 nlm-ckn-etl/
 ├── pom.xml                          # Maven POM (all Java dependencies)
@@ -101,13 +98,20 @@ Install [Docker Desktop](https://docs.docker.com/desktop/).
 
 ### ArangoDB
 
-An ArangoDB docker image can be downloaded and a container started as follows
-(some environment variables assumed below):
+An ArangoDB docker image can be downloaded and a container started from the
+repository root directory as follows
 ```
 $ export ARANGO_DB_HOST=127.0.0.1
 $ export ARANGO_DB_PORT=8529
 $ export ARANGO_DB_HOME="<some-path>/arangodb"
+$ export ARANGO_DB_APPS=$ARANGO_DB_HOME/arangodb-apps
+$ export ARANGO_DB_USER=root
 $ export ARANGO_DB_PASSWORD="<some-password>"
+$ export ARANGO_ONTOLOGY_DB_NAME=Cell-KN-Ontologies
+$ export ARANGO_PHENOTYPE_DB_NAME=Cell-KN-Phenotypes
+$ export ARANGO_SCHEMA_DB_NAME=Cell-KN-Schema
+$ export ARANGO_ONTOLOGY_GRAPH_NAME=KN-Ontologies-v2.0
+$ export ARANGO_PHENOTYPE_GRAPH_NAME=KN-Phenotypes-v2.0
 $ cd src/main/shell
 $ ./start-arangodb.sh
 ```
@@ -150,7 +154,7 @@ $ ./upload-jena.sh
 ### Java
 
 Java SE 21 and Maven 3 or compatible are required to generate the Javadocs,
-test, and package:
+test, and package. From the repository root directory run:
 ```
 $ mvn javadoc:javadoc
 $ mvn test
@@ -160,7 +164,8 @@ $ mvn clean package -DskipTests
 ### Data
 
 The Python and Java classes require the ontology files to reside in
-`data/obo`. Populate this directory as follows:
+`data/obo`. From the repository root directory you can populate this directory
+as follows:
 ```
 $ export CP="target/nlm-ckn-etl-1.0.jar"
 $ java -cp $CP gov.nih.nlm.OntologyDownloader
@@ -174,7 +179,17 @@ accessible. Clone this repository at the same level as this repository.
 ### Python
 
 Python 3.12 and Poetry are required to generate the Sphinx documentation, test,
-and run. Install the dependencies as follows:
+and run.
+
+Two of the Python dependencies are fetched from GitHub over SSH, so a GitHub
+SSH key must be configured before running `poetry install`. See
+[Connecting to GitHub with SSH](https://docs.github.com/en/authentication/connecting-to-github-with-ssh)
+if you have not set one up. One of those dependencies (`kgx`) points at a
+personal fork that carries a patch not yet accepted upstream; it will be
+switched back to the canonical repository once the upstream PR is merged.
+
+From the repository root directory you can install the dependencies as
+follows:
 ```
 $ cd python
 $ python3.12 -m venv .poetry
@@ -185,12 +200,13 @@ $ python3.12 -m venv .venv
 $ source .venv/bin/activate
 $ .poetry/bin/poetry install
 ```
-Generate the Sphinx documentation as follows:
+From the repository root directory generate the Sphinx documentation as
+follows:
 ```
 $ cd docs/python
 $ make clean html
 ```
-Run Python tests as follows:
+From the repository root directory run Python tests as follows:
 ```
 $ cd python/tests
 $ python -m pytest *.py
@@ -200,24 +216,33 @@ $ python -m pytest *.py
 
 ### ETL Pipeline Execution Order
 
-1. **Download ontologies (Java):**
+Each step assumes you are starting from the repository root directory.
+
+0. **Export environment variables**
+
+   Ensure the ArangoDB environment variables from the
+   [ArangoDB](#arangodb) section above are still exported in the current
+   shell, then export the additional variables below:
    ```
    $ export CP="target/nlm-ckn-etl-1.0.jar"
+   $ export NCBI_EMAIL="<some-email>"
+   $ export NCBI_API_KEY="<some-api-key>"
+   ```
+
+1. **Download ontologies (Java):**
+   ```
    $ java -cp $CP gov.nih.nlm.OntologyDownloader
    $ java -cp $CP gov.nih.nlm.OntologySlimmer
    ```
 
 2. **Load ontologies into ArangoDB (Java):**
    ```
-   $ export CP="target/nlm-ckn-etl-1.0.jar"
    $ java -cp $CP gov.nih.nlm.OntologyGraphBuilder
    ```
 
 3. **Fetch and transform external data (Python):**
    ```
    $ cd python/src
-   $ export NCBI_EMAIL="<some-email>"
-   $ export NCBI_API_KEY="<some-api-key>"
    $ python DataFetcher.py
    $ python DataTransformer.py
    ```
@@ -230,7 +255,6 @@ $ python -m pytest *.py
 
 5. **Load results into ArangoDB (Java):**
    ```
-   $ export CP="target/nlm-ckn-etl-1.0.jar"
    $ java -cp $CP gov.nih.nlm.ResultsGraphBuilder
    ```
 
