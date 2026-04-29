@@ -602,18 +602,18 @@ def from_external_api(data: dict) -> None:
         if ann_score is not None:
             protein_kwargs["annotation_score"] = int(ann_score)
 
-    # --- GeneGeneticallyInteractsWithGene ---
+    # --- GeneMolecularlyInteractsWithGene ---
     if interactions:
         ix = interactions[0]
         target_b = ix.get("targetB", {})
         gene_b_symbol = target_b.get("approvedSymbol", "")
         inst, err = try_create(
-            ASSOCIATION_CLASSES["GeneGeneticallyInteractsWithGene"],
+            ASSOCIATION_CLASSES["GeneMolecularlyInteractsWithGene"],
             subject=gene_symbol,
-            predicate="genetically_interacts_with",
+            predicate="molecularly_interacts_with",
             object=gene_b_symbol,
         )
-        record("GeneGeneticallyInteractsWithGene",
+        record("GeneMolecularlyInteractsWithGene",
                "Created" if inst else "FAILED",
                "external-api (opentargets)", inst, err,
                f"{gene_symbol} <-> {gene_b_symbol}")
@@ -659,33 +659,6 @@ def from_external_api(data: dict) -> None:
                "Created" if inst else "FAILED",
                "external-api (opentargets)", inst, err,
                f"{gene_symbol} -> Disease({disease_curie})")
-
-    # --- GeneMolecularlyInteractsWithDrug ---
-    if drugs:
-        drug_entry = drugs[0]
-        drug_info = drug_entry.get("drug", {})
-        drug_name = drug_info.get("name", drug_entry.get("approvedName", ""))
-        trade_names = drug_info.get("tradeNames", [])
-        synonyms = drug_info.get("synonyms", [])
-        is_approved = drug_info.get("isApproved", False)
-        inst, err = try_create(
-            ASSOCIATION_CLASSES["GeneMolecularlyInteractsWithDrug"],
-            subject=gene_symbol,
-            predicate="molecularly_interacts_with",
-            object=Drug(
-                name=drug_name,
-                mechanism_of_action=drug_entry.get("mechanismOfAction"),
-                trade_names=", ".join(trade_names) if trade_names else None,
-                exact_synonym=", ".join(synonyms) if synonyms else None,
-                approval_status="approved" if is_approved else "not approved",
-                uniprot_id=uniprot_id,
-                protein_target=gene_symbol,
-            ),
-        )
-        record("GeneMolecularlyInteractsWithDrug",
-               "Created" if inst else "FAILED",
-               "external-api (opentargets)", inst, err,
-               f"Gene({gene_symbol}) -> Drug({drug_name})")
 
     # --- GeneProducesProtein ---
     if protein_kwargs.get("uniprot_id"):
@@ -1041,9 +1014,9 @@ def print_report() -> None:
          "CellTypeExpressesGene.object is Optional[str] (gene symbol), "
          "not Optional[Gene]. Gene entity class exists but is not used "
          "in associations"),
-        ("Species format",
+        ("Taxon format",
          "Data has 'Homo sapiens' but schema expects CURIEs like "
-         "NCBITaxon:9606 for Species entity. CellSet.species and "
+         "NCBITaxon:9606 for Taxon entity. CellSet.species and "
          "CellSetDataset.species accept free-text str"),
         ("ccf_located_in vs part_of",
          "Semantic mismatch - HuBMAP uses ccf_located_in but schema "
