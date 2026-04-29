@@ -157,6 +157,24 @@ def parse_string_list(s: str) -> list[str]:
     return []
 
 
+def as_float(row, col):
+    """Return ``row[col]`` as float, or ``None`` if missing/NaN."""
+    v = row.get(col)
+    return float(v) if pd.notna(v) else None
+
+
+def as_int(row, col):
+    """Return ``row[col]`` as int, or ``None`` if missing/NaN."""
+    v = row.get(col)
+    return int(v) if pd.notna(v) else None
+
+
+def as_str(row, col):
+    """Return ``row[col]`` as str, or ``None`` if missing/NaN."""
+    v = row.get(col)
+    return str(v) if pd.notna(v) else None
+
+
 def curie_to_term(curie: str) -> str:
     """Convert a CURIE to an ArangoDB-compatible underscore term.
 
