@@ -200,25 +200,16 @@ class GetPredicateUriTestCase(unittest.TestCase):
             URIRef("http://purl.obolibrary.org/obo/BFO_0000050"),
         )
 
-    def test_selectively_expresses(self):
-        assoc = twu.ASSOCIATION_CLASSES["CellTypeSelectivelyExpressesGene"](
-            subject=CellType(ontology_purl="CL:0000235"),
-            predicate="selectively_expresses",
-            object=Gene(gene_symbol="TP53"),
+    def test_member_of(self):
+        assoc = twu.ASSOCIATION_CLASSES["CellSetMemberOfCellSetDataset"](
+            subject=CellSet(author_cell_term="T-Cell"),
+            predicate="member_of",
+            object=CellSetDataset(dataset_identifier="abc"),
         )
         self.assertEqual(
             twu.get_predicate_uri(assoc),
-            URIRef("http://purl.obolibrary.org/obo/RO_0002294"),
+            URIRef("http://purl.obolibrary.org/obo/RO_0002350"),
         )
-
-    def test_source(self):
-        assoc = twu.ASSOCIATION_CLASSES["CellSetHasSourceCellSetDataset"](
-            subject=CellSet(author_cell_term="T-Cell"),
-            predicate="source",
-            object=CellSetDataset(dataset_identifier="abc"),
-        )
-        uri = twu.get_predicate_uri(assoc)
-        self.assertIn("dc/elements/1.1/source", str(uri))
 
 
 class AssociationToTuplesTestCase(unittest.TestCase):

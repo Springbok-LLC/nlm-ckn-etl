@@ -1,7 +1,7 @@
 """Create tuples from CELLxGENE fetched metadata using schema entities.
 
-Produces CellSetDataset has source Publication associations and annotations
-from CELLxGENE curation API metadata.
+Produces CellSetDataset was attributed to Publication associations and
+annotations from CELLxGENE curation API metadata.
 """
 
 import json
@@ -25,7 +25,7 @@ def create_tuples(cellxgene_results: dict) -> list[tuple]:
     """Create tuples from CELLxGENE metadata.
 
     Produces:
-    - CellSetDatasetHasSourcePublication
+    - CellSetDatasetWasAttributedToPublication
     - CSD and PUB vertex annotations
 
     Parameters
@@ -42,7 +42,7 @@ def create_tuples(cellxgene_results: dict) -> list[tuple]:
     """
     tuples = []
 
-    # CellSetDataset source Publication
+    # CellSetDataset was_attributed_to Publication
     for dataset_version_id, metadata in cellxgene_results.items():
         csd = CellSetDataset(
             dataset_identifier=dataset_version_id,
@@ -72,9 +72,9 @@ def create_tuples(cellxgene_results: dict) -> list[tuple]:
         )
         ctx = {"dataset_version_id": dataset_version_id}
 
-        assoc = ASSOCIATION_CLASSES["CellSetDatasetHasSourcePublication"](
+        assoc = ASSOCIATION_CLASSES["CellSetDatasetWasAttributedToPublication"](
             subject=csd,
-            predicate="source",
+            predicate="was_attributed_to",
             object=pub,
         )
         tuples.extend(association_to_tuples(assoc, ctx, source="CELLxGENE"))

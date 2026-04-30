@@ -1,7 +1,8 @@
 """Create tuples from NSForest results using schema entities.
 
-Produces AnatomicalStructure, BinaryGeneSet, BiomarkerCombination, CellSet, and
-Gene associations from NSForest results and silhouette scores.
+Produces AnatomicalStructure, BinaryGeneSet, BiomarkerCombination, CellSet,
+CellSetDataset, and Gene associations from NSForest results and silhouette
+scores.
 """
 
 import pandas as pd
@@ -62,10 +63,11 @@ def create_tuples(
     """Create tuples from NSForest results.
 
     Produces:
+    - CellSetDatasetIsAboutAnatomicalStructure (dataset-scope, per UBERON term)
     - CellSetDerivesFromAnatomicalStructure
     - CellSetExpressesBinaryGeneSet
     - CellSetHasCharacterizingMarkerSetBiomarkerCombination
-    - CellSetHasSourceCellSetDataset
+    - CellSetMemberOfCellSetDataset
     - GenePartOfBiomarkerCombination (for each marker)
     - BiomarkerCombinationSubclusterOfBinaryGeneSet
 
@@ -165,13 +167,13 @@ def create_tuples(
             standard_deviation_of_silhouette=as_float(row, "std"),
             first_quartile_silhouette=as_float(row, "q1"),
             third_quartile_silhouette=as_float(row, "q3"),
-            f_score=as_float(row, "f_score"),
+            f_beta_score=as_float(row, "f_score"),
             precision=as_float(row, "precision"),
             recall=as_float(row, "recall"),
             true_positive=as_int(row, "TP"),
             false_positive=as_int(row, "FP"),
             false_negative=as_int(row, "FN"),
-            on_target=as_str(row, "onTarget"),
+            on_target=as_float(row, "onTarget"),
         )
         ctx = {"uuid": uuid}
         annotated = set()
@@ -241,11 +243,11 @@ def create_tuples(
                     )
                 )
 
-        # CellSet source CellSetDataset (for each dataset_version_id)
+        # CellSet member_of CellSetDataset (for each dataset_version_id)
         for dvid, (csd, _) in csd_by_dvid.items():
-            assoc = ASSOCIATION_CLASSES["CellSetHasSourceCellSetDataset"](
+            assoc = ASSOCIATION_CLASSES["CellSetMemberOfCellSetDataset"](
                 subject=cell_set,
-                predicate="source",
+                predicate="member_of",
                 object=csd,
             )
             tuples.extend(
