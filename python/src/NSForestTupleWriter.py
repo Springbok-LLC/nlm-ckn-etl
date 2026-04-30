@@ -66,6 +66,7 @@ def create_tuples(
     - CellSetDatasetIsAboutAnatomicalStructure (dataset-scope, per UBERON term)
     - CellSetDerivesFromAnatomicalStructure
     - CellSetExpressesBinaryGeneSet
+    - CellSetExpressesGene (for each binary gene)
     - CellSetHasCharacterizingMarkerSetBiomarkerCombination
     - CellSetMemberOfCellSetDataset
     - GenePartOfBiomarkerCombination (for each marker)
@@ -203,6 +204,20 @@ def create_tuples(
                 assoc, ctx, source="NSForest", annotated_terms=annotated
             )
         )
+
+        # CellSet expresses Gene (for each binary gene)
+        for gene_symbol in binary_genes:
+            gene = Gene(gene_symbol=gene_symbol)
+            assoc = ASSOCIATION_CLASSES["CellSetExpressesGene"](
+                subject=cell_set,
+                predicate="expresses",
+                object=gene,
+            )
+            tuples.extend(
+                association_to_tuples(
+                    assoc, ctx, source="NSForest", annotated_terms=annotated
+                )
+            )
 
         # CellSet has_characterizing_marker_set BiomarkerCombination
         assoc = ASSOCIATION_CLASSES[

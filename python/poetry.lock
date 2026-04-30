@@ -1187,7 +1187,7 @@ files = [
 
 [[package]]
 name = "ckn-schema"
-version = "0.1.5"
+version = "0.1.6"
 description = "LinkML data model for cell phenotypes and biological entities."
 optional = false
 python-versions = ">=3.9"
@@ -1205,7 +1205,7 @@ dev = ["linkml (>=1.8,<2)"]
 type = "git"
 url = "ssh://git@github.com/Springbok-LLC/cell-kn-schema.git"
 reference = "ralatsdc/update-generated-artifacts"
-resolved_reference = "06039eda0a36a309e5bb68f13a8225946dfd2126"
+resolved_reference = "d4b2cea93be294efac100f06034519763f2b3049"
 
 [[package]]
 name = "class-resolver"
