@@ -1482,7 +1482,7 @@ name = "ckn-schema"
 version = "0.1.5"
 description = "LinkML data model for cell phenotypes and biological entities."
 optional = false
-python-versions = ">=3.9,<4.0"
+python-versions = ">=3.9"
 groups = ["main"]
 files = [
     {file = "ckn_schema-0.0.0a0-py3-none-any.whl", hash = "sha256:210e7e379aa69476f038bc7b4301d1e7c60d9e7a04a5f798d8317f7ffd795682"},
@@ -1497,8 +1497,8 @@ dev = ["linkml (>=1.8,<2)"]
 [package.source]
 type = "git"
 url = "ssh://git@github.com/Springbok-LLC/cell-kn-schema.git"
-reference = "newproperties"
-resolved_reference = "c676a175c7de598b94003a565ccd839b4ec1b9cc"
+reference = "ralatsdc/update-generated-artifacts"
+resolved_reference = "06039eda0a36a309e5bb68f13a8225946dfd2126"
 
 [[package]]
 name = "class-resolver"
@@ -3306,14 +3306,14 @@ zstd = ["zstandard (>=0.18.0)"]
 
 [[package]]
 name = "huggingface-hub"
-version = "1.12.2"
+version = "1.13.0"
 description = "Client library to download and publish models, datasets and other repos on the huggingface.co hub"
 optional = false
 python-versions = ">=3.10.0"
 groups = ["main"]
 files = [
-    {file = "huggingface_hub-1.12.2-py3-none-any.whl", hash = "sha256:7968e897fdbc6343c871c240d87d4434efe0ad9f80d57daa1cc5678c6d148529"},
-    {file = "huggingface_hub-1.12.2.tar.gz", hash = "sha256:282c4999e641c89affdc4c02c265eddea944c1390dc19e89dac8ad3ae76dbdaf"},
+    {file = "huggingface_hub-1.13.0-py3-none-any.whl", hash = "sha256:e942cb50d6a08dd5306688b1ac05bda157fd2fcc88b63dae405f7bd0d3234005"},
+    {file = "huggingface_hub-1.13.0.tar.gz", hash = "sha256:f6df2dac5abe82ce2fe05873d10d5ff47bc677d616a2f521f4ee26db9415d9d0"},
 ]
 
 [package.dependencies]
@@ -9302,24 +9302,6 @@ aiohttp = ">=3.9.0,<4.0.0a0 || >4.0.0a0,<4.0.0a1 || >4.0.0a1"
 fsspec = "2026.4.0"
 
 [[package]]
-name = "s3transfer"
-version = "0.17.0"
-description = "An Amazon S3 Transfer Manager"
-optional = false
-python-versions = ">=3.10"
-groups = ["main"]
-files = [
-    {file = "s3transfer-0.17.0-py3-none-any.whl", hash = "sha256:ce3801712acf4ad3e89fb9990df97b4972e93f4b3b0004d214be5bce12814c20"},
-    {file = "s3transfer-0.17.0.tar.gz", hash = "sha256:9edeb6d1c3c2f89d6050348548834ad8289610d886e5bf7b7207728bd43ce33a"},
-]
-
-[package.dependencies]
-botocore = ">=1.37.4,<2.0a0"
-
-[package.extras]
-crt = ["botocore[crt] (>=1.37.4,<2.0a0)"]
-
-[[package]]
 name = "scanpy"
 version = "1.11.5"
 description = "Single-Cell Analysis in Python."
@@ -11827,4 +11809,4 @@ type = ["pytest-mypy"]
 [metadata]
 lock-version = "2.1"
 python-versions = ">=3.10,<3.13"
-content-hash = "0ca2b07160c9238bd403b1f4c2873dbd7e90d332db1badbf5b44ba952ea18ad8"
+content-hash = "10ee678e8276dbece8fe3804fa156cbb26fe8b1652dd3868636ba9b380c11001"
