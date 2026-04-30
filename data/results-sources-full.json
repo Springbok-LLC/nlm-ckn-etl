@@ -17,7 +17,7 @@
     ]
   },
   {
-    "results_dir": "../../cell-kn/data/prod",
+    "results_dir": "../../nlm-ckn/data/prod",
     "harvester_pattern": "*_harvester_final.csv",
     "nsforest_pattern": "*_results.csv",
     "mapping_substrs": [
