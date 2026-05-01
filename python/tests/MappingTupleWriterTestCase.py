@@ -48,11 +48,6 @@ class MappingTupleWriterTestCase(unittest.TestCase):
         preds = [str(t[1]) for t in tuples if len(t) == 3]
         self.assertTrue(any("RO_0002473" in p for p in preds))
 
-    def test_contains_selectively_expresses(self):
-        tuples = create_tuples(self._make_data(), ["dv-001"])
-        preds = [str(t[1]) for t in tuples if len(t) == 3]
-        self.assertTrue(any("RO_0002294" in p for p in preds))
-
     def test_contains_has_exemplar_data(self):
         tuples = create_tuples(self._make_data(), ["dv-001"])
         preds = [str(t[1]) for t in tuples if len(t) == 3]

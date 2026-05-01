@@ -197,6 +197,9 @@ public class OntologyElementParser {
                 ontologyElementMapMaps.get("ro").getTerms().put("RO_0020325",
                         new OntologyElementMap.OntologyTerm(new URI("http://purl.obolibrary.org/obo/RO_0020325"),
                                 "evaluated in"));
+                ontologyElementMapMaps.get("ro").getTerms().put("IAO_0000136",
+                        new OntologyElementMap.OntologyTerm(new URI("http://purl.obolibrary.org/obo/IAO_0000136"),
+                                "is about"));
             } catch (URISyntaxException e) {
                 throw new RuntimeException("Could not put RO terms");
             }
