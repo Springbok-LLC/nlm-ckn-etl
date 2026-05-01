@@ -136,16 +136,6 @@ class OpenTargetsTupleWriterTestCase(unittest.TestCase):
 
     # ----- Drug tests -----
 
-    def test_creates_drug_gene_symmetric_tuples(self):
-        ot = self._make_ot_base()
-        ot["ENSG00000001626"]["drugs"] = [self._make_drug()]
-        tuples = create_tuples(ot, self._make_gene_results())
-        preds = [str(t[1]) for t in tuples if len(t) == 3]
-        # molecularly_interacts_with = RO_0002436
-        mol_preds = [p for p in preds if "RO_0002436" in p]
-        # Gene→Drug and Drug→Gene
-        self.assertGreaterEqual(len(mol_preds), 2)
-
     def test_skips_drug_wrong_phase(self):
         ot = self._make_ot_base()
         ot["ENSG00000001626"]["drugs"] = [

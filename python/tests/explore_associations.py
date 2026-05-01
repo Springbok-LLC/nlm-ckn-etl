@@ -768,33 +768,6 @@ def from_external_api(data: dict) -> None:
                "external-api (opentargets)", None, None,
                "No drugs in test data have ctIds")
 
-    # --- DrugMolecularlyInteractsWithGene ---
-    if drugs:
-        drug_entry = drugs[0]
-        drug_info = drug_entry.get("drug", {})
-        drug_name = drug_info.get("name", drug_entry.get("approvedName", ""))
-        trade_names = drug_info.get("tradeNames", [])
-        synonyms = drug_info.get("synonyms", [])
-        is_approved = drug_info.get("isApproved", False)
-        inst, err = try_create(
-            ASSOCIATION_CLASSES["DrugMolecularlyInteractsWithGene"],
-            subject=Drug(
-                name=drug_name,
-                mechanism_of_action=drug_entry.get("mechanismOfAction"),
-                trade_names=", ".join(trade_names) if trade_names else None,
-                exact_synonym=", ".join(synonyms) if synonyms else None,
-                approval_status="approved" if is_approved else "not approved",
-                uniprot_id=uniprot_id,
-                protein_target=gene_symbol,
-            ),
-            predicate="molecularly_interacts_with",
-            object=gene_symbol,
-        )
-        record("DrugMolecularlyInteractsWithGene",
-               "Created" if inst else "FAILED",
-               "external-api (opentargets)", inst, err,
-               f"Drug({drug_name}) -> Gene({gene_symbol})")
-
     # --- DrugMolecularlyInteractsWithProtein ---
     if drugs and protein_kwargs.get("uniprot_id"):
         drug_entry = drugs[0]

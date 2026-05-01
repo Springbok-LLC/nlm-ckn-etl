@@ -1187,7 +1187,7 @@ files = [
 
 [[package]]
 name = "ckn-schema"
-version = "0.1.6"
+version = "0.1.7"
 description = "LinkML data model for cell phenotypes and biological entities."
 optional = false
 python-versions = ">=3.9"
@@ -1204,8 +1204,8 @@ dev = ["linkml (>=1.8,<2)"]
 [package.source]
 type = "git"
 url = "ssh://git@github.com/Springbok-LLC/cell-kn-schema.git"
-reference = "ralatsdc/update-generated-artifacts"
-resolved_reference = "d4b2cea93be294efac100f06034519763f2b3049"
+reference = "ralatsdc/remove-drug-molecularly-interacts-with-gene-from-generated-artifacts"
+resolved_reference = "3cb50aca89df41d2b35c493593681ccc3d2c5028"
 
 [[package]]
 name = "class-resolver"
@@ -6974,14 +6974,14 @@ rdflib = ["rdflib (>=7.1.4)"]
 
 [[package]]
 name = "pyjsg"
-version = "0.12.3"
+version = "0.12.4"
 description = "Python JSON Schema Grammar interpreter"
 optional = false
 python-versions = ">=3.10"
 groups = ["main"]
 files = [
-    {file = "pyjsg-0.12.3-py3-none-any.whl", hash = "sha256:1ce57be11f4599baa5ab6d94f05709103fa7e24ac4fc47b8517d2ae4ea2a6d9d"},
-    {file = "pyjsg-0.12.3.tar.gz", hash = "sha256:09d147060e1450a91c25ad3f3632de3e1f066270e7ec96b202877673a7db8cd8"},
+    {file = "pyjsg-0.12.4-py3-none-any.whl", hash = "sha256:a57ae58bfd7192b32654a0024bc6462fb459d54e837f0b2b5cff0726aad2e557"},
+    {file = "pyjsg-0.12.4.tar.gz", hash = "sha256:bb1c0ff1f50846d2b5185b182e28b0b6978eae51a2078ce3eb1e0f28dea7b9ab"},
 ]
 
 [package.dependencies]
@@ -10360,7 +10360,7 @@ description = "An implementation of chunked, compressed, N-dimensional arrays fo
 optional = false
 python-versions = ">=3.11"
 groups = ["main"]
-markers = "python_version >= \"3.11\""
+markers = "python_version == \"3.11\""
 files = [
     {file = "zarr-3.1.6-py3-none-any.whl", hash = "sha256:b5a82c5079d1c3d4ee8f06746fa3b9a98a7d804300fa3f4be154362a33e1207e"},
     {file = "zarr-3.1.6.tar.gz", hash = "sha256:d95e72cbea4b90e9a70679468b8266400331756232576ae2b43400ac5108d0eb"},
@@ -10375,6 +10375,34 @@ packaging = ">=22.0"
 typing-extensions = ">=4.12"
 
 [package.extras]
+cli = ["typer"]
+gpu = ["cupy-cuda12x"]
+optional = ["universal-pathlib"]
+remote = ["fsspec (>=2023.10.0)", "obstore (>=0.5.1)"]
+
+[[package]]
+name = "zarr"
+version = "3.2.0"
+description = "An implementation of chunked, compressed, N-dimensional arrays for Python"
+optional = false
+python-versions = ">=3.12"
+groups = ["main"]
+markers = "python_version == \"3.12\""
+files = [
+    {file = "zarr-3.2.0-py3-none-any.whl", hash = "sha256:c693bd4ae24328f242e47e9e1ced221e919d9f62cad71030fd059e398320e555"},
+    {file = "zarr-3.2.0.tar.gz", hash = "sha256:5867fa8dd7910541075531368c8eaa6f35957ab5413c68c168830e83948665ed"},
+]
+
+[package.dependencies]
+donfig = ">=0.8"
+google-crc32c = ">=1.5"
+numcodecs = ">=0.14"
+numpy = ">=2"
+packaging = ">=22.0"
+typing-extensions = ">=4.13"
+
+[package.extras]
+cast-value-rs = ["cast-value-rs"]
 cli = ["typer"]
 gpu = ["cupy-cuda12x"]
 optional = ["universal-pathlib"]
@@ -10403,4 +10431,4 @@ type = ["pytest-mypy"]
 [metadata]
 lock-version = "2.1"
 python-versions = ">=3.10,<3.13"
-content-hash = "10ee678e8276dbece8fe3804fa156cbb26fe8b1652dd3868636ba9b380c11001"
+content-hash = "0b63cc8b2e0901db8c3365a2418de713179be0a2fada50cbab4ea3fc15868e51"
