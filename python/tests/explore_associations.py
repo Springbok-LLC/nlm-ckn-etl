@@ -422,26 +422,26 @@ def from_author_to_cl(data: dict) -> None:
            "author-to-cl", inst, err,
            f"CellSet({author_cell_term}) derives_from {uberon_curie}")
 
-    # --- CellSetHasSourceCellSetDataset ---
+    # --- CellSetMemberOfCellSetDataset ---
     inst, err = try_create(
-        ASSOCIATION_CLASSES["CellSetHasSourceCellSetDataset"],
+        ASSOCIATION_CLASSES["CellSetMemberOfCellSetDataset"],
         subject=cell_set,
-        predicate="source",
+        predicate="member_of",
         object=dataset,
     )
-    record("CellSetHasSourceCellSetDataset",
+    record("CellSetMemberOfCellSetDataset",
            "Created" if inst else "FAILED",
            "author-to-cl", inst, err,
            f"CellSet -> CellSetDataset({dataset_version_id[:12]}...)")
 
-    # --- CellSetDatasetHasSourcePublication ---
+    # --- CellSetDatasetWasAttributedToPublication ---
     inst, err = try_create(
-        ASSOCIATION_CLASSES["CellSetDatasetHasSourcePublication"],
+        ASSOCIATION_CLASSES["CellSetDatasetWasAttributedToPublication"],
         subject=dataset,
-        predicate="source",
+        predicate="was_attributed_to",
         object=publication,
     )
-    record("CellSetDatasetHasSourcePublication",
+    record("CellSetDatasetWasAttributedToPublication",
            "Created" if inst else "FAILED",
            "author-to-cl", inst, err,
            f"CellSetDataset -> Publication(PMID:{pmid}). "

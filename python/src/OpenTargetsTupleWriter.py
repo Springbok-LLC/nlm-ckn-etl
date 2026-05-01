@@ -356,7 +356,6 @@ def create_tuples(opentargets_results: dict, gene_results: dict) -> list[tuple]:
                 phenotype=str(pg.get("phenotypeText")),
                 genotype_annotation=str(pg.get("genotypeAnnotationText")),
                 evidence_level=str(pg.get("evidenceLevel")),
-                source=str(pg.get("datasourceId")),
                 publication=str(pg.get("literature")),
             )
 

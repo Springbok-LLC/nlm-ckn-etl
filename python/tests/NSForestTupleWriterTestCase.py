@@ -67,6 +67,19 @@ class NSForestTupleWriterTestCase(unittest.TestCase):
         preds = [str(t[1]) for t in tuples if len(t) == 3]
         self.assertTrue(any("RO_0002292" in p for p in preds))  # expresses
 
+    def test_contains_expresses_gene_per_binary_gene(self):
+        nsf, summary = self._make_data()
+        tuples = create_tuples(nsf, summary, ["dvid-001"])
+        # CS -[expresses]-> Gene triples: predicate RO_0002292, object GS_<symbol>
+        gene_edges = [
+            t for t in tuples
+            if len(t) == 3
+            and "RO_0002292" in str(t[1])
+            and "/GS_" in str(t[2])
+        ]
+        objects = {str(t[2]).rsplit("/", 1)[-1] for t in gene_edges}
+        self.assertEqual(objects, {"GS_TP53", "GS_BRCA1", "GS_EGFR"})
+
     def test_contains_source_quintuple(self):
         nsf, summary = self._make_data()
         tuples = create_tuples(nsf, summary, ["dvid-001"])

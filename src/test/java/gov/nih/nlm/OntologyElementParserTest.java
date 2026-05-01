@@ -189,4 +189,42 @@ class OntologyElementParserTest {
         assertTrue(maps.containsKey("macrophage"));
         assertTrue(maps.containsKey("ro"));
     }
+
+    // --- enrichOntologyElements tests ---
+
+    @Test
+    void enrichOntologyElements_addsRoPlaceholders() {
+        Map<String, OntologyElementMap> maps = new java.util.HashMap<>();
+        maps.put("ro", new OntologyElementMap());
+
+        Map<String, OntologyElementMap> enriched = OntologyElementParser.enrichOntologyElements(maps);
+
+        Map<String, OntologyElementMap.OntologyTerm> terms = enriched.get("ro").getTerms();
+
+        assertTrue(terms.containsKey("RO_0002027"));
+        assertEquals("has pharmacological effect", terms.get("RO_0002027").label());
+        assertEquals(URI.create("http://purl.obolibrary.org/obo/RO_0002027"), terms.get("RO_0002027").purl());
+
+        assertTrue(terms.containsKey("RO_0002294"));
+        assertEquals("selectively express", terms.get("RO_0002294").label());
+        assertEquals(URI.create("http://purl.obolibrary.org/obo/RO_0002294"), terms.get("RO_0002294").purl());
+
+        assertTrue(terms.containsKey("RO_0020325"));
+        assertEquals("evaluated in", terms.get("RO_0020325").label());
+        assertEquals(URI.create("http://purl.obolibrary.org/obo/RO_0020325"), terms.get("RO_0020325").purl());
+
+        assertTrue(terms.containsKey("IAO_0000136"));
+        assertEquals("is about", terms.get("IAO_0000136").label());
+        assertEquals(URI.create("http://purl.obolibrary.org/obo/IAO_0000136"), terms.get("IAO_0000136").purl());
+    }
+
+    @Test
+    void enrichOntologyElements_skipsWhenRoMissing() {
+        Map<String, OntologyElementMap> maps = new java.util.HashMap<>();
+        maps.put("cl", new OntologyElementMap());
+
+        Map<String, OntologyElementMap> enriched = OntologyElementParser.enrichOntologyElements(maps);
+
+        assertTrue(enriched.get("cl").getTerms().isEmpty());
+    }
 }

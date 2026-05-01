@@ -1,6 +1,6 @@
 """Create tuples from author-to-CL mapping results using schema entities.
 
-Produces AnatomicalStructure, CellSet, CellType, Gene, and Publication
+Produces AnatomicalStructure, CellSet, CellSetDataset, and CellType
 associations from manual cell type mapping data.
 """
 
@@ -27,7 +27,6 @@ from ckn_schema.pydantic.ckn_schema import (
     AnatomicalStructure,
     CellSet,
     CellType,
-    Gene,
 )
 
 from TupleWriterUtilities import (
@@ -54,7 +53,6 @@ def create_tuples(
     - CellTypePartOfAnatomicalStructure
     - CellSetComposedPrimarilyOfCellType
     - CellTypeHasExemplarDataCellSetDataset
-    - CellTypeSelectivelyExpressesGene (for each marker + binary gene)
 
     Parameters
     ----------
@@ -245,20 +243,6 @@ def create_tuples(
                         Literal(citation),
                     )
                 )
-
-        # CellType expresses Gene (for each marker and binary gene)
-        for gene_symbol in markers + binary_genes:
-            gene = Gene(gene_symbol=gene_symbol)
-            assoc = ASSOCIATION_CLASSES["CellTypeSelectivelyExpressesGene"](
-                subject=cell_type,
-                predicate="selectively_expresses",
-                object=gene,
-            )
-            tuples.extend(
-                association_to_tuples(
-                    assoc, ctx, source="Manual Mapping", annotated_terms=annotated
-                )
-            )
 
     return tuples
 
