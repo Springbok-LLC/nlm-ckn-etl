@@ -45,6 +45,7 @@ testpaths = ["tests"]
 [tool.ruff]
 exclude = [
     "_deprecated",
+    "tests",
     "dist",
     "venv",
 ]
