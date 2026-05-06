@@ -1,12 +1,12 @@
 import ast
 from dataclasses import dataclass, field
-from glob import glob
 import json
 import os
 from pathlib import Path
 import random
 import re
 import string
+from time import sleep
 
 from lxml import etree
 import pandas as pd
@@ -53,33 +53,34 @@ class RunConfig:
     pipeline and where its outputs land."""
 
     run_name: str
-    results_sources_path: Path
+    results_dir: Path  # flat directory of extracted release zip contents
     external_dir: Path
     tuples_dir: Path
     hubmap_urls: list = field(default_factory=list)
 
     @classmethod
     def load(cls, run_name):
-        """Load ``data/run-<run_name>.json`` and resolve derived paths."""
-        config_path = DATA_DIRPATH / f"run-{run_name}.json"
-        if not config_path.exists():
-            raise FileNotFoundError(
-                f"Run config not found: {config_path}. "
-                f"Expected file {config_path.name} under {DATA_DIRPATH}."
-            )
-        with open(config_path, "r") as fp:
-            cfg = json.load(fp)
-        results_sources = cfg.get("results_sources")
-        if not results_sources:
-            raise ValueError(
-                f"Run config {config_path} missing required 'results_sources' key"
-            )
+        """Resolve paths for a named run.
+
+        ``results_dir`` (``data/results-<run_name>/``) is expected to contain
+        the extracted contents of the cell-kn release zip, including
+        ``hubmap_urls.txt``.  No JSON config file is required.
+        """
+        results_dir = DATA_DIRPATH / f"results-{run_name}"
+        hubmap_urls_path = results_dir / "hubmap_urls.txt"
+        hubmap_urls = []
+        if hubmap_urls_path.exists():
+            hubmap_urls = [
+                line.strip().strip('"').strip("'")
+                for line in hubmap_urls_path.read_text().splitlines()
+                if line.strip()
+            ]
         return cls(
             run_name=run_name,
-            results_sources_path=DATA_DIRPATH / results_sources,
+            results_dir=results_dir,
             external_dir=DATA_DIRPATH / f"external-{run_name}",
             tuples_dir=DATA_DIRPATH / f"tuples-{run_name}",
-            hubmap_urls=list(cfg.get("hubmap_urls", [])),
+            hubmap_urls=hubmap_urls,
         )
 
 
@@ -107,6 +108,7 @@ def get_current_run():
     if _CURRENT_RUN is None:
         set_current_run()
     return _CURRENT_RUN
+
 
 with open(DATA_DIRPATH / "obo" / "deprecated_terms.txt", "r") as fp:
     DEPRECATED_TERMS = fp.read().splitlines()
@@ -180,132 +182,98 @@ def parse_term(term, ro=None):
         return None, None, None, Path(path).stem, "literal"
 
 
-def get_results_sources(results_sources_path=None):
-    """Get results sources directories and patterns. When no path is
-    given, the current run config's ``results_sources_path`` is used.
+def get_results_sources():
+    """Return the results directory for the current run."""
+    return get_current_run().results_dir
+
+
+def get_cellxgene_harvester_data(results_dir=None):
+    """Get and concatenate cellxgene-harvester data from the flat results dir.
 
     Parameters
     ----------
-    results_sources_path : Path, optional
-        Path to results sources file. Defaults to the current run's
-        configured results-sources file.
-
-    Returns
-    -------
-    results_sources : dict
-        Dictionary containing results sources
-    """
-    if results_sources_path is None:
-        results_sources_path = get_current_run().results_sources_path
-
-    results_sources = {}
-
-    if results_sources_path.exists():
-        with open(results_sources_path, "r") as fp:
-            results_sources = json.load(fp)
-
-    return results_sources
-
-
-def get_cellxgene_harvester_data(results_sources):
-    """Get and concatenate cellxgene-harvester data from each results source.
-
-    Parameters
-    ----------
-    results_sources : dict
-        Dictionary containing list of results_sources
+    results_dir : Path, optional
+        Flat directory of extracted release zip contents.  Defaults to the
+        current run config's ``results_dir``.
 
     Returns
     -------
     harvester_data : pd.DataFrame
         Dataframe containing the concatenated cellxgene-harvester data
     """
-    harvester_data = pd.DataFrame()
+    if results_dir is None:
+        results_dir = get_current_run().results_dir
 
-    harvester_paths = []
-    for results_source in results_sources:
-        print(f"Finding cellxgene-harvester data in {results_source['results_dir']}")
-        harvester_paths.extend(
-            (DATA_DIRPATH / results_source["results_dir"]).rglob(
-                results_source["harvester_pattern"]
-            )
-        )
+    results_dir = Path(results_dir)
+    harvester_paths = sorted(results_dir.glob("*_harvester_final.csv"))
 
-    if len(harvester_paths) > 0:
-        harvester_data = pd.concat([pd.read_csv(p) for p in harvester_paths])
-
-    return harvester_data
+    if harvester_paths:
+        return pd.concat([pd.read_csv(p) for p in harvester_paths])
+    return pd.DataFrame()
 
 
-def get_dataset_file_paths(results_sources):
-    """Get all paths to NSForest results, and mapping, silhouette scores, and
-    dataset summary file paths for each results_source. Note that file paths
-    are unique only if including the first parent as well as the file name.
+def get_dataset_file_paths(results_dir=None):
+    """Get all NSForest results paths and their companion file paths from
+    the flat release zip directory.
+
+    The release zip stores all files at the top level using a stable naming
+    convention.  For each ``*_results.csv`` file the companion files are
+    located by substituting the ``_results.csv`` suffix:
+
+    - mapping:  ``_results.csv`` → ``_mapping.csv``
+    - scores:   ``_results.csv`` → ``_silhouette_fscore_summary.csv``
+    - summary:  ``_results.csv`` → ``_*_master_dataset_summary.csv`` (glob)
 
     Parameters
     ----------
-    results_sources : dict
-        Dictionary containing list of results_sources
+    results_dir : Path, optional
+        Flat directory of extracted release zip contents.  Defaults to the
+        current run config's ``results_dir``.
 
     Returns
     -------
-    file_paths:
-        Dictionary containing lists of file paths
+    file_paths : dict
+        ``nsforest_paths`` — list of Path
+        ``mapping_paths``  — list of list[Path] (one per nsforest file)
+        ``scores_paths``   — list of list[Path]
+        ``summary_paths``  — list of list[Path]
     """
-    file_paths = {}
-    file_paths["nsforest_paths"] = []
-    file_paths["mapping_paths"] = []
-    file_paths["scores_paths"] = []
-    file_paths["summary_paths"] = []
+    if results_dir is None:
+        results_dir = get_current_run().results_dir
 
-    for results_source in results_sources:
-        results_dir = results_source["results_dir"]
+    results_dir = Path(results_dir)
+    nsforest_paths = sorted(results_dir.glob("*_results.csv"))
 
-        nsforest_pattern = results_source["nsforest_pattern"]
-        nsforest_paths = list((DATA_DIRPATH / results_dir).rglob(nsforest_pattern))
+    mapping_paths = []
+    scores_paths = []
+    summary_paths = []
 
-        mapping_substrs = results_source["mapping_substrs"]
-        mapping_paths = [
+    for p in nsforest_paths:
+        stem = p.name
+        mapping_paths.append(
+            list(results_dir.glob(stem.replace("_results.csv", "_mapping.csv")))
+        )
+        scores_paths.append(
             list(
-                (DATA_DIRPATH / results_dir).rglob(
-                    "/".join([p.parent.stem, p.name]).replace(
-                        mapping_substrs[0], mapping_substrs[1]
-                    )
+                results_dir.glob(
+                    stem.replace("_results.csv", "_silhouette_fscore_summary.csv")
                 )
             )
-            for p in nsforest_paths
-        ]
-
-        scores_substrs = results_source["scores_substrs"]
-        scores_paths = [
+        )
+        summary_paths.append(
             list(
-                (DATA_DIRPATH / results_dir).rglob(
-                    "/".join([p.parent.stem, p.name]).replace(
-                        scores_substrs[0], scores_substrs[1]
-                    )
+                results_dir.glob(
+                    stem.replace("_results.csv", "_*_master_dataset_summary.csv")
                 )
             )
-            for p in nsforest_paths
-        ]
+        )
 
-        summary_substrs = results_source["summary_substrs"]
-        summary_paths = [
-            list(
-                (DATA_DIRPATH / results_dir).rglob(
-                    "/".join([p.parent.stem, p.name]).replace(
-                        summary_substrs[0], summary_substrs[1]
-                    )
-                )
-            )
-            for p in nsforest_paths
-        ]
-
-        file_paths["nsforest_paths"].extend(nsforest_paths)
-        file_paths["mapping_paths"].extend(mapping_paths)
-        file_paths["scores_paths"].extend(scores_paths)
-        file_paths["summary_paths"].extend(summary_paths)
-
-    return file_paths
+    return {
+        "nsforest_paths": nsforest_paths,
+        "mapping_paths": mapping_paths,
+        "scores_paths": scores_paths,
+        "summary_paths": summary_paths,
+    }
 
 
 def get_dataset_version_id_lists(file_paths):
@@ -337,9 +305,10 @@ def get_dataset_version_id_lists(file_paths):
                 pd.read_csv(mapping_path[0]).loc[0, "dataset_version_id"].split("--")
             )
 
-        elif len(summary_path) == 1:
+        elif len(summary_path) >= 1:
             dataset_version_ids = [
-                pd.read_csv(summary_path[0])["h5ad_url"][0].split("/")[-1].split(".")[0]
+                pd.read_csv(p)["h5ad_url"][0].split("/")[-1].split(".")[0]
+                for p in summary_path
             ]
 
         else:
@@ -504,15 +473,29 @@ def get_gene_names_and_ensembl_and_entrez_ids():
         return gene_names_and_ids
 
     print("Getting gene names, and Ensembl and Entrez ids from BioMart")
-    gene_names_and_ids = (
-        sc.queries.biomart_annotations(
-            "hsapiens",
-            ["external_gene_name", "ensembl_gene_id", "entrezgene_id"],
-            use_cache=True,
-        )
-        .dropna()
-        .drop_duplicates()
-    )
+    biomart_retries = 3
+    biomart_retry_delay = 30  # seconds
+    for attempt in range(1, biomart_retries + 1):
+        try:
+            gene_names_and_ids = (
+                sc.queries.biomart_annotations(
+                    "hsapiens",
+                    ["external_gene_name", "ensembl_gene_id", "entrezgene_id"],
+                    use_cache=True,
+                )
+                .dropna()
+                .drop_duplicates()
+            )
+            break
+        except Exception as exc:
+            if attempt < biomart_retries:
+                print(
+                    f"BioMart query failed (attempt {attempt}/{biomart_retries}): {exc}. "
+                    f"Retrying in {biomart_retry_delay}s..."
+                )
+                sleep(biomart_retry_delay)
+            else:
+                raise
     gene_names_and_ids["entrezgene_id"] = (
         gene_names_and_ids["entrezgene_id"].astype(int).astype(str)
     )

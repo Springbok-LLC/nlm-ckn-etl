@@ -265,7 +265,7 @@ def create_analyzers(database_name):
     """
     db = create_or_get_database(database_name)
     db.create_analyzer(
-        name=f"n-gram",
+        name="n-gram",
         analyzer_type="ngram",
         properties={
             "min": 3,
@@ -278,7 +278,7 @@ def create_analyzers(database_name):
         features=["frequency", "position", "norm"],
     )
     db.create_analyzer(
-        name=f"text_en_no_stem",
+        name="text_en_no_stem",
         analyzer_type="text",
         properties={
             "locale": "en",
@@ -395,6 +395,16 @@ def create_view(database_name, collection_maps_name):
                 "UBERON",
             ]:
                 del properties["links"][key]
+
+    existing_collections = {c["name"] for c in db.collections()}
+    missing = [
+        k for k in list(properties["links"].keys()) if k not in existing_collections
+    ]
+    for key in missing:
+        print(
+            f"Skipping view link for '{key}': collection not found in {database_name}"
+        )
+        del properties["links"][key]
 
     db.create_view(
         name="indexed",

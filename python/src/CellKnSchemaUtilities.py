@@ -395,11 +395,11 @@ def main():
         # First delete
         try:
             adb.delete_view(database_name)
-        except Exception as ex:
+        except Exception:
             print(f"No view in {database_name} to delete")
         try:
             adb.delete_analyzers(database_name)
-        except Exception as ex:
+        except Exception:
             print(f"No analyzers in {database_name} to delete")
 
         # Then create

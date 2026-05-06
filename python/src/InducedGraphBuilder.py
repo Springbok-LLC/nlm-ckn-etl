@@ -35,7 +35,7 @@ def _is_self_referential_edge(edge_id: str) -> bool:
     hierarchy enrichment handles them separately."""
     col = edge_id.split("/")[0] if edge_id else ""
     dash = col.find("-")
-    return dash > 0 and col[:dash] == col[dash + 1:]
+    return dash > 0 and col[:dash] == col[dash + 1 :]
 
 
 def descendants_at_depth(G, source, max_depth):

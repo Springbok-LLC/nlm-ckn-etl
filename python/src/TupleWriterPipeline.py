@@ -29,8 +29,7 @@ def main():
     parser.add_argument(
         "--run",
         default=None,
-        help="run name (selects data/run-<name>.json; "
-        "defaults to $CKN_RUN or 'full')",
+        help="run name (selects data/run-<name>.json; defaults to $CKN_RUN or 'full')",
     )
     args = parser.parse_args()
     set_current_run(args.run)
