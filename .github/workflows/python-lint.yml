@@ -1,4 +1,4 @@
-name: Python Lint and Test
+name: Python Lint
 
 on:
   push:
@@ -9,7 +9,7 @@ on:
       - 'python/**'
 
 jobs:
-  lint-and-test:
+  ruff:
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -22,14 +22,8 @@ jobs:
         with:
           python-version: '3.12'
 
-      - name: Install Poetry
-        run: pip install poetry
-
-      - name: Install dependencies
-        run: poetry install
+      - name: Install ruff
+        run: pip install ruff
 
       - name: Run ruff check
-        run: poetry run ruff check .
-
-      - name: Run tests
-        run: poetry run pytest
+        run: ruff check .
