@@ -11,10 +11,15 @@ python = ">=3.10,<3.13"
 arango-rdf = ">=1.0"
 ckn-schema = {git = "git@github.com:Springbok-LLC/cell-kn-schema.git", branch = "ralatsdc/update-generated-artifacts"}
 cellxgene-census = ">=1.14"
+docker = ">=7.0"
 gget = ">=0.29"
-kgx = {git = "git@github.com:ralatsdc/kgx.git", branch = "master"}
+# kgx = {git = "git@github.com:ralatsdc/kgx.git", branch = "master"}
+kgx = {url = "https://github.com/rogermyung/kgx/releases/download/v0.0.0/kgx-0.0.0.post1931.dev0+004034c-py3-none-any.whl"}
 ontogpt = ">=0.3"
 plotly = ">=5.22"
+boto3 = ">=1.34"
+botocore = {version = ">=1.34", extras = ["crt"]}
+prefect = ">=3.0"
 pybiomart = ">=0.2"
 mysql-connector-python = "9.6.0"
 networkx = ">=3.0"
@@ -23,6 +28,7 @@ python-arango = ">=8.1,<9.0.0"
 rdflib = ">=7.0"
 scanpy = ">=1.10"
 scikit-misc = ">=0.3"
+greenlet = "^3.5.0"
 
 [tool.poetry.group.dev.dependencies]
 ruff = ">=0.15.5"
@@ -35,6 +41,13 @@ sphinx = ">=8.1"
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+
+[tool.ruff]
+exclude = [
+    "_deprecated",
+    "dist",
+    "venv",
+]
 
 [build-system]
 requires = ["poetry-core"]

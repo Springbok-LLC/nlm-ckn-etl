@@ -49,6 +49,7 @@ def get_tuples_dir():
     tuples_dir.mkdir(parents=True, exist_ok=True)
     return tuples_dir
 
+
 # Maps Pydantic field names to annotation attribute names where the
 # stored name must differ from the Pydantic field name.
 FIELD_NAME_MAP: dict[str, str] = {}

@@ -1,0 +1,10 @@
+services:
+  arangodb:
+    image: arangodb
+    environment:
+      ARANGO_ROOT_PASSWORD: ${ARANGO_DB_PASSWORD}
+    ports:
+      - "127.0.0.1:8529:8529"
+    volumes:
+      - ${ARANGO_DB_HOME:-./data/arangodb}:/var/lib/arangodb3
+      - ${ARANGO_DB_APPS:-./data/arangodb-apps}:/var/lib/arangodb3-apps

@@ -47,7 +47,7 @@ def create_tuples(uniprot_results: dict) -> list[tuple]:
 
         ann_score = data.get("Annotation_score")
         protein_entity = Protein(
-            gene_symbol=data.get("Gene_name", accession),
+            gene_symbol=data.get("Gene_name") or accession,
             uniprot_id=data.get("UniProt_ID", accession),
             label=data.get("Protein_name"),
             number_of_amino_acids=(

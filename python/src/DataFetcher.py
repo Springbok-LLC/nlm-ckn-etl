@@ -1,5 +1,6 @@
 import argparse
 from concurrent.futures import ThreadPoolExecutor, as_completed
+from datetime import datetime, timezone
 import json
 import os
 from glob import glob
@@ -21,7 +22,6 @@ from LoaderUtilities import (
     get_current_run,
     get_dataset_file_paths,
     get_dataset_version_id_lists,
-    get_results_sources,
     get_unique_gene_names_and_ids,
     set_current_run,
 )
@@ -628,28 +628,68 @@ class HuBMAPFetcher(DataFetcher):
         if urls is None:
             urls = get_current_run().hubmap_urls
         json_urls = []
+        failures = []
         p_org = re.compile(r"asct-b\/(.*)\/latest")
         p_url = re.compile(r"https:\/\/.*\/v(\d\.\d)\/graph.json")
         for latest_url in urls:
-            m_org = p_org.search(latest_url)
-            if m_org is not None:
-                org = m_org.group(1)
-            else:
-                raise Exception("No organ in HuBMAP URL")
+            if not latest_url.startswith(("http://", "https://")):
+                failures.append(f"Invalid URL (missing scheme): {latest_url!r}")
+                continue
 
-            response = requests.get(latest_url, timeout=REQUEST_TIMEOUT)
-            if response.status_code == 200:
-                m_url = p_url.search(response.text)
-                if m_url is not None:
-                    json_url = m_url.group(0)
-                    json_ver = float(m_url.group(1))
-                    json_urls.append((org, json_ver, json_url))
-                else:
-                    raise Exception("Could not find HuBMAP JSON URL or version")
-            else:
-                raise Exception("Could not get HuBMAP latest URL")
+            m_org = p_org.search(latest_url)
+            if m_org is None:
+                failures.append(f"No organ found in HuBMAP URL: {latest_url!r}")
+                continue
+            org = m_org.group(1)
+
+            try:
+                response = requests.get(latest_url, timeout=REQUEST_TIMEOUT)
+            except requests.exceptions.RequestException as exc:
+                failures.append(f"Request failed for {latest_url!r}: {exc}")
+                continue
+
+            if response.status_code != 200:
+                failures.append(f"HTTP {response.status_code} for {latest_url!r}")
+                continue
+
+            m_url = p_url.search(response.text)
+            if m_url is None:
+                failures.append(
+                    f"Could not find JSON URL in response for {latest_url!r}"
+                )
+                continue
+
+            json_url = m_url.group(0)
+            json_ver = float(m_url.group(1))
+            json_urls.append((org, json_ver, json_url))
+
+        if failures:
+            print(
+                "WARNING: the following HuBMAP URLs could not be resolved:\n"
+                + "\n".join(f"  - {f}" for f in failures)
+            )
+        if not json_urls and failures:
+            raise Exception(f"All {len(failures)} HuBMAP URL(s) failed to resolve.")
+        if not json_urls:
+            print("WARNING: No HuBMAP URLs configured — skipping HuBMAP fetch.")
 
         return json_urls
+
+
+def _load_fetch_status(path: Path) -> dict:
+    """Load per-source fetch status from fetch-status.json, or return empty dict."""
+    if path.exists():
+        try:
+            return json.loads(path.read_text())
+        except Exception:
+            pass
+    return {}
+
+
+def _save_fetch_status(path: Path, status: dict) -> None:
+    """Persist per-source fetch status to fetch-status.json."""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(status, indent=2))
 
 
 FETCHER_REGISTRY = [
@@ -683,18 +723,61 @@ def main():
     parser.add_argument(
         "--run",
         default=None,
-        help="run name (selects data/run-<name>.json; "
-        "defaults to $CKN_RUN or 'full')",
+        help="run name (selects data/run-<name>.json; defaults to $CKN_RUN or 'full')",
+    )
+    parser.add_argument(
+        "--source-max-age",
+        type=float,
+        default=0.0,
+        metavar="HOURS",
+        help=(
+            "Skip sources whose last successful fetch is younger than this many hours. "
+            "0 (default) disables freshness checking and always re-fetches every source."
+        ),
     )
     args = parser.parse_args()
 
     set_current_run(args.run)
 
-    # Build shared context
-    results_sources = get_results_sources()
-    file_paths = get_dataset_file_paths(results_sources)
-    dataset_version_id_lists = get_dataset_version_id_lists(file_paths)
-    gene_data = get_unique_gene_names_and_ids(file_paths["nsforest_paths"])
+    # Per-source fetch status — written alongside the cache files so it travels to S3
+    status_path = get_current_run().external_dir / "fetch-status.json"
+    status = _load_fetch_status(status_path)
+    now_utc = datetime.now(timezone.utc)
+    now_iso = now_utc.isoformat()
+
+    # Build shared context from the flat release zip directory
+    results_dir = get_current_run().results_dir
+    try:
+        file_paths = get_dataset_file_paths(results_dir)
+    except Exception as exc:
+        print(f"WARNING: Could not read results directory ({results_dir.name}/): {exc}")
+        file_paths = {
+            "nsforest_paths": [],
+            "mapping_paths": [],
+            "scores_paths": [],
+            "summary_paths": [],
+        }
+
+    if file_paths["nsforest_paths"]:
+        dataset_version_id_lists = get_dataset_version_id_lists(file_paths)
+    else:
+        print(
+            f"WARNING: No *_results.csv files found in {results_dir.name}/ — "
+            "fetchers that depend on NSForest results will produce no output."
+        )
+        dataset_version_id_lists = []
+
+    if file_paths["nsforest_paths"]:
+        try:
+            gene_data = get_unique_gene_names_and_ids(file_paths["nsforest_paths"])
+        except Exception as exc:
+            print(
+                f"WARNING: Failed to build gene data context (BioMart or other error): {exc}\n"
+                "Fetchers that require gene data (gene, uniprot, opentargets) will be skipped."
+            )
+            gene_data = None
+    else:
+        gene_data = None
 
     context = {
         "gene_data": gene_data,
@@ -702,11 +785,51 @@ def main():
         "dataset_version_id_lists": dataset_version_id_lists,
     }
 
+    failed_fetchers = []
     for fetcher in FETCHER_REGISTRY:
         force_flag = f"force_{fetcher.name}"
         force = getattr(args, force_flag, False) or args.force_all
-        result = fetcher.run(context, force=force)
-        context[f"{fetcher.name}_results"] = result
+
+        # Freshness check: skip sources that succeeded recently (unless forced)
+        if not force and args.source_max_age > 0:
+            last_success = status.get(fetcher.name, {}).get("last_success_at")
+            if last_success:
+                age_hours = (
+                    now_utc - datetime.fromisoformat(last_success)
+                ).total_seconds() / 3600
+                if age_hours < args.source_max_age:
+                    print(
+                        f"[{fetcher.name}] Skipping — last success"
+                        f" {age_hours:.1f}h ago (max age: {args.source_max_age}h)"
+                    )
+                    status.setdefault(fetcher.name, {})["last_outcome"] = "skipped"
+                    _save_fetch_status(status_path, status)
+                    # Load cached results so downstream fetchers (e.g. uniprot → gene) still work
+                    context[f"{fetcher.name}_results"] = fetcher._load()
+                    continue
+
+        # Record that we are attempting this source
+        status.setdefault(fetcher.name, {})["last_attempt_at"] = now_iso
+        _save_fetch_status(status_path, status)
+
+        try:
+            result = fetcher.run(context, force=force)
+            context[f"{fetcher.name}_results"] = result
+            status[fetcher.name]["last_success_at"] = now_iso
+            status[fetcher.name]["last_outcome"] = "ok"
+            _save_fetch_status(status_path, status)
+        except Exception as exc:
+            print(f"ERROR: Fetcher '{fetcher.name}' failed and will be skipped: {exc}")
+            context[f"{fetcher.name}_results"] = {}
+            status[fetcher.name]["last_outcome"] = "failed"
+            _save_fetch_status(status_path, status)
+            failed_fetchers.append(fetcher.name)
+
+    if failed_fetchers:
+        raise RuntimeError(
+            f"The following fetcher(s) failed: {', '.join(failed_fetchers)}. "
+            "Partial results have been saved for all other sources."
+        )
 
 
 if __name__ == "__main__":

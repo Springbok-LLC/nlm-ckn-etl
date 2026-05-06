@@ -241,6 +241,8 @@ def parse_xml_for_gene_id(gene_id, xml_data):
     data = {}
 
     tags = bs4.BeautifulSoup(xml_data, "xml").find_all("Entrezgene")
+    if len(tags) == 0:
+        raise Exception(f"No Entrezgene element found for gene_id={gene_id!r}")
     if len(tags) > 1:
         raise Exception("Expect a single Entrezgene element")
     root = tags[0]

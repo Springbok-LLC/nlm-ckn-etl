@@ -162,8 +162,7 @@ class CellxGeneTransformer(BaseTransformer):
             entry["Citation"] = f"{first_author} ({published_year}) {journal}"
             entry["Author_list"] = (
                 ", ".join(
-                    f"{a.get('family', '')}, {a.get('given', '')}"
-                    for a in authors
+                    f"{a.get('family', '')}, {a.get('given', '')}" for a in authors
                 )
                 if authors
                 else None
@@ -309,12 +308,16 @@ class GeneTransformer(BaseTransformer):
                 transformed[gene_entrez_id] = {}
                 continue
 
-            xml_data = gzip.decompress(
-                base64.b64decode(raw["xml_gz_b64"])
-            ).decode("utf-8")
-            transformed[gene_entrez_id] = parse_xml_for_gene_id(
-                gene_entrez_id, xml_data
+            xml_data = gzip.decompress(base64.b64decode(raw["xml_gz_b64"])).decode(
+                "utf-8"
             )
+            try:
+                transformed[gene_entrez_id] = parse_xml_for_gene_id(
+                    gene_entrez_id, xml_data
+                )
+            except Exception as exc:
+                print(f"WARNING: skipping gene {gene_entrez_id}: {exc}")
+                transformed[gene_entrez_id] = {}
 
         return transformed
 
@@ -426,8 +429,7 @@ def main():
     parser.add_argument(
         "--run",
         default=None,
-        help="run name (selects data/run-<name>.json; "
-        "defaults to $CKN_RUN or 'full')",
+        help="run name (selects data/run-<name>.json; defaults to $CKN_RUN or 'full')",
     )
     args = parser.parse_args()
 
