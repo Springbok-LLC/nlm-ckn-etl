@@ -208,7 +208,8 @@ def _s3_upload_tar(local_dir: Path, s3_path: str) -> None:
         tmp_path = Path(tmp.name)
     try:
         with tarfile.open(tmp_path, "w:gz") as tar:
-            tar.add(local_dir, arcname=local_dir.name)
+            tar.add(local_dir, arcname=local_dir.name,
+                    filter=lambda m: None if "/.archive/" in m.name else m)
         boto3.client("s3").upload_file(str(tmp_path), bucket, key)
     finally:
         tmp_path.unlink(missing_ok=True)
