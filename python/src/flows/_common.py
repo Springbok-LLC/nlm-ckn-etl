@@ -43,7 +43,7 @@ REPO_ROOT = Path(__file__).parents[3]
 CLASSPATH = "target/nlm-ckn-etl-1.0.jar"
 
 # Default Java heap.  Raise with --java-opts if OOM-killed (exit 137).
-DEFAULT_JAVA_OPTS = "-Xmx8g"
+DEFAULT_JAVA_OPTS = "-Xmx32g"
 
 ARANGO_DB_HOST = os.getenv("ARANGO_DB_HOST", "localhost")
 ARANGO_DB_PORT = int(os.getenv("ARANGO_DB_PORT", "8529"))

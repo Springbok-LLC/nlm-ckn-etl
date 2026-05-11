@@ -19,7 +19,7 @@ The pipeline is split into three phases that share a common ArangoDB
 
 **Phase 2 — Iterative Refinement** (``--run-results``):
   ``arangorestore`` the baseline dump → write all tuples → build results /
-  induced-subgraph / phenotype graphs → create analyzers and views.  Because
+  induced-subgraph graphs → create analyzers and views.  Because
   it restores from the baseline each time, Phase 2 is fully repeatable
   without re-running the expensive ontology build.
 
@@ -709,8 +709,7 @@ def build_induced_subgraph(
 ) -> None:
     """Run InducedSubgraphBuilder to construct the induced subgraph in ArangoDB.
 
-    Must run after ``build_results_graph`` and before ``build_phenotype_graph``
-    and ``create_analyzers_and_views``.
+    Must run after ``build_results_graph`` and before ``create_analyzers_and_views``.
     """
     logger = get_run_logger()
     logger.info(
@@ -724,24 +723,6 @@ def build_induced_subgraph(
     )
     logger.info("Induced subgraph built")
 
-
-@task(name="build-phenotype-graph", log_prints=True)
-def build_phenotype_graph(
-    arango_db_password: str,
-    java_opts: str = DEFAULT_JAVA_OPTS,
-) -> None:
-    """Run PhenotypeGraphBuilder to build the phenotype subgraph in ArangoDB."""
-    logger = get_run_logger()
-    logger.info(
-        f"Building phenotype graph (gov.nih.nlm.PhenotypeGraphBuilder, {java_opts})"
-    )
-    subprocess.run(
-        _java_cmd("gov.nih.nlm.PhenotypeGraphBuilder", arango_db_password, java_opts),
-        check=True,
-        cwd=REPO_ROOT,
-        env={**os.environ, **_arango_env(arango_db_password)},
-    )
-    logger.info("Phenotype graph built")
 
 
 @task(name="create-analyzers-and-views", log_prints=True)
@@ -917,7 +898,7 @@ def nlm_ckn_etl(
 
     **Phase 2 — Iterative Refinement** (``run_results``):
       ``arangorestore`` from baseline → write tuples → build results /
-      induced-subgraph / phenotype graphs.  Can be re-run cheaply without
+      induced-subgraph graphs.  Can be re-run cheaply without
       repeating Phase 1.  Requires the baseline dump to exist.
 
     **Phase 3 — Production Handoff** (``run_archive``):
@@ -1079,7 +1060,6 @@ def nlm_ckn_etl(
 
         build_results_graph(arango_db_password, java_opts, run=run)
         build_induced_subgraph(arango_db_password, java_opts)
-        build_phenotype_graph(arango_db_password, java_opts)
         create_analyzers_and_views(arango_db_password)
 
         logger.info("Phase 2 complete")
@@ -1136,7 +1116,7 @@ if __name__ == "__main__":
         action="store_true",
         help=(
             "Phase 2: restore the baseline dump, write tuples, and build "
-            "the results / induced-subgraph / phenotype graphs. "
+            "the results / induced-subgraph  graphs. "
             "Requires the baseline dump produced by --run-ontology."
         ),
     )
