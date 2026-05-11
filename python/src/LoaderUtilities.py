@@ -263,10 +263,40 @@ def get_dataset_file_paths(results_dir=None):
         summary_paths.append(
             list(
                 results_dir.glob(
-                    stem.replace("_results.csv", "_*_master_dataset_summary.csv")
+                    stem.replace("_results.csv", "*_master_dataset_summary.csv")
                 )
             )
         )
+
+    # Warn for any results file whose companion files were not found — these will
+    # fail later in get_dataset_version_id_lists with a confusing traceback.
+    for p, mp, sp in zip(nsforest_paths, mapping_paths, summary_paths):
+        if not mp and not sp:
+            print(
+                f"WARNING: No companion files (mapping or master_dataset_summary) "
+                f"found for {p.name} — dataset version id lookup will fail."
+            )
+
+    # Cross-check against the manifest so missing results files are caught at
+    # extraction time rather than discovered implicitly through absent output.
+    manifest_path = results_dir / "master_s3_manifest.csv"
+    if manifest_path.exists():
+        try:
+            manifest = pd.read_csv(manifest_path)
+            expected = {
+                row["filename"]
+                for _, row in manifest.iterrows()
+                if str(row["filename"]).endswith("_results.csv")
+            }
+            found = {p.name for p in nsforest_paths}
+            missing = expected - found
+            for name in sorted(missing):
+                print(
+                    f"WARNING: {name} is listed in master_s3_manifest.csv "
+                    f"but was not found in {results_dir.name}/"
+                )
+        except Exception as exc:
+            print(f"WARNING: Could not validate against master_s3_manifest.csv: {exc}")
 
     return {
         "nsforest_paths": nsforest_paths,
