@@ -79,7 +79,6 @@ def create_tuples(opentargets_results: dict, gene_results: dict) -> list[tuple]:
     - DrugIsSubstanceThatTreatsDisease
     - DrugEvaluatedInClinicalTrial
     - DrugMolecularlyInteractsWithGene
-    - GeneMolecularlyInteractsWithGene
     - GeneHasQualityMutation
     - MutationHasPharmacologicalEffectDrug
 
@@ -308,30 +307,6 @@ def create_tuples(opentargets_results: dict, gene_results: dict) -> list[tuple]:
             tuples.extend(
                 association_to_tuples(
                     assoc, ctx_sym, source="Open Targets", annotated_terms=annotated
-                )
-            )
-
-        # Gene molecularly_interacts_with Gene
-        for interaction in ot_data.get("interactions", []):
-            target_b = interaction.get("targetB")
-            if target_b is None:
-                print(f"Warning: Missing interaction target for gene {gene_name}")
-                continue
-            gene_b_symbol = target_b.get("approvedSymbol")
-            if not gene_b_symbol:
-                print(
-                    f"Warning: No approved symbol for interaction target of gene {gene_name}"
-                )
-                continue
-            gene_b_entity = Gene(gene_symbol=gene_b_symbol)
-            assoc = ASSOCIATION_CLASSES["GeneMolecularlyInteractsWithGene"](
-                subject=gene_entity,
-                predicate="molecularly_interacts_with",
-                object=gene_b_entity,
-            )
-            tuples.extend(
-                association_to_tuples(
-                    assoc, source="Open Targets", annotated_terms=annotated
                 )
             )
 
