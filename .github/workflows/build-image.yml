@@ -1,7 +1,11 @@
 name: Build and Push Docker Images
 
 # Builds the pipeline and fetcher images and pushes them to ECR whenever
-# any file that affects either image changes on the default branch.
+# any file that affects either image changes.
+#
+# Tags:
+#   <branch-name>   — pushed on every branch (slashes replaced with dashes)
+#   latest          — pushed only on main / master
 #
 # pipeline image (nlm-ckn-etl-pipeline):
 #   Includes JRE + the compiled JAR (via the java-build Docker stage).
@@ -18,11 +22,13 @@ name: Build and Push Docker Images
 #   ECR_STACK_NAME      — CloudFormation stack name for ECR (default: nlm-ckn-etl-ecr)
 
 on:
+  # Uncomment to gate image builds on both test workflows passing:
+  # workflow_run:
+  #   workflows: ["Java Build", "Python Lint and Test"]
+  #   types: [completed]
+  #   branches: ["**"]
   workflow_dispatch:
   push:
-    branches:
-      - main
-      - master
     paths:
       - 'Dockerfile'
       - 'pom.xml'
@@ -30,9 +36,12 @@ on:
       - 'python/**'
       - 'src/main/shell/fetch-entrypoint.sh'
       - 'src/main/shell/release-entrypoint.sh'
+      - '.github/workflows/build-image.yml'
 
 jobs:
   build-and-push:
+    # Uncomment when workflow_run trigger is enabled above:
+    # if: ${{ github.event.workflow_run.conclusion == 'success' }}
     name: Build and push to ECR
     runs-on: ubuntu-latest
     permissions:
@@ -69,6 +78,26 @@ jobs:
           echo "fetcher_uri=${FETCHER_URI}"   >> "$GITHUB_OUTPUT"
           echo "registry=${PIPELINE_URI%%/*}" >> "$GITHUB_OUTPUT"
 
+      - name: Compute image tags
+        id: tags
+        env:
+          PIPELINE_URI: ${{ steps.ecr.outputs.pipeline_uri }}
+          FETCHER_URI: ${{ steps.ecr.outputs.fetcher_uri }}
+        run: |
+          BRANCH="${GITHUB_REF_NAME}"
+          SAFE=$(echo "$BRANCH" | tr '/' '-' | tr '[:upper:]' '[:lower:]')
+
+          PIPELINE_TAGS="${PIPELINE_URI}:${SAFE}"
+          FETCHER_TAGS="${FETCHER_URI}:${SAFE}"
+
+          if [[ "$BRANCH" == "main" || "$BRANCH" == "master" ]]; then
+            PIPELINE_TAGS="${PIPELINE_TAGS},${PIPELINE_URI}:latest"
+            FETCHER_TAGS="${FETCHER_TAGS},${FETCHER_URI}:latest"
+          fi
+
+          echo "pipeline=${PIPELINE_TAGS}" >> "$GITHUB_OUTPUT"
+          echo "fetcher=${FETCHER_TAGS}"   >> "$GITHUB_OUTPUT"
+
       - name: Log in to ECR
         env:
           REGISTRY: ${{ steps.ecr.outputs.registry }}
@@ -86,7 +115,7 @@ jobs:
           context: .
           target: pipeline
           push: true
-          tags: ${{ steps.ecr.outputs.pipeline_uri }}:latest
+          tags: ${{ steps.tags.outputs.pipeline }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
@@ -96,6 +125,6 @@ jobs:
           context: .
           target: fetcher
           push: true
-          tags: ${{ steps.ecr.outputs.fetcher_uri }}:latest
+          tags: ${{ steps.tags.outputs.fetcher }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
