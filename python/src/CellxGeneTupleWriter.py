@@ -74,7 +74,7 @@ def create_tuples(cellxgene_results: dict) -> list[tuple]:
 
         assoc = ASSOCIATION_CLASSES["CellSetDatasetWasAttributedToPublication"](
             subject=csd,
-            predicate="was_attributed_to",
+            predicate="nlm-ckn:was_attributed_to",
             object=pub,
         )
         tuples.extend(association_to_tuples(assoc, ctx, source="CELLxGENE"))

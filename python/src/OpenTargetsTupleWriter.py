@@ -148,7 +148,7 @@ def create_tuples(opentargets_results: dict, gene_results: dict) -> list[tuple]:
 
             assoc = ASSOCIATION_CLASSES["GeneIsGeneticBasisForDisease"](
                 subject=gene_entity,
-                predicate="is_genetic_basis_for_condition",
+                predicate="nlm-ckn:is_genetic_basis_for_condition",
                 object=disease_entity,
             )
             tuples.extend(
@@ -226,7 +226,7 @@ def create_tuples(opentargets_results: dict, gene_results: dict) -> list[tuple]:
                 )
                 assoc = ASSOCIATION_CLASSES["DrugMolecularlyInteractsWithProtein"](
                     subject=drug_entity,
-                    predicate="molecularly_interacts_with",
+                    predicate="nlm-ckn:molecularly_interacts_with",
                     object=protein_entity,
                 )
                 tuples.extend(
@@ -255,7 +255,7 @@ def create_tuples(opentargets_results: dict, gene_results: dict) -> list[tuple]:
                     )
                     assoc = ASSOCIATION_CLASSES["DrugIsSubstanceThatTreatsDisease"](
                         subject=drug_entity,
-                        predicate="is_substance_that_treats",
+                        predicate="nlm-ckn:is_substance_that_treats",
                         object=disease_entity,
                     )
                     tuples.extend(
@@ -272,7 +272,7 @@ def create_tuples(opentargets_results: dict, gene_results: dict) -> list[tuple]:
                         ct_entity = ClinicalTrial(study_id=trial_id)
                         assoc = ASSOCIATION_CLASSES["DrugEvaluatedInClinicalTrial"](
                             subject=drug_entity,
-                            predicate="evaluated_in",
+                            predicate="nlm-ckn:evaluated_in",
                             object=ct_entity,
                         )
                         tuples.extend(
@@ -337,7 +337,7 @@ def create_tuples(opentargets_results: dict, gene_results: dict) -> list[tuple]:
             # Gene has_quality Mutation
             assoc = ASSOCIATION_CLASSES["GeneHasQualityMutation"](
                 subject=gene_entity,
-                predicate="has_quality",
+                predicate="nlm-ckn:has_quality",
                 object=mutation_entity,
             )
             tuples.extend(
@@ -389,7 +389,7 @@ def create_tuples(opentargets_results: dict, gene_results: dict) -> list[tuple]:
                 pg_chembl_id = drug_id.replace("CHEMBL", "")
                 assoc = ASSOCIATION_CLASSES["MutationHasPharmacologicalEffectDrug"](
                     subject=mutation_entity,
-                    predicate="has_pharmacological_effect",
+                    predicate="nlm-ckn:has_pharmacological_effect",
                     object=pg_drug_entity,
                 )
                 tuples.extend(

@@ -80,7 +80,7 @@ def create_tuples(hubmap_data: dict, cl_terms: set[str]) -> list[tuple]:
             obj = AnatomicalStructure(ontology_purl=o_id)
             assoc = ASSOCIATION_CLASSES["AnatomicalStructurePartOfAnatomicalStructure"](
                 subject=subject,
-                predicate="part_of",
+                predicate="nlm-ckn:part_of",
                 object=obj,
             )
             tuples.extend(association_to_tuples(assoc, source="HuBMAP"))
@@ -113,7 +113,7 @@ def create_tuples(hubmap_data: dict, cl_terms: set[str]) -> list[tuple]:
             obj = AnatomicalStructure(ontology_purl=uberon_id)
             assoc = ASSOCIATION_CLASSES["CellTypePartOfAnatomicalStructure"](
                 subject=subject,
-                predicate="part_of",
+                predicate="nlm-ckn:part_of",
                 object=obj,
             )
             tuples.extend(association_to_tuples(assoc, source="HuBMAP"))
