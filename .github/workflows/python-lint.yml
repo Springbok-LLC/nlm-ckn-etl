@@ -31,5 +31,11 @@ jobs:
       - name: Run ruff check
         run: poetry run ruff check .
 
+      - name: Generate ArangoDB password
+        id: arango-pw
+        run: echo "password=$(openssl rand -hex 16)" >> "$GITHUB_OUTPUT"
+
       - name: Run tests
+        env:
+          ARANGO_DB_PASSWORD: ${{ steps.arango-pw.outputs.password }}
         run: poetry run pytest
