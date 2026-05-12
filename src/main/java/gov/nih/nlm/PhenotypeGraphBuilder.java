@@ -37,8 +37,16 @@ import static gov.nih.nlm.OntologyGraphBuilder.getDocumentCollectionName;
 @Deprecated
 public class PhenotypeGraphBuilder {
 
-    // Construct ArangoDB utilities
-    private static final ArangoDbUtilities arangoDbUtilities = new ArangoDbUtilities();
+    // Lazily initialised so classes that only call pure static methods (e.g. getVertexDocuments,
+    // getEdgeDocuments) can be loaded in tests without ArangoDB env vars being present.
+    private static ArangoDbUtilities arangoDbUtilities;
+
+    private static ArangoDbUtilities db() {
+        if (arangoDbUtilities == null) {
+            arangoDbUtilities = new ArangoDbUtilities();
+        }
+        return arangoDbUtilities;
+    }
 
     /**
      * Query a fully populated ontology ArangoDB to identify all paths that connect cell set vertices inward to UBERON
@@ -222,7 +230,7 @@ public class PhenotypeGraphBuilder {
                 "MONDO-MONDO",
                 "SUB_CLASS_OF"));
 
-        ArangoDatabase db = arangoDbUtilities.createOrGetDatabase(databaseName);
+        ArangoDatabase db = db().createOrGetDatabase(databaseName);
         AqlQueryOptions queryOpts = new AqlQueryOptions();
         List<Map<String, Object>> paths = new ArrayList<>();
         for (AqlQuerySet aqlQuerySet : aqlQuerySets) {
@@ -308,7 +316,7 @@ public class PhenotypeGraphBuilder {
             String id = getDocumentCollectionName(phenotypeVertexDocument.getId());
             String key = phenotypeVertexDocument.getKey();
             if (!phenotypeVertexCollections.containsKey(id)) {
-                phenotypeVertexCollections.put(id, arangoDbUtilities.createOrGetVertexCollection(phenotypeGraph, id));
+                phenotypeVertexCollections.put(id, db().createOrGetVertexCollection(phenotypeGraph, id));
             }
             BaseDocument ontologyVertexDocument = ontologyGraph.vertexCollection(id).getVertex(key, BaseDocument.class);
             if (phenotypeVertexCollections.get(id).getVertex(key, BaseDocument.class) == null) {
@@ -345,7 +353,7 @@ public class PhenotypeGraphBuilder {
             String idFrom = getDocumentCollectionName(edgeDocument.getFrom());
             String idTo = getDocumentCollectionName(edgeDocument.getTo());
             if (!edgeCollections.containsKey(idPair)) {
-                edgeCollections.put(idPair, arangoDbUtilities.createOrGetEdgeCollection(phenotypeGraph, idFrom, idTo));
+                edgeCollections.put(idPair, db().createOrGetEdgeCollection(phenotypeGraph, idFrom, idTo));
             }
             if (edgeCollections.get(idPair).getEdge(key, BaseEdgeDocument.class) == null) {
                 edgeCollections.get(idPair).insertEdge(edgeDocument);
@@ -368,17 +376,17 @@ public class PhenotypeGraphBuilder {
         // populated graph
         String ontologyDatabaseName = "Cell-KN-Ontologies";
         String ontologyGraphName = "KN-Ontologies-v2.0";
-        ArangoDatabase ontologyDb = arangoDbUtilities.createOrGetDatabase(ontologyDatabaseName);
-        ArangoGraph ontologyGraph = arangoDbUtilities.createOrGetGraph(ontologyDb, ontologyGraphName);
+        ArangoDatabase ontologyDb = db().createOrGetDatabase(ontologyDatabaseName);
+        ArangoGraph ontologyGraph = db().createOrGetGraph(ontologyDb, ontologyGraphName);
         List<Map<String, Object>> paths = getPaths(ontologyDatabaseName, ontologyGraphName);
 
         // Initialize the phenotype database and subgraph
         String phenotypeDatabaseName = "Cell-KN-Phenotypes";
         String phenotypeGraphName = "KN-Phenotypes-v2.0";
-        arangoDbUtilities.deleteDatabase(phenotypeDatabaseName);
-        ArangoDatabase phenotypeDb = arangoDbUtilities.createOrGetDatabase(phenotypeDatabaseName);
-        arangoDbUtilities.deleteGraph(phenotypeDb, phenotypeGraphName);
-        ArangoGraph phenotypeGraph = arangoDbUtilities.createOrGetGraph(phenotypeDb, phenotypeGraphName);
+        db().deleteDatabase(phenotypeDatabaseName);
+        ArangoDatabase phenotypeDb = db().createOrGetDatabase(phenotypeDatabaseName);
+        db().deleteGraph(phenotypeDb, phenotypeGraphName);
+        ArangoGraph phenotypeGraph = db().createOrGetGraph(phenotypeDb, phenotypeGraphName);
 
         // Get vertex documents in the ontology graph and insert them in the phenotype graph
         List<BaseDocument> phenotypeVertexDocuments = getVertexDocuments(paths);
@@ -389,6 +397,6 @@ public class PhenotypeGraphBuilder {
         insertEdgeDocuments(phenotypeEdgeDocuments, phenotypeGraph);
 
         // Disconnect from a local ArangoDB server instance
-        arangoDbUtilities.arangoDB.shutdown();
+        db().arangoDB.shutdown();
     }
 }
