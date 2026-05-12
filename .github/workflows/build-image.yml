@@ -18,6 +18,7 @@ name: Build and Push Docker Images
 #   ECR_STACK_NAME      — CloudFormation stack name for ECR (default: nlm-ckn-etl-ecr)
 
 on:
+  workflow_dispatch:
   push:
     branches:
       - main
