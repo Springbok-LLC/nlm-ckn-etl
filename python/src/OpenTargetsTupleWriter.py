@@ -78,7 +78,6 @@ def create_tuples(opentargets_results: dict, gene_results: dict) -> list[tuple]:
     - DrugMolecularlyInteractsWithProtein
     - DrugIsSubstanceThatTreatsDisease
     - DrugEvaluatedInClinicalTrial
-    - DrugMolecularlyInteractsWithGene
     - GeneHasQualityMutation
     - MutationHasPharmacologicalEffectDrug
 
@@ -283,32 +282,6 @@ def create_tuples(opentargets_results: dict, gene_results: dict) -> list[tuple]:
                                 annotated_terms=annotated,
                             )
                         )
-
-        # Drug molecularly_interacts_with Gene
-        for drug in ot_data.get("drugs", []):
-            if drug["drug"]["maximumClinicalStage"] not in VALID_PHASES:
-                continue
-            if any(
-                w["warningType"] == "Withdrawn"
-                for w in drug["drug"].get("drugWarnings", [])
-            ):
-                continue
-
-            chembl_id = drug["drug"]["id"].replace("CHEMBL", "")
-            drug_name = drug["drug"].get("name")
-            drug_entity_sym = Drug(label=drug_name)
-            ctx_sym = {"chembl_id": chembl_id}
-
-            assoc = ASSOCIATION_CLASSES["DrugMolecularlyInteractsWithGene"](
-                subject=drug_entity_sym,
-                predicate="molecularly_interacts_with",
-                object=gene_entity,
-            )
-            tuples.extend(
-                association_to_tuples(
-                    assoc, ctx_sym, source="Open Targets", annotated_terms=annotated
-                )
-            )
 
         # Gene has_quality Mutation, and Mutation has_pharmacological_effect
         # Drug
