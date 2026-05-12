@@ -33,7 +33,6 @@ from TupleWriterUtilities import (
     ASSOCIATION_CLASSES,
     as_float,
     as_int,
-    as_str,
     association_to_tuples,
     build_cell_set_dataset,
     get_tuples_dir,

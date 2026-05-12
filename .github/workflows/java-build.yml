@@ -1,5 +1,11 @@
 name: Java Build
 
+# Runs Maven tests on Java source changes for fast PR feedback.
+# The JAR is no longer stored as a GH Actions artifact — it is compiled
+# inside Docker by the java-build stage (Dockerfile) and baked into the
+# pipeline image.  See .github/workflows/build-image.yml for the full
+# image build and ECR push.
+
 on:
   push:
     paths:
@@ -11,7 +17,7 @@ on:
       - 'pom.xml'
 
 jobs:
-  build:
+  test:
     runs-on: ubuntu-latest
 
     steps:
@@ -25,13 +31,3 @@ jobs:
 
       - name: Run tests
         run: mvn test
-
-      - name: Build jar
-        run: mvn package -DskipTests
-
-      - name: Upload jar artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: nlm-ckn-etl-jar
-          path: target/nlm-ckn-etl-1.0.jar
-          retention-days: 7

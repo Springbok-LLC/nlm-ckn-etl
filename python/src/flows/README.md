@@ -208,31 +208,3 @@ poetry run src/flows/fetch.py \
 poetry run src/flows/pipeline.py --run-results --run 2026-04
 poetry run src/flows/pipeline.py --run-ontology --run-results --run-archive --run 2026-04
 ```
-
----
-
-## AWS Deployment
-
-The scheduled fetch runs as an ECS Fargate task triggered by EventBridge
-Scheduler. See [`cloudformation/fetch.yaml`](../../../../cloudformation/fetch.yaml)
-for the full stack definition.
-
-```bash
-aws cloudformation deploy \
-  --template-file cloudformation/fetch.yaml \
-  --stack-name nlm-ckn-etl-fetch \
-  --capabilities CAPABILITY_NAMED_IAM \
-  --parameter-overrides \
-      S3Bucket=<bucket> \
-      EcrImageUri=<account>.dkr.ecr.<region>.amazonaws.com/nlm-ckn-etl:latest \
-      NcbiEmail=user@example.com \
-      NcbiApiKey=<key> \
-      VpcId=vpc-<id> \
-      SubnetIds=subnet-<a>,subnet-<b>
-```
-
-The fetch task runs at 02:00 UTC daily by default. Override with
-`--parameter-overrides ScheduleExpression='cron(0 6 * * ? *)'`.
-
-The ECR image is built and pushed automatically by
-`.github/workflows/build-image.yml` on every push to `main`.

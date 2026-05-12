@@ -1,0 +1,82 @@
+name: Trigger NLM-CKN Release
+
+# Submits an AWS Batch release job and exits immediately — no waiting.
+# The Batch job runs release.py end-to-end (fetch + full ETL) on EC2.
+# Monitor progress via CloudWatch (/batch/nlm-ckn-release) or the Batch console.
+#
+# To trigger from local:
+#   gh workflow run trigger-release.yml \
+#     --field tag=v2026-04
+#
+#   gh workflow run trigger-release.yml \
+#     --field tag=v2026-04 \
+#     --field tar_source=s3://my-bucket/uploads/prod-data-v2026-04.tar.gz \
+#     --field skip_ontology=true
+#
+# Required GitHub secrets:
+#   AWS_RELEASE_ROLE_ARN  — IAM role ARN to assume (must have batch:SubmitJob + s3:PutObject)
+#   AWS_REGION            — AWS region (e.g. us-east-1)
+#   S3_BUCKET             — S3 bucket name (needed only when uploading a local tarball)
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'cell-kn release tag (e.g. v2026-04)'
+        required: true
+        type: string
+      tar_source:
+        description: 'Tarball override: S3 URL (s3://...) or HTTPS URL. Leave blank to derive from tag.'
+        required: false
+        type: string
+        default: ''
+      skip_ontology:
+        description: 'Skip Phase 1 — reuse existing baseline dump for this run'
+        required: false
+        type: boolean
+        default: false
+      run_name:
+        description: 'ETL run name (default: tag with leading v stripped)'
+        required: false
+        type: string
+        default: ''
+      max_fetch_age_hours:
+        description: 'Max external cache age (hours) before forcing a full re-fetch (default: 48)'
+        required: false
+        type: string
+        default: ''
+
+jobs:
+  submit:
+    name: Submit Batch release job
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write   # required for OIDC role assumption
+      contents: read
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_RELEASE_ROLE_ARN }}
+          aws-region: ${{ secrets.AWS_REGION }}
+
+      # All workflow_dispatch inputs are mapped to env vars before the shell
+      # uses them, preventing expression injection in the run: command.
+      - name: Submit release job
+        env:
+          TAG:                   ${{ inputs.tag }}
+          TAR_SOURCE:            ${{ inputs.tar_source }}
+          SKIP_ONTOLOGY:         ${{ inputs.skip_ontology }}
+          RUN_NAME:              ${{ inputs.run_name }}
+          MAX_FETCH_AGE_HOURS:   ${{ inputs.max_fetch_age_hours }}
+          S3_BUCKET:             ${{ secrets.S3_BUCKET }}
+        run: |
+          args=(--tag "${TAG}")
+          [[ -n "${TAR_SOURCE}"          ]] && args+=(--tar-source          "${TAR_SOURCE}")
+          [[ -n "${RUN_NAME}"            ]] && args+=(--run-name             "${RUN_NAME}")
+          [[ -n "${MAX_FETCH_AGE_HOURS}" ]] && args+=(--max-fetch-age-hours "${MAX_FETCH_AGE_HOURS}")
+          [[ "${SKIP_ONTOLOGY}" == "true" ]] && args+=(--skip-ontology)
+          bash src/main/shell/trigger-release.sh "${args[@]}"

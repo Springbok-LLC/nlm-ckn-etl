@@ -1176,7 +1176,7 @@ def get_value_or_none(data, keys):
                 value = data[key]
             else:
                 value = value[key]
-        except:
+        except (KeyError, TypeError):
             return None
     return value
 

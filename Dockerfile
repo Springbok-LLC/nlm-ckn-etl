@@ -16,16 +16,26 @@
 #   Step 1 — start ArangoDB (compose.yaml manages the data volume and password):
 #     ARANGO_DB_PASSWORD=<password> docker compose up -d arangodb
 #
-#   Step 2 — run the pipeline (Docker socket needed for arangodump/arangorestore):
+#   Step 2 — run the full release (Docker socket needed for arangodump/arangorestore):
 #     docker run --rm \
 #       --network host \
 #       -v "$(pwd)/data:/app/data" \
 #       -v "$(pwd)/target:/app/target" \
 #       -v /var/run/docker.sock:/var/run/docker.sock \
-#       -e ARANGO_DB_HOST=localhost \
-#       -e ARANGO_DB_PORT=8529 \
+#       -e S3_BUCKET=<bucket> \
+#       -e CELL_KN_TAG=v2026-04 \
+#       -e NCBI_EMAIL=<email> -e NCBI_API_KEY=<key> \
+#       nlm-ckn-etl-pipeline
+#
+#   To run a single ETL phase locally (bypasses release-entrypoint):
+#     docker run --rm --entrypoint python \
+#       --network host \
+#       -v "$(pwd)/data:/app/data" \
+#       -v "$(pwd)/target:/app/target" \
+#       -v /var/run/docker.sock:/var/run/docker.sock \
 #       -e ARANGO_DB_PASSWORD=<password> \
-#       nlm-ckn-etl-pipeline flows/pipeline.py --run-ontology --run-results
+#       nlm-ckn-etl-pipeline \
+#       /app/python/src/flows/pipeline.py --run-results
 #
 #   NOTE: --network host lets the container reach ArangoDB on localhost:8529.
 #   The Docker socket is only needed for arangodump/arangorestore (exec into
@@ -55,10 +65,28 @@
 #   Both images are pushed to ECR by .github/workflows/build-image.yml.
 #   nlm-ckn-etl-fetcher  → used by the ECS Fargate task (cloudformation/fetch.yaml)
 #   nlm-ckn-etl-pipeline → used by the AWS Batch job   (cloudformation/batch.yaml)
-#   In AWS, ArangoDB runs on a dedicated EC2 instance; set ARANGO_DB_HOST and
-#   ARANGO_DB_PORT in the Batch job definition to point at it.
+#                          Entrypoint runs release.py (fetch + full ETL).
+#                          Trigger via src/main/shell/trigger-release.sh.
 #
 #   compose.yaml runs the arangodb service locally for development.
+
+# ── Stage 0: Java build ──────────────────────────────────────────────────────
+# Compiles the ETL JAR inside Docker so the pipeline image is self-contained —
+# no S3 download needed at runtime.  The maven cache mount keeps downloaded
+# dependencies across builds so only changed code triggers a re-download.
+FROM --platform=linux/amd64 maven:3.9-eclipse-temurin-21 AS java-build
+
+WORKDIR /build
+COPY pom.xml .
+# Resolve dependencies in a separate layer so they are cached independently
+# of source changes (rebuilds after a source-only change skip this layer).
+RUN --mount=type=cache,target=/root/.m2 \
+    mvn dependency:go-offline -q
+
+COPY src/main/java ./src/main/java
+RUN --mount=type=cache,target=/root/.m2 \
+    mvn package -DskipTests -q
+
 
 # ── Stage 1: base (shared Python stack) ─────────────────────────────────────
 # Pin to linux/amd64: scikit-misc has no linux/arm64 binary wheel on PyPI.
@@ -138,15 +166,26 @@ ENTRYPOINT ["/usr/local/bin/fetch-entrypoint"]
 
 
 # ── Stage 3: pipeline (AWS Batch ETL job) ────────────────────────────────────
-# Adds JRE so pipeline.py can call Java graph builders via subprocess.
+# Adds JRE so release.py can call Java graph builders via subprocess.
 # openjdk-21-jre-headless matches the JDK 21 used to compile the JAR
 # (see build-jar.yml).
+#
+# The default entrypoint runs the full release flow (release-entrypoint).
+# For local debugging of a single phase, override the entrypoint:
+#   docker run --entrypoint python ... nlm-ckn-etl-pipeline \
+#     /app/python/src/flows/pipeline.py --run-results
 FROM base AS pipeline
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
         openjdk-21-jre-headless \
     && rm -rf /var/lib/apt/lists/*
 
-WORKDIR /app/python/src
-ENTRYPOINT ["python"]
-CMD ["flows/pipeline.py"]
+# JAR baked in — ensure_jar finds it immediately without an S3 download.
+# The content hash (jar_key) is still computed at runtime to key baseline dumps.
+COPY --from=java-build /build/target/nlm-ckn-etl-1.0.jar /app/target/nlm-ckn-etl-1.0.jar
+
+COPY src/main/shell/release-entrypoint.sh /usr/local/bin/release-entrypoint
+RUN chmod +x /usr/local/bin/release-entrypoint
+
+WORKDIR /app
+ENTRYPOINT ["/usr/local/bin/release-entrypoint"]

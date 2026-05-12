@@ -197,12 +197,12 @@ def create_tuples(opentargets_results: dict, gene_results: dict) -> list[tuple]:
                     mechanism = moa.get("mechanismOfAction")
                     break
 
-            pubchem_id = map_chembl_to_pubchem(
+            pubchem_id = map_chembl_to_pubchem(  # noqa: F841  # TODO: was this meant to be passed to Drug()?
                 chembl_term.replace("_", ""), chembl2pubchem
             )
             link_to_uniprot = None
             if gene_entrez_id in gene_results:
-                link_to_uniprot = remove_protocols(
+                link_to_uniprot = remove_protocols(  # noqa: F841  # TODO: was this meant to be passed to Drug()?
                     gene_results[gene_entrez_id].get("Link_to_UniProt_ID")
                 )
 
