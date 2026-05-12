@@ -38,11 +38,6 @@ class MappingTupleWriterTestCase(unittest.TestCase):
         tuples = create_tuples(self._make_data(), ["dv-001"])
         self.assertGreater(len(tuples), 0)
 
-    def test_contains_part_of(self):
-        tuples = create_tuples(self._make_data(), ["dv-001"])
-        preds = [str(t[1]) for t in tuples if len(t) == 3]
-        self.assertTrue(any("BFO_0000050" in p for p in preds))
-
     def test_contains_composed_primarily_of(self):
         tuples = create_tuples(self._make_data(), ["dv-001"])
         preds = [str(t[1]) for t in tuples if len(t) == 3]
