@@ -190,10 +190,10 @@ class GetPredicateUriTestCase(unittest.TestCase):
     """Tests for get_predicate_uri."""
 
     def test_part_of(self):
-        assoc = twu.ASSOCIATION_CLASSES["CellTypePartOfAnatomicalStructure"](
-            subject=CellType(ontology_purl="CL:0000235"),
-            predicate="part_of",
-            object=AnatomicalStructure(ontology_purl="UBERON:0000955"),
+        assoc = twu.ASSOCIATION_CLASSES["AnatomicalStructurePartOfAnatomicalStructure"](
+            subject=AnatomicalStructure(ontology_purl="UBERON:0000955"),
+            predicate="nlm-ckn:part_of",
+            object=AnatomicalStructure(ontology_purl="UBERON:0000468"),
         )
         self.assertEqual(
             twu.get_predicate_uri(assoc),
@@ -203,7 +203,7 @@ class GetPredicateUriTestCase(unittest.TestCase):
     def test_member_of(self):
         assoc = twu.ASSOCIATION_CLASSES["CellSetMemberOfCellSetDataset"](
             subject=CellSet(author_cell_term="T-Cell"),
-            predicate="member_of",
+            predicate="nlm-ckn:member_of",
             object=CellSetDataset(dataset_identifier="abc"),
         )
         self.assertEqual(
@@ -216,10 +216,12 @@ class AssociationToTuplesTestCase(unittest.TestCase):
     """Tests for association_to_tuples."""
 
     def _make_assoc(self):
-        return twu.ASSOCIATION_CLASSES["CellTypePartOfAnatomicalStructure"](
-            subject=CellType(ontology_purl="CL:0000235", label="macrophage"),
-            predicate="part_of",
-            object=AnatomicalStructure(ontology_purl="UBERON:0000955", label="brain"),
+        return twu.ASSOCIATION_CLASSES["AnatomicalStructurePartOfAnatomicalStructure"](
+            subject=AnatomicalStructure(ontology_purl="UBERON:0000955", label="brain"),
+            predicate="nlm-ckn:part_of",
+            object=AnatomicalStructure(
+                ontology_purl="UBERON:0000468", label="multicellular organism"
+            ),
         )
 
     def test_generates_core_triple(self):
@@ -227,9 +229,9 @@ class AssociationToTuplesTestCase(unittest.TestCase):
         triples = [t for t in tuples if len(t) == 3 and "#" not in str(t[1])]
         self.assertEqual(len(triples), 1)
         s, p, o = triples[0]
-        self.assertIn("CL_0000235", str(s))
+        self.assertIn("UBERON_0000955", str(s))
         self.assertIn("BFO_0000050", str(p))
-        self.assertIn("UBERON_0000955", str(o))
+        self.assertIn("UBERON_0000468", str(o))
 
     def test_generates_source_quintuple(self):
         tuples = twu.association_to_tuples(self._make_assoc(), source="TestSource")
@@ -263,9 +265,9 @@ class AssociationToTuplesTestCase(unittest.TestCase):
         self.assertEqual(len(annotations1), len(annotations2))
 
     def test_none_subject_returns_empty(self):
-        assoc = twu.ASSOCIATION_CLASSES["CellTypePartOfAnatomicalStructure"](
+        assoc = twu.ASSOCIATION_CLASSES["AnatomicalStructurePartOfAnatomicalStructure"](
             subject=None,
-            predicate="part_of",
+            predicate="nlm-ckn:part_of",
             object=AnatomicalStructure(ontology_purl="UBERON:0000955"),
         )
         self.assertEqual(twu.association_to_tuples(assoc), [])
@@ -378,7 +380,7 @@ class WriteTuplesDedupeTestCase(unittest.TestCase):
     def _make_drug_assoc(self, drug, mutation_rsid="rs12345"):
         return twu.ASSOCIATION_CLASSES["MutationHasPharmacologicalEffectDrug"](
             subject=Mutation(reference_sequence_identifier=mutation_rsid),
-            predicate="has_pharmacological_effect",
+            predicate="nlm-ckn:has_pharmacological_effect",
             object=drug,
         )
 
