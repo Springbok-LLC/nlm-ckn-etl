@@ -117,7 +117,7 @@ if [[ -n "${TAR_SOURCE}" && "${TAR_SOURCE}" != s3://* ]]; then
 
   if [[ "${TAR_SOURCE}" == http://* || "${TAR_SOURCE}" == https://* ]]; then
     echo "[trigger-release] Downloading tarball from ${TAR_SOURCE} ..."
-    TMP_TAR=$(mktemp --suffix=".tar.gz")
+    TMP_TAR=$(mktemp "${TMPDIR:-/tmp}/trigger-release-XXXXXX.tar.gz")
     curl_args=(--fail --location --output "${TMP_TAR}" "${TAR_SOURCE}")
     [[ -n "${GITHUB_TOKEN:-}" ]] && curl_args+=(--header "Authorization: Bearer ${GITHUB_TOKEN}")
     curl "${curl_args[@]}"

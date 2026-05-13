@@ -123,7 +123,8 @@ ENV PREFECT_TELEMETRY_ENABLED=false
 # ── Python dependencies ────────────────────────────────────────────────────
 # poetry is used only to export the pinned requirements from poetry.lock;
 # uv handles the actual install (parallel downloads, ~10-100x faster than pip).
-RUN pip install --no-cache-dir poetry==2.3.2 poetry-plugin-export
+RUN pip install --no-cache-dir poetry==2.3.2 \
+    && poetry self add poetry-plugin-export
 
 WORKDIR /app
 
