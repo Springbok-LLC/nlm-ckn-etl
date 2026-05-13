@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Prefect release flow for the NLM-CKN ETL pipeline.
 
-Drives a full end-to-end release from a cell-kn GitHub Release tag:
+Drives a full end-to-end release from an nlm-ckn GitHub Release tag:
 
 1. Download the release tarball from GitHub Releases and extract it to
    ``data/results-<run>/`` (preserving the nested organ/dataset structure).
@@ -19,9 +19,9 @@ The tarball (``prod-data-<tag>.tar.gz``) contains data under a nested
 directly into ``data/results-<run>/``, consistent with what
 ``LoaderUtilities.get_dataset_file_paths`` expects.
 
-HuBMap URLs are no longer bundled in the release archive.  Provide a
-local ``hubmap_urls.txt`` file via ``--hubmap-urls-file``; its contents
-are written into the results directory so downstream code can find them.
+HuBMap URLs are read from ``release.json`` at the repo root and written
+into the results directory as ``hubmap_urls.txt`` so downstream code can
+find them.
 
 Usage
 -----
@@ -81,30 +81,27 @@ _TARBALL_PREFIX = "data/prod/"
 def extract_release_tarball(
     tar_source: str,
     run_name: str,
-    hubmap_urls_file: str = "",
+    hubmap_urls: list,
 ) -> Path:
-    """Download (or copy) the cell-kn release tarball and extract it.
+    """Download (or copy) the nlm-ckn release tarball and extract it.
 
     The tarball (``prod-data-<tag>.tar.gz``) stores files under a nested
     ``data/prod/<organ>/...`` structure.  On extraction all files are flattened
     directly into ``data/results-<run_name>/``, discarding directory structure.
     Filenames are unique across datasets so no collisions occur.
 
-    HuBMap URLs are no longer bundled in the release.  If ``hubmap_urls_file``
-    is provided its contents are written to ``hubmap_urls.txt`` inside the
-    results directory so downstream code can find them.
+    HuBMap URLs (from ``release.json``) are written to ``hubmap_urls.txt``
+    inside the results directory so downstream code can find them.
 
     Parameters
     ----------
     tar_source:
-        Either an HTTPS URL (GitHub Release asset) or a local filesystem
-        path to the ``.tar.gz`` file.
+        HTTPS URL, S3 URL, or local filesystem path to the ``.tar.gz`` file.
     run_name:
         Run name used to name the extraction directory
         (``data/results-<run_name>/``).
-    hubmap_urls_file:
-        Optional path to a local ``hubmap_urls.txt`` file.  When omitted the
-        flow looks for ``data/hubmap_urls.txt`` in the repository root.
+    hubmap_urls:
+        List of HuBMap ASCT+B endpoint URLs from ``release.json``.
 
     Returns
     -------
@@ -159,27 +156,11 @@ def extract_release_tarball(
     if tar_path.parent == REPO_ROOT / "data" and tar_path.name.startswith("release-"):
         tar_path.unlink(missing_ok=True)
 
-    # Write hubmap_urls.txt into results_dir.  The source may be a local path
-    # or an S3 URL (uploaded by trigger-release.sh before job submission).
+    # Write hubmap_urls.txt into results_dir from the in-memory list sourced
+    # from release.json — no separate file transfer needed.
     hubmap_dst = results_dir / "hubmap_urls.txt"
-    if hubmap_urls_file and hubmap_urls_file.startswith("s3://"):
-        without_scheme = hubmap_urls_file[len("s3://"):]
-        bucket, _, key = without_scheme.partition("/")
-        logger.info(f"Downloading {hubmap_urls_file} → {hubmap_dst.name}")
-        boto3.client("s3").download_file(bucket, key, str(hubmap_dst))
-    else:
-        urls_src = (
-            Path(hubmap_urls_file)
-            if hubmap_urls_file
-            else REPO_ROOT / "data" / "hubmap_urls.txt"
-        )
-        if not urls_src.exists():
-            raise FileNotFoundError(
-                f"HuBMap URLs file not found: {urls_src}\n"
-                "Provide one via --hubmap-urls-file or place it at data/hubmap_urls.txt."
-            )
-        shutil.copy(urls_src, hubmap_dst)
-    logger.info(f"HuBMap URLs written to {hubmap_dst.name}")
+    hubmap_dst.write_text("\n".join(hubmap_urls) + "\n")
+    logger.info(f"HuBMap URLs written to {hubmap_dst.name} ({len(hubmap_urls)} entries)")
 
     csv_count = len(list(results_dir.glob("*_results.csv")))
     logger.info(f"Extracted {csv_count} NSForest result files to {results_dir.name}/")
@@ -311,14 +292,14 @@ def nlm_ckn_release(
     ncbi_email: str = "",
     ncbi_api_key: str = "",
     run_name: str = "",
-    github_repo: str = "rogermyung/cell-kn",
+    github_repo: str = "NIH-NLM/nlm-ckn",
     tar_source: str = "",
-    hubmap_urls_file: str = "",
+    release_config: str = "",
     skip_ontology: bool = False,
     max_fetch_age_hours: float = 48.0,
     java_opts: str = DEFAULT_JAVA_OPTS,
 ) -> None:
-    """End-to-end NLM-CKN release pipeline driven by a cell-kn GitHub tag.
+    """End-to-end NLM-CKN release pipeline driven by an nlm-ckn GitHub tag.
 
     Downloads the release tarball, fetches all external APIs fresh, then runs
     the three-phase ETL pipeline to produce a dated, versioned production
@@ -327,7 +308,7 @@ def nlm_ckn_release(
     Parameters
     ----------
     cell_kn_tag:
-        Git tag on the cell-kn repository identifying the release, e.g.
+        Git tag on the nlm-ckn repository identifying the release, e.g.
         ``"v0.0.1"``.  Used to locate the GitHub Release asset and, if
         ``run_name`` is omitted, to derive the run name.
     ncbi_email:
@@ -338,7 +319,7 @@ def nlm_ckn_release(
         ETL run name (scopes all output directories).  Defaults to
         ``cell_kn_tag`` with any leading ``v`` stripped (e.g. ``"0.0.1"``).
     github_repo:
-        ``owner/repo`` path for the cell-kn GitHub repository.  Used to
+        ``owner/repo`` path for the nlm-ckn GitHub repository.  Used to
         construct the Release asset URL when ``tar_source`` is not given.
         The source repository may change over time.
     tar_source:
@@ -346,11 +327,10 @@ def nlm_ckn_release(
         When omitted, the URL is derived from ``github_repo`` and
         ``cell_kn_tag`` using the ``prod-data-<tag>.tar.gz`` naming
         convention.
-    hubmap_urls_file:
-        Path to a local ``hubmap_urls.txt`` file.  HuBMap URLs are no longer
-        bundled in the release archive and must be provided here.  When
-        omitted the flow falls back to ``data/hubmap_urls.txt`` in the
-        repository root.
+    release_config:
+        Path or S3 URL for ``release.json``.  HuBMap URLs and other release
+        settings are read from this file.  Defaults to ``release.json`` in
+        the repository root.
     skip_ontology:
         Skip Phase 1 (ontology build) and reuse the existing baseline dump
         for this run.  Useful when re-running a release after a failed
@@ -369,6 +349,11 @@ def nlm_ckn_release(
     run_name = run_name or cell_kn_tag.lstrip("v")
     logger.info(f"Release: tag={cell_kn_tag}  run={run_name}")
 
+    cfg = _read_release_json(release_config)
+    hubmap_urls = cfg.get("hubmap_urls", [])
+    if not hubmap_urls:
+        raise ValueError("hubmap_urls is empty in release.json — cannot proceed")
+
     # Derive tarball URL from tag if not explicitly provided.
     if not tar_source:
         tar_name = f"prod-data-{cell_kn_tag}.tar.gz"
@@ -379,7 +364,7 @@ def nlm_ckn_release(
 
     # ── Step 1: Extract release tarball ──────────────────────────────────
     try:
-        extract_release_tarball(tar_source, run_name, hubmap_urls_file=hubmap_urls_file)
+        extract_release_tarball(tar_source, run_name, hubmap_urls)
         sync_release_dir_to_s3(run=run_name)
     except Exception:
         logger.error(
@@ -449,7 +434,50 @@ def nlm_ckn_release(
 
 # ── CLI entry point ────────────────────────────────────────────────────────
 
+def _read_release_json(release_config: str = "") -> dict:
+    """Read release.json from a local path or S3 URL."""
+    path = release_config or str(REPO_ROOT / "release.json")
+    if path.startswith("s3://"):
+        without_scheme = path[len("s3://"):]
+        bucket, _, key = without_scheme.partition("/")
+        with tempfile.NamedTemporaryFile(suffix=".json", delete=False) as tmp:
+            tmp_path = Path(tmp.name)
+        boto3.client("s3").download_file(bucket, key, str(tmp_path))
+        data = json.loads(tmp_path.read_text())
+        tmp_path.unlink(missing_ok=True)
+        return data
+    p = Path(path)
+    return json.loads(p.read_text()) if p.exists() else {}
+
+
+def _load_release_json() -> dict:
+    """Load release.json from the repo root into os.environ (setdefault).
+
+    Only sets keys not already present, so real env vars and CLI flags win.
+    Returns the parsed dict.
+    """
+    data = _read_release_json()
+    os.environ.setdefault("CELL_KN_TAG", str(data.get("cell_kn_tag") or ""))
+    os.environ.setdefault("GITHUB_REPO", str(data.get("github_repo") or "NIH-NLM/nlm-ckn"))
+    os.environ.setdefault("TAR_SOURCE", str(data.get("tar_source") or ""))
+    os.environ.setdefault("SKIP_ONTOLOGY", "true" if data.get("skip_ontology") else "false")
+    if data.get("max_fetch_age_hours") is not None:
+        os.environ.setdefault("MAX_FETCH_AGE_HOURS", str(data["max_fetch_age_hours"]))
+    return data
+
+
+def _save_release_json(updates: dict) -> None:
+    """Merge *updates* into release.json, preserving existing keys and order."""
+    config_path = REPO_ROOT / "release.json"
+    data = json.loads(config_path.read_text()) if config_path.exists() else {}
+    data.update({k: v for k, v in updates.items() if v is not None})
+    config_path.write_text(json.dumps(data, indent=4) + "\n")
+    print(f"[release] Saved config to {config_path}")
+
+
 if __name__ == "__main__":
+    _load_release_json()
+
     parser = argparse.ArgumentParser(
         description="NLM-CKN end-to-end release pipeline (Prefect)",
         formatter_class=argparse.RawDescriptionHelpFormatter,
@@ -457,9 +485,10 @@ if __name__ == "__main__":
     )
     parser.add_argument(
         "--tag",
-        required=True,
+        required=not os.getenv("CELL_KN_TAG"),
+        default=os.getenv("CELL_KN_TAG", ""),
         dest="cell_kn_tag",
-        help="cell-kn git tag, e.g. v2026-04",
+        help="Upstream nlm-ckn git tag, e.g. v2026-04 (default: cell_kn_tag from release.json)",
     )
     parser.add_argument(
         "--ncbi-email",
@@ -478,40 +507,54 @@ if __name__ == "__main__":
     )
     parser.add_argument(
         "--github-repo",
-        default="rogermyung/cell-kn",
-        help="GitHub owner/repo for cell-kn (default: rogermyung/cell-kn)",
+        default=os.getenv("GITHUB_REPO", "NIH-NLM/nlm-ckn"),
+        help="GitHub owner/repo for nlm-ckn (default: github_repo from release.json)",
     )
     parser.add_argument(
         "--tar-source",
-        default="",
-        help="Override tarball URL or local path (default: derived from --tag)",
+        default=os.getenv("TAR_SOURCE", ""),
+        help="Override tarball URL or local path (default: tar_source from release.json, or derived from --tag)",
     )
     parser.add_argument(
-        "--hubmap-urls-file",
+        "--release-config",
         default="",
-        help="Path to local hubmap_urls.txt (default: data/hubmap_urls.txt in repo root)",
+        help="Path or S3 URL for release.json (default: release.json in repo root)",
     )
     parser.add_argument(
         "--skip-ontology",
         action="store_true",
-        help="Skip Phase 1 and reuse existing baseline dump",
+        default=os.getenv("SKIP_ONTOLOGY", "false").lower() == "true",
+        help="Skip Phase 1 and reuse existing baseline dump (default: skip_ontology from release.json)",
     )
     parser.add_argument(
         "--max-fetch-age-hours",
         type=float,
-        default=48.0,
-        help=(
-            "Maximum acceptable external cache age in hours before forcing a full re-fetch "
-            "(default: 48). If the cache is younger, existing data is reused and only "
-            "previously-failed entries are retried."
-        ),
+        default=float(os.getenv("MAX_FETCH_AGE_HOURS") or 48.0),
+        help="Maximum external cache age in hours before forcing a re-fetch (default: max_fetch_age_hours from release.json, or 48)",
     )
     parser.add_argument(
         "--java-opts",
         default=DEFAULT_JAVA_OPTS,
         help=f"JVM flags (default: '{DEFAULT_JAVA_OPTS}')",
     )
+    parser.add_argument(
+        "--save-config",
+        action="store_true",
+        help=(
+            "Write effective --tag, --tar-source, --github-repo, --skip-ontology, "
+            "and --max-fetch-age-hours values back to release.json before running."
+        ),
+    )
     args = parser.parse_args()
+
+    if args.save_config:
+        _save_release_json({
+            "cell_kn_tag": args.cell_kn_tag,
+            "github_repo": args.github_repo,
+            "tar_source": args.tar_source,
+            "skip_ontology": args.skip_ontology,
+            "max_fetch_age_hours": args.max_fetch_age_hours,
+        })
 
     nlm_ckn_release(
         cell_kn_tag=args.cell_kn_tag,
@@ -520,7 +563,7 @@ if __name__ == "__main__":
         run_name=args.run_name,
         github_repo=args.github_repo,
         tar_source=args.tar_source,
-        hubmap_urls_file=args.hubmap_urls_file,
+        release_config=args.release_config,
         skip_ontology=args.skip_ontology,
         max_fetch_age_hours=args.max_fetch_age_hours,
         java_opts=args.java_opts,

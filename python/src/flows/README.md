@@ -52,7 +52,7 @@ the golden artifact and promotes all production artifacts to
 
 ### `release.py` — End-to-End Release
 
-Drives a full release from a cell-kn GitHub tag. Runs the three steps in
+Drives a full release from an nlm-ckn GitHub tag. Runs the three steps in
 sequence and promotes `runs/latest/` at the end only on full success.
 
 **Step 1** — Download and extract the release tarball into `data/results-{run}/`

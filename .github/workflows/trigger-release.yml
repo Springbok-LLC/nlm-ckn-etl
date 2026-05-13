@@ -22,7 +22,7 @@ on:
   workflow_dispatch:
     inputs:
       tag:
-        description: 'cell-kn release tag (e.g. v2026-04)'
+        description: 'nlm-ckn release tag (e.g. v2026-04)'
         required: true
         type: string
       tar_source:

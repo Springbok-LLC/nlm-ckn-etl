@@ -514,7 +514,7 @@ def validate_release_dir(run: str = "") -> None:
     if not results_dir.is_dir():
         raise FileNotFoundError(
             f"Release directory not found: {results_dir.name}/\n"
-            "Extract the cell-kn release zip first:\n"
+            "Extract the nlm-ckn release zip first:\n"
             f"  unzip release-{run_name}.zip -d data/results-{run_name}/"
         )
 

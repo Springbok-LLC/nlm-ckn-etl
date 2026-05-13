@@ -32,7 +32,7 @@ This repository provides:
   CL mappings, external data, and NLP results
 
 This is a unified repository that combines the previously separate
-`cell-kn-mvp-etl-ontologies` and `cell-kn-mvp-etl-results` repositories,
+`nlm-ckn-mvp-etl-ontologies` and `nlm-ckn-mvp-etl-results` repositories,
 eliminating the need for git submodules and system-scoped JAR dependencies.
 
 ## Project Structure
@@ -173,7 +173,7 @@ $ java -cp $CP gov.nih.nlm.OntologySlimmer
 ```
 
 The Python classes also require data in the
-[cell-kn](https://github.com/NIH-NLM/cell-kn) repository to be
+[nlm-ckn](https://github.com/NIH-NLM/nlm-ckn) repository to be
 accessible. Clone this repository at the same level as this repository.
 
 ### Python

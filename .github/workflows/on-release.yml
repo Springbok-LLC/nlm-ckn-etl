@@ -1,0 +1,52 @@
+name: On Release — Trigger ETL
+
+# Fires when a GitHub Release is published on this (ETL) repo.
+# Submits an AWS Batch job running release.py end-to-end (fetch + full ETL).
+# Returns immediately — monitor via CloudWatch (/batch/nlm-ckn-release) or the Batch console.
+#
+# The upstream nlm-ckn tag and all release settings come from the checked-in
+# release.json at the repo root, NOT from this repo's release tag.
+# A developer preparing a release should update release.json (cell_kn_tag, etc.)
+# and commit it before publishing the ETL release.
+#
+# Config (checked in, repo root):
+#   release.json  — cell_kn_tag, tar_source, skip_ontology, max_fetch_age_hours, hubmap_urls
+#
+# Required GitHub secrets:
+#   AWS_RELEASE_ROLE_ARN  — IAM role ARN to assume (batch:SubmitJob + s3:PutObject)
+#   AWS_REGION            — AWS region (e.g. us-east-1)
+#   S3_BUCKET             — S3 bucket for release artifacts
+
+on:
+  release:
+    types: [published]
+
+jobs:
+  submit:
+    name: Submit Batch release job
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write   # required for OIDC role assumption
+      contents: read
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_RELEASE_ROLE_ARN }}
+          aws-region: ${{ secrets.AWS_REGION }}
+
+      - name: Submit release job
+        env:
+          ETL_RELEASE_TAG: ${{ github.event.release.tag_name }}
+          GITHUB_TOKEN:    ${{ secrets.GITHUB_TOKEN }}
+          S3_BUCKET:       ${{ secrets.S3_BUCKET }}
+        run: |
+          CELL_KN_TAG=$(python3 -c "import json; d=json.load(open('release.json')); print(d['cell_kn_tag'])")
+          : "${CELL_KN_TAG:?cell_kn_tag must be set in release.json}"
+          echo "ETL release : ${ETL_RELEASE_TAG}"
+          echo "nlm-ckn tag : ${CELL_KN_TAG}"
+
+          bash src/main/shell/trigger-release.sh

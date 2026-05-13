@@ -63,7 +63,7 @@ class RunConfig:
         """Resolve paths for a named run.
 
         ``results_dir`` (``data/results-<run_name>/``) is expected to contain
-        the extracted contents of the cell-kn release zip, including
+        the extracted contents of the nlm-ckn release zip, including
         ``hubmap_urls.txt``.  No JSON config file is required.
         """
         results_dir = DATA_DIRPATH / f"results-{run_name}"
