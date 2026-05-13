@@ -92,11 +92,28 @@ if [[ -n "${TAR_SOURCE}" && -f "${TAR_SOURCE}" ]]; then
   echo "[trigger-release] Uploaded: ${TAR_SOURCE}"
 fi
 
+# ── Upload hubmap_urls.txt to S3 ──────────────────────────────────────────────
+# The file is not bundled in the release tarball and must be available to the
+# batch container. Upload it from the local repo so release.py can fetch it.
+HUBMAP_URLS_FILE="${HUBMAP_URLS_FILE:-${REPO_ROOT}/data/hubmap_urls.txt}"
+if [[ ! -f "${HUBMAP_URLS_FILE}" ]]; then
+  echo "ERROR: hubmap_urls.txt not found at ${HUBMAP_URLS_FILE}" >&2
+  echo "Set HUBMAP_URLS_FILE to the correct path." >&2
+  exit 1
+fi
+: "${S3_BUCKET:?S3_BUCKET must be set to upload hubmap_urls.txt}"
+HUBMAP_S3_KEY="uploads/hubmap_urls.txt"
+echo "[trigger-release] Uploading hubmap_urls.txt → s3://${S3_BUCKET}/${HUBMAP_S3_KEY} ..."
+aws s3 cp "${HUBMAP_URLS_FILE}" "s3://${S3_BUCKET}/${HUBMAP_S3_KEY}"
+HUBMAP_URLS_FILE="s3://${S3_BUCKET}/${HUBMAP_S3_KEY}"
+echo "[trigger-release] Uploaded: ${HUBMAP_URLS_FILE}"
+
 # ── Build container environment overrides ────────────────────────────────────
 # CELL_KN_TAG is always set. The rest are only included when non-empty so the
 # job definition defaults (and release.py defaults) remain in effect otherwise.
 env_json="[{\"name\":\"CELL_KN_TAG\",\"value\":\"${TAG}\"}"
 [[ -n "${TAR_SOURCE}"          ]] && env_json+=",{\"name\":\"TAR_SOURCE\",\"value\":\"${TAR_SOURCE}\"}"
+[[ -n "${HUBMAP_URLS_FILE}"    ]] && env_json+=",{\"name\":\"HUBMAP_URLS_FILE\",\"value\":\"${HUBMAP_URLS_FILE}\"}"
 [[ -n "${RUN_NAME}"            ]] && env_json+=",{\"name\":\"RUN_NAME\",\"value\":\"${RUN_NAME}\"}"
 [[ -n "${MAX_FETCH_AGE_HOURS}" ]] && env_json+=",{\"name\":\"MAX_FETCH_AGE_HOURS\",\"value\":\"${MAX_FETCH_AGE_HOURS}\"}"
 [[ -n "${JAVA_OPTS}"           ]] && env_json+=",{\"name\":\"JAVA_OPTS\",\"value\":\"${JAVA_OPTS}\"}"

@@ -18,7 +18,6 @@ name: Build and Push Docker Images
 # Required GitHub secrets:
 #   AWS_BUILD_ROLE_ARN  — IAM role to assume (needs ecr:GetAuthorizationToken,
 #                         ecr:BatchCheckLayerAvailability, ecr:PutImage, etc.)
-#   AWS_REGION          — AWS region (e.g. us-east-1)
 #   ECR_STACK_NAME      — CloudFormation stack name for ECR (default: nlm-ckn-etl-ecr)
 
 on:
@@ -55,7 +54,7 @@ jobs:
         uses: aws-actions/configure-aws-credentials@v4
         with:
           role-to-assume: ${{ secrets.AWS_BUILD_ROLE_ARN }}
-          aws-region: ${{ secrets.AWS_REGION }}
+          aws-region: us-east-1
 
       - name: Resolve ECR repository URIs from CloudFormation
         id: ecr
@@ -101,7 +100,7 @@ jobs:
       - name: Log in to ECR
         env:
           REGISTRY: ${{ steps.ecr.outputs.registry }}
-          AWS_REGION: ${{ secrets.AWS_REGION }}
+          AWS_REGION: us-east-1
         run: |
           aws ecr get-login-password --region "${AWS_REGION}" \
             | docker login --username AWS --password-stdin "${REGISTRY}"

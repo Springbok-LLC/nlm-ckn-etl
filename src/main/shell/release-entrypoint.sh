@@ -18,6 +18,7 @@
 #   SKIP_ONTOLOGY       — set to 'true' to reuse an existing baseline dump
 #   MAX_FETCH_AGE_HOURS — max external cache age before forcing a re-fetch (default: 48)
 #   JAVA_OPTS           — JVM flags (default: -Xmx32g)
+#   HUBMAP_URLS_FILE    — S3 URL for hubmap_urls.txt (uploaded by trigger-release.sh)
 #   GITHUB_TOKEN        — GitHub token for private repos or to avoid rate limits
 set -euo pipefail
 
@@ -35,6 +36,7 @@ args=(
 )
 
 [[ -n "${TAR_SOURCE:-}"           ]] && args+=(--tar-source         "${TAR_SOURCE}")
+[[ -n "${HUBMAP_URLS_FILE:-}"     ]] && args+=(--hubmap-urls-file    "${HUBMAP_URLS_FILE}")
 [[ -n "${RUN_NAME:-}"             ]] && args+=(--run-name            "${RUN_NAME}")
 [[ -n "${MAX_FETCH_AGE_HOURS:-}"  ]] && args+=(--max-fetch-age-hours "${MAX_FETCH_AGE_HOURS}")
 [[ -n "${JAVA_OPTS:-}"            ]] && args+=(--java-opts           "${JAVA_OPTS}")

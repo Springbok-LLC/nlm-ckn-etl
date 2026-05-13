@@ -102,9 +102,7 @@ Resources:
   ReleaseSecurityGroup:
     Type: AWS::EC2::SecurityGroup
     Properties:
-      GroupDescription: >
-        Outbound-only security group for the NLM-CKN release Batch job.
-        No inbound rules needed — job initiates all connections.
+      GroupDescription: Outbound-only security group for NLM-CKN Batch - no inbound rules needed
       VpcId: !Ref VpcId
       SecurityGroupEgress:
         - IpProtocol: '-1'

@@ -130,6 +130,13 @@ def extract_release_tarball(
         with urllib.request.urlopen(req) as resp, open(tar_path, "wb") as out:
             shutil.copyfileobj(resp, out)
         logger.info(f"Downloaded to {tar_path.name}")
+    elif tar_source.startswith("s3://"):
+        tar_path = REPO_ROOT / "data" / f"release-{run_name}.tar.gz"
+        without_scheme = tar_source[len("s3://"):]
+        bucket, _, key = without_scheme.partition("/")
+        logger.info(f"Downloading s3://{bucket}/{key} → {tar_path.name}")
+        boto3.client("s3").download_file(bucket, key, str(tar_path))
+        logger.info(f"Downloaded to {tar_path.name}")
     else:
         tar_path = Path(tar_source)
         logger.info(f"Using local tarball: {tar_path}")
@@ -152,17 +159,27 @@ def extract_release_tarball(
     if tar_path.parent == REPO_ROOT / "data" and tar_path.name.startswith("release-"):
         tar_path.unlink(missing_ok=True)
 
-    # Write hubmap_urls.txt into results_dir from a local source file.
-    urls_src = (
-        Path(hubmap_urls_file)
-        if hubmap_urls_file
-        else REPO_ROOT / "data" / "hubmap_urls.txt"
-    )
-    if urls_src.exists():
-        shutil.copy(urls_src, results_dir / "hubmap_urls.txt")
-        logger.info(f"Copied HuBMap URLs from {urls_src}")
+    # Write hubmap_urls.txt into results_dir.  The source may be a local path
+    # or an S3 URL (uploaded by trigger-release.sh before job submission).
+    hubmap_dst = results_dir / "hubmap_urls.txt"
+    if hubmap_urls_file and hubmap_urls_file.startswith("s3://"):
+        without_scheme = hubmap_urls_file[len("s3://"):]
+        bucket, _, key = without_scheme.partition("/")
+        logger.info(f"Downloading {hubmap_urls_file} → {hubmap_dst.name}")
+        boto3.client("s3").download_file(bucket, key, str(hubmap_dst))
     else:
-        logger.warning(f"No HuBMap URLs file found at {urls_src} — skipping")
+        urls_src = (
+            Path(hubmap_urls_file)
+            if hubmap_urls_file
+            else REPO_ROOT / "data" / "hubmap_urls.txt"
+        )
+        if not urls_src.exists():
+            raise FileNotFoundError(
+                f"HuBMap URLs file not found: {urls_src}\n"
+                "Provide one via --hubmap-urls-file or place it at data/hubmap_urls.txt."
+            )
+        shutil.copy(urls_src, hubmap_dst)
+    logger.info(f"HuBMap URLs written to {hubmap_dst.name}")
 
     csv_count = len(list(results_dir.glob("*_results.csv")))
     logger.info(f"Extracted {csv_count} NSForest result files to {results_dir.name}/")

@@ -1,0 +1,120 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: >
+  NLM-CKN GitHub OIDC — IAM role that allows GitHub Actions to push Docker
+  images to ECR without long-lived credentials.
+
+  The role is assumed via GitHub's OIDC provider. Multiple repositories can
+  be granted access via the GitHubRepos parameter.
+
+  Deploy this stack once per account. If a GitHub OIDC provider already
+  exists in the account, set CreateOidcProvider=false to skip creating it.
+
+# ── Parameters ──────────────────────────────────────────────────────────────
+Parameters:
+
+  CreateOidcProvider:
+    Type: String
+    Default: "true"
+    AllowedValues: ["true", "false"]
+    Description: >
+      Set to false if a GitHub Actions OIDC provider already exists in this
+      account (there can only be one per account).
+
+  GitHubRepos:
+    Type: CommaDelimitedList
+    Default: "repo:Springbok-LLC/nlm-ckn-etl:*"
+    Description: >
+      Repositories allowed to assume this role, in "repo:OWNER/REPO:*" format.
+      Comma-separate multiple values.
+
+  EcrStackName:
+    Type: String
+    Default: nlm-ckn-etl-ecr
+    Description: >
+      Name of the ECR CloudFormation stack. The role is granted push access
+      to all repositories in that stack.
+
+# ── Conditions ──────────────────────────────────────────────────────────────
+Conditions:
+  ShouldCreateOidcProvider: !Equals [!Ref CreateOidcProvider, "true"]
+
+# ── Resources ────────────────────────────────────────────────────────────────
+Resources:
+
+  GitHubOidcProvider:
+    Type: AWS::IAM::OIDCProvider
+    Condition: ShouldCreateOidcProvider
+    Properties:
+      Url: https://token.actions.githubusercontent.com
+      ClientIdList:
+        - sts.amazonaws.com
+      ThumbprintList:
+        # GitHub's OIDC thumbprint (stable; rotated by GitHub with notice)
+        - 6938fd4d98bab03faadb97b34396831e3780aea1
+        - 1c58a3a8518e8759bf075b76b750d4f2df264fcd
+
+  BuildRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: nlm-ckn-etl-github-build
+      Description: Assumed by GitHub Actions to build and push ECR images
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Federated: !If
+                - ShouldCreateOidcProvider
+                - !Ref GitHubOidcProvider
+                - !Sub "arn:aws:iam::${AWS::AccountId}:oidc-provider/token.actions.githubusercontent.com"
+            Action: sts:AssumeRoleWithWebIdentity
+            Condition:
+              StringEquals:
+                token.actions.githubusercontent.com:aud: sts.amazonaws.com
+              StringLike:
+                token.actions.githubusercontent.com:sub: !Ref GitHubRepos
+
+  BuildPolicy:
+    Type: AWS::IAM::Policy
+    Properties:
+      PolicyName: nlm-ckn-etl-github-build
+      Roles:
+        - !Ref BuildRole
+      PolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          # ECR login (account-wide; no resource restriction possible)
+          - Sid: EcrLogin
+            Effect: Allow
+            Action: ecr:GetAuthorizationToken
+            Resource: "*"
+
+          # ECR push to pipeline and fetcher repositories
+          - Sid: EcrPush
+            Effect: Allow
+            Action:
+              - ecr:BatchCheckLayerAvailability
+              - ecr:GetDownloadUrlForLayer
+              - ecr:BatchGetImage
+              - ecr:InitiateLayerUpload
+              - ecr:UploadLayerPart
+              - ecr:CompleteLayerUpload
+              - ecr:PutImage
+            Resource:
+              - !Sub "arn:aws:ecr:${AWS::Region}:${AWS::AccountId}:repository/nlm-ckn-etl-pipeline"
+              - !Sub "arn:aws:ecr:${AWS::Region}:${AWS::AccountId}:repository/nlm-ckn-etl-fetcher"
+
+          # CloudFormation read — resolves ECR repository URIs at build time
+          - Sid: CloudFormationDescribe
+            Effect: Allow
+            Action: cloudformation:DescribeStacks
+            Resource: !Sub "arn:aws:cloudformation:${AWS::Region}:${AWS::AccountId}:stack/${EcrStackName}/*"
+
+# ── Outputs ──────────────────────────────────────────────────────────────────
+Outputs:
+
+  BuildRoleArn:
+    Description: ARN of the GitHub Actions build role (use in AWS_BUILD_ROLE_ARN)
+    Value: !GetAtt BuildRole.Arn
+    Export:
+      Name: !Sub "${AWS::StackName}-BuildRoleArn"
