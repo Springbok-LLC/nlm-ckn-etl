@@ -38,4 +38,21 @@ jobs:
       - name: Run tests
         env:
           ARANGO_DB_PASSWORD: ${{ steps.arango-pw.outputs.password }}
-        run: poetry run pytest
+        run: poetry run pytest --junitxml=pytest-results.xml
+
+      - name: Publish Test Report
+        uses: ctrf-io/github-test-reporter@v1
+        if: always()
+        with:
+          # Point to your pytest XML output
+          report-path: 'python/pytest-results.xml'
+          summary-report: true
+          pull-request-report: true
+          # Conversion logic for Python's JUnit output
+          integrations-config: |
+                  {
+                    "junit-to-ctrf": {
+                      "enabled": true,
+                      "action": "convert"
+                    }
+                  }

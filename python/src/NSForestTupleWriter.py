@@ -122,7 +122,7 @@ def create_tuples(
             anat = AnatomicalStructure(ontology_purl=uberon_term.replace("_", ":"))
             assoc = ASSOCIATION_CLASSES["CellSetDatasetIsAboutAnatomicalStructure"](
                 subject=csd,
-                predicate="is_about",
+                predicate="nlm-ckn:is_about",
                 object=anat,
             )
             tuples.extend(association_to_tuples(assoc, source="NSForest"))

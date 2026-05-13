@@ -31,3 +31,20 @@ jobs:
 
       - name: Run tests
         run: mvn test
+
+      - name: Publish Test Report
+        uses: ctrf-io/github-test-reporter@v1
+        if: always()
+        with:
+          # Point to the directory or pattern containing your XML files
+          report-path: 'target/surefire-reports/*.xml'
+          summary-report: true     # Creates the Job Summary dashboard
+          pull-request-report: true # Posts a summary comment on the PR
+          # This replaces the 'reporter: java-junit' logic
+          integrations-config: |
+            {
+              "junit-to-ctrf": {
+                "enabled": true,
+                "action": "convert"
+              }
+            }
