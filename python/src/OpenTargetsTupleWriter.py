@@ -78,8 +78,6 @@ def create_tuples(opentargets_results: dict, gene_results: dict) -> list[tuple]:
     - DrugMolecularlyInteractsWithProtein
     - DrugIsSubstanceThatTreatsDisease
     - DrugEvaluatedInClinicalTrial
-    - DrugMolecularlyInteractsWithGene
-    - GeneMolecularlyInteractsWithGene
     - GeneHasQualityMutation
     - MutationHasPharmacologicalEffectDrug
 
@@ -284,56 +282,6 @@ def create_tuples(opentargets_results: dict, gene_results: dict) -> list[tuple]:
                                 annotated_terms=annotated,
                             )
                         )
-
-        # Drug molecularly_interacts_with Gene
-        for drug in ot_data.get("drugs", []):
-            if drug["drug"]["maximumClinicalStage"] not in VALID_PHASES:
-                continue
-            if any(
-                w["warningType"] == "Withdrawn"
-                for w in drug["drug"].get("drugWarnings", [])
-            ):
-                continue
-
-            chembl_id = drug["drug"]["id"].replace("CHEMBL", "")
-            drug_name = drug["drug"].get("name")
-            drug_entity_sym = Drug(label=drug_name)
-            ctx_sym = {"chembl_id": chembl_id}
-
-            assoc = ASSOCIATION_CLASSES["DrugMolecularlyInteractsWithGene"](
-                subject=drug_entity_sym,
-                predicate="molecularly_interacts_with",
-                object=gene_entity,
-            )
-            tuples.extend(
-                association_to_tuples(
-                    assoc, ctx_sym, source="Open Targets", annotated_terms=annotated
-                )
-            )
-
-        # Gene molecularly_interacts_with Gene
-        for interaction in ot_data.get("interactions", []):
-            target_b = interaction.get("targetB")
-            if target_b is None:
-                print(f"Warning: Missing interaction target for gene {gene_name}")
-                continue
-            gene_b_symbol = target_b.get("approvedSymbol")
-            if not gene_b_symbol:
-                print(
-                    f"Warning: No approved symbol for interaction target of gene {gene_name}"
-                )
-                continue
-            gene_b_entity = Gene(gene_symbol=gene_b_symbol)
-            assoc = ASSOCIATION_CLASSES["GeneMolecularlyInteractsWithGene"](
-                subject=gene_entity,
-                predicate="molecularly_interacts_with",
-                object=gene_b_entity,
-            )
-            tuples.extend(
-                association_to_tuples(
-                    assoc, source="Open Targets", annotated_terms=annotated
-                )
-            )
 
         # Gene has_quality Mutation, and Mutation has_pharmacological_effect
         # Drug
