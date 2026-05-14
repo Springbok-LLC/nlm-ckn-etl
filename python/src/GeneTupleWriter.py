@@ -93,7 +93,7 @@ def create_tuples(gene_results: dict) -> list[tuple]:
             )
             assoc = ASSOCIATION_CLASSES["GeneProducesProtein"](
                 subject=gene_entity,
-                predicate="produces",
+                predicate="nlm-ckn:produces",
                 object=protein_entity,
             )
             tuples.extend(association_to_tuples(assoc, source="UniProt"))

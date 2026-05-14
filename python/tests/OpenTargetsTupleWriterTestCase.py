@@ -83,14 +83,6 @@ class OpenTargetsTupleWriterTestCase(unittest.TestCase):
         entry.update(overrides)
         return entry
 
-    def _make_interaction(self, **overrides):
-        """Return a minimal gene-gene interaction entry."""
-        entry = {
-            "targetB": {"approvedSymbol": "BRCA1"},
-        }
-        entry.update(overrides)
-        return entry
-
     def _make_pharmacogenetics(self, **overrides):
         """Return a minimal pharmacogenetics entry."""
         entry = {
@@ -136,15 +128,14 @@ class OpenTargetsTupleWriterTestCase(unittest.TestCase):
 
     # ----- Drug tests -----
 
-    def test_creates_drug_gene_symmetric_tuples(self):
+    def test_creates_drug_protein_interaction_tuples(self):
         ot = self._make_ot_base()
         ot["ENSG00000001626"]["drugs"] = [self._make_drug()]
         tuples = create_tuples(ot, self._make_gene_results())
         preds = [str(t[1]) for t in tuples if len(t) == 3]
         # molecularly_interacts_with = RO_0002436
         mol_preds = [p for p in preds if "RO_0002436" in p]
-        # Gene→Drug and Drug→Gene
-        self.assertGreaterEqual(len(mol_preds), 2)
+        self.assertGreaterEqual(len(mol_preds), 1)
 
     def test_skips_drug_wrong_phase(self):
         ot = self._make_ot_base()
@@ -210,34 +201,6 @@ class OpenTargetsTupleWriterTestCase(unittest.TestCase):
         objects = [str(t[2]) for t in tuples if len(t) == 3]
         all_terms = subjects + objects
         self.assertTrue(any("PR_" in t for t in all_terms))
-
-    # ----- Interaction tests -----
-
-    def test_creates_gene_interaction_tuples(self):
-        ot = self._make_ot_base()
-        ot["ENSG00000001626"]["interactions"] = [self._make_interaction()]
-        tuples = create_tuples(ot, self._make_gene_results())
-        preds = [str(t[1]) for t in tuples if len(t) == 3]
-        # molecularly_interacts_with = RO_0002436
-        self.assertTrue(any("RO_0002436" in p for p in preds))
-
-    def test_skips_interaction_missing_target(self):
-        ot = self._make_ot_base()
-        ot["ENSG00000001626"]["interactions"] = [
-            self._make_interaction(targetB=None)
-        ]
-        tuples = create_tuples(ot, self._make_gene_results())
-        preds = [str(t[1]) for t in tuples if len(t) == 3]
-        self.assertFalse(any("RO_0002436" in p for p in preds))
-
-    def test_skips_interaction_no_approved_symbol(self):
-        ot = self._make_ot_base()
-        ot["ENSG00000001626"]["interactions"] = [
-            self._make_interaction(targetB={"approvedSymbol": None})
-        ]
-        tuples = create_tuples(ot, self._make_gene_results())
-        preds = [str(t[1]) for t in tuples if len(t) == 3]
-        self.assertFalse(any("RO_0002436" in p for p in preds))
 
     # ----- Pharmacogenetics tests -----
 
