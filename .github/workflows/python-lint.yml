@@ -9,7 +9,7 @@ on:
       - 'python/**'
 
 jobs:
-  lint-and-test:
+  lint:
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -31,6 +31,25 @@ jobs:
       - name: Run ruff check
         run: poetry run ruff check .
 
+  test:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: python
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install Poetry
+        run: pip install poetry
+
+      - name: Install dependencies
+        run: poetry install
+
       - name: Generate ArangoDB password
         id: arango-pw
         run: echo "password=$(openssl rand -hex 16)" >> "$GITHUB_OUTPUT"
@@ -44,11 +63,9 @@ jobs:
         uses: ctrf-io/github-test-reporter@v1
         if: always()
         with:
-          # Point to your pytest XML output
           report-path: 'python/pytest-results.xml'
           summary-report: true
           pull-request-report: true
-          # Conversion logic for Python's JUnit output
           integrations-config: |
                   {
                     "junit-to-ctrf": {

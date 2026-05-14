@@ -67,7 +67,7 @@ def find_obo_version(obo_filepath):
         version = datetime.strftime(
             datetime.strptime(version_info.text, "%Y-%m-%d"), "%Y-%m-%d"
         )
-    except Exception as e:
+    except Exception:
         try:
             version_iri = root.find(f"{OWL_NS}Ontology/{OWL_NS}versionIRI")
             version = datetime.strftime(
@@ -79,7 +79,7 @@ def find_obo_version(obo_filepath):
                 ),
                 "%Y-%m-%d",
             )
-        except Exception as e:
+        except Exception:
             print(f"Could not get version for {obo_filepath}")
             version = None
     return version
@@ -138,7 +138,7 @@ def update_downloads(urls, download_dirpath, find_version):
                 download_filepath_new.rename(download_filepath_cur)
 
             else:
-                print(f"New version is not newer than current version")
+                print("New version is not newer than current version")
                 print(f"Removing {download_filepath_new}")
                 download_filepath_new.unlink()
 
@@ -891,7 +891,7 @@ def update_vertex_from_triple(vertex_collections, s, p, o, ro=None):
 
     # Use the predicate as the key, and the object as the value in the
     # vertex document
-    if not predicate in vertex:
+    if predicate not in vertex:
         vertex[predicate] = value
 
     else:
@@ -1009,7 +1009,7 @@ def update_edge_from_quadruple(
 
     # Use the predicate as the key, and the object as the value in the
     # edge document
-    if not predicate in edge:
+    if predicate not in edge:
         edge[predicate] = value
 
     else:

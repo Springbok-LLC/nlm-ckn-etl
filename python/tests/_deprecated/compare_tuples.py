@@ -106,7 +106,7 @@ def diff_tuples(old_tuples, new_tuples, label):
     print(f"  Only in NEW:   {len(only_new)}")
 
     if only_old:
-        print(f"\n  Sample tuples only in OLD (up to 10):")
+        print("\n  Sample tuples only in OLD (up to 10):")
         old_by_type = Counter(classify_tuple(t) for t in only_old)
         for k in sorted(old_by_type):
             print(f"    {k}: {old_by_type[k]}")
@@ -115,7 +115,7 @@ def diff_tuples(old_tuples, new_tuples, label):
             print(f"    {short}")
 
     if only_new:
-        print(f"\n  Sample tuples only in NEW (up to 10):")
+        print("\n  Sample tuples only in NEW (up to 10):")
         new_by_type = Counter(classify_tuple(t) for t in only_new)
         for k in sorted(new_by_type):
             print(f"    {k}: {new_by_type[k]}")
@@ -276,7 +276,6 @@ def compare_external_api():
     from ExternalApiResultsFetcher import (
         CELLXGENE_PATH,
         OPENTARGETS_PATH,
-        OPENTARGETS_RESOURCES,
         GENE_PATH,
         UNIPROT_PATH,
         HUBMAP_DIRPATH,

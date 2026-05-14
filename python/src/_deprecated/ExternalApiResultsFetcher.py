@@ -286,7 +286,7 @@ def get_opentargets_results(
 
                     opentargets_results[gene_ensembl_id][resource] = resource_data
 
-            except Exception as exc:
+            except Exception:
                 print(
                     f"Could not assign Open Targets resources for gene Ensembl id {gene_ensembl_id}"
                 )
@@ -811,7 +811,7 @@ def get_gene_results(gene_entrez_ids, force=False):
                 print(f"Assigning gene data for gene Entrez id {gene_entrez_id}")
                 gene_results[gene_entrez_id] = get_data_for_gene_id(gene_entrez_id)
 
-            except Exception as exc:
+            except Exception:
                 print(f"Could not assign gene data for gene Entrez id {gene_entrez_id}")
                 gene_results[gene_entrez_id] = {}
 
@@ -1070,7 +1070,7 @@ def download_hubmap_data_tables():
                 try:
                     shutil.move(Path(pathname), HUBMAP_DIRPATH / ".archive")
                     print(f"Archived HuBMAP data table {pathname}")
-                except Exception as exc:
+                except Exception:
                     # Since already archived, though should never happen
                     os.remove(pathname)
                     print(f"Removed HuBMAP data table {pathname}")

@@ -9,12 +9,16 @@ package-mode = false
 [tool.poetry.dependencies]
 python = ">=3.10,<3.13"
 arango-rdf = ">=1.0"
-ckn-schema = {url = "https://github.com/Springbok-LLC/nlm-ckn-schema/releases/download/v0.0.0-alpha/ckn_schema-0.0.0a1.dev0+ga586c9762.d20260514-py3-none-any.whl"}
+ckn-schema = {url = "https://github.com/Springbok-LLC/nlm-ckn-schema/releases/download/v0.0.0-alpha.2/ckn_schema-0.0.0a2-py3-none-any.whl"}
 cellxgene-census = ">=1.14"
+docker = ">=7.0"
 gget = ">=0.29"
 kgx = {url = "https://github.com/rogermyung/kgx/releases/download/v0.0.0/kgx-0.0.0.post1931.dev0+004034c-py3-none-any.whl"}
 ontogpt = ">=0.3"
 plotly = ">=5.22"
+boto3 = ">=1.34"
+botocore = {version = ">=1.34", extras = ["crt"]}
+prefect = ">=3.0"
 pybiomart = ">=0.2"
 mysql-connector-python = "9.6.0"
 networkx = ">=3.0"
@@ -23,6 +27,7 @@ python-arango = ">=8.1,<9.0.0"
 rdflib = ">=7.0"
 scanpy = ">=1.10"
 scikit-misc = ">=0.3"
+greenlet = "^3.5.0"
 
 [tool.poetry.group.dev.dependencies]
 ruff = ">=0.15.5"
@@ -35,6 +40,16 @@ sphinx = ">=8.1"
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+python_files = ["*TestCase.py"]
+norecursedirs = ["_deprecated"]
+
+[tool.ruff]
+exclude = [
+    "_deprecated",
+    "tests",
+    "dist",
+    "venv",
+]
 
 [build-system]
 requires = ["poetry-core"]

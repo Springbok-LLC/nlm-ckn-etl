@@ -11,7 +11,6 @@ import json
 import re
 from pathlib import Path
 from typing import Any
-from urllib.parse import urlparse
 
 import pandas as pd
 from rdflib.term import Literal, URIRef

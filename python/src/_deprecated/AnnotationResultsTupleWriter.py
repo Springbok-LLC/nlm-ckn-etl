@@ -133,7 +133,7 @@ def normalize_term(annotation, term, mesh2mondo):
             "BMC_"
             + annotation[f"{term}_name"]
             + "-"
-            + annotation[f"subject_identifier"].split("-")[0]
+            + annotation["subject_identifier"].split("-")[0]
         )
 
     elif atype == "Cell_set":
@@ -141,7 +141,7 @@ def normalize_term(annotation, term, mesh2mondo):
             "CS_"
             + hyphenate(annotation[f"{term}_name"])
             + "-"
-            + annotation[f"subject_identifier"].split("-")[0]
+            + annotation["subject_identifier"].split("-")[0]
         )
 
     elif atype == "Cell_set_dataset":

@@ -2,7 +2,6 @@ import ast
 import json
 from pathlib import Path
 
-import pandas as pd
 from rdflib.term import Literal, URIRef
 
 from ExternalApiResultsFetcher import CELLXGENE_PATH
