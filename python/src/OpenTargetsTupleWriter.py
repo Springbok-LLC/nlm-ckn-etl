@@ -78,8 +78,6 @@ def create_tuples(opentargets_results: dict, gene_results: dict) -> list[tuple]:
     - DrugMolecularlyInteractsWithProtein
     - DrugIsSubstanceThatTreatsDisease
     - DrugEvaluatedInClinicalTrial
-    - DrugMolecularlyInteractsWithGene
-    - GeneMolecularlyInteractsWithGene
     - GeneHasQualityMutation
     - MutationHasPharmacologicalEffectDrug
 
@@ -149,7 +147,7 @@ def create_tuples(opentargets_results: dict, gene_results: dict) -> list[tuple]:
 
             assoc = ASSOCIATION_CLASSES["GeneIsGeneticBasisForDisease"](
                 subject=gene_entity,
-                predicate="is_genetic_basis_for_condition",
+                predicate="nlm-ckn:is_genetic_basis_for_condition",
                 object=disease_entity,
             )
             tuples.extend(
@@ -227,7 +225,7 @@ def create_tuples(opentargets_results: dict, gene_results: dict) -> list[tuple]:
                 )
                 assoc = ASSOCIATION_CLASSES["DrugMolecularlyInteractsWithProtein"](
                     subject=drug_entity,
-                    predicate="molecularly_interacts_with",
+                    predicate="nlm-ckn:molecularly_interacts_with",
                     object=protein_entity,
                 )
                 tuples.extend(
@@ -256,7 +254,7 @@ def create_tuples(opentargets_results: dict, gene_results: dict) -> list[tuple]:
                     )
                     assoc = ASSOCIATION_CLASSES["DrugIsSubstanceThatTreatsDisease"](
                         subject=drug_entity,
-                        predicate="is_substance_that_treats",
+                        predicate="nlm-ckn:is_substance_that_treats",
                         object=disease_entity,
                     )
                     tuples.extend(
@@ -273,7 +271,7 @@ def create_tuples(opentargets_results: dict, gene_results: dict) -> list[tuple]:
                         ct_entity = ClinicalTrial(study_id=trial_id)
                         assoc = ASSOCIATION_CLASSES["DrugEvaluatedInClinicalTrial"](
                             subject=drug_entity,
-                            predicate="evaluated_in",
+                            predicate="nlm-ckn:evaluated_in",
                             object=ct_entity,
                         )
                         tuples.extend(
@@ -284,56 +282,6 @@ def create_tuples(opentargets_results: dict, gene_results: dict) -> list[tuple]:
                                 annotated_terms=annotated,
                             )
                         )
-
-        # Drug molecularly_interacts_with Gene
-        for drug in ot_data.get("drugs", []):
-            if drug["drug"]["maximumClinicalStage"] not in VALID_PHASES:
-                continue
-            if any(
-                w["warningType"] == "Withdrawn"
-                for w in drug["drug"].get("drugWarnings", [])
-            ):
-                continue
-
-            chembl_id = drug["drug"]["id"].replace("CHEMBL", "")
-            drug_name = drug["drug"].get("name")
-            drug_entity_sym = Drug(label=drug_name)
-            ctx_sym = {"chembl_id": chembl_id}
-
-            assoc = ASSOCIATION_CLASSES["DrugMolecularlyInteractsWithGene"](
-                subject=drug_entity_sym,
-                predicate="molecularly_interacts_with",
-                object=gene_entity,
-            )
-            tuples.extend(
-                association_to_tuples(
-                    assoc, ctx_sym, source="Open Targets", annotated_terms=annotated
-                )
-            )
-
-        # Gene molecularly_interacts_with Gene
-        for interaction in ot_data.get("interactions", []):
-            target_b = interaction.get("targetB")
-            if target_b is None:
-                print(f"Warning: Missing interaction target for gene {gene_name}")
-                continue
-            gene_b_symbol = target_b.get("approvedSymbol")
-            if not gene_b_symbol:
-                print(
-                    f"Warning: No approved symbol for interaction target of gene {gene_name}"
-                )
-                continue
-            gene_b_entity = Gene(gene_symbol=gene_b_symbol)
-            assoc = ASSOCIATION_CLASSES["GeneMolecularlyInteractsWithGene"](
-                subject=gene_entity,
-                predicate="molecularly_interacts_with",
-                object=gene_b_entity,
-            )
-            tuples.extend(
-                association_to_tuples(
-                    assoc, source="Open Targets", annotated_terms=annotated
-                )
-            )
 
         # Gene has_quality Mutation, and Mutation has_pharmacological_effect
         # Drug
@@ -362,7 +310,7 @@ def create_tuples(opentargets_results: dict, gene_results: dict) -> list[tuple]:
             # Gene has_quality Mutation
             assoc = ASSOCIATION_CLASSES["GeneHasQualityMutation"](
                 subject=gene_entity,
-                predicate="has_quality",
+                predicate="nlm-ckn:has_quality",
                 object=mutation_entity,
             )
             tuples.extend(
@@ -414,7 +362,7 @@ def create_tuples(opentargets_results: dict, gene_results: dict) -> list[tuple]:
                 pg_chembl_id = drug_id.replace("CHEMBL", "")
                 assoc = ASSOCIATION_CLASSES["MutationHasPharmacologicalEffectDrug"](
                     subject=mutation_entity,
-                    predicate="has_pharmacological_effect",
+                    predicate="nlm-ckn:has_pharmacological_effect",
                     object=pg_drug_entity,
                 )
                 tuples.extend(

@@ -123,7 +123,7 @@ def create_tuples(
             anat = AnatomicalStructure(ontology_purl=uberon_term.replace("_", ":"))
             assoc = ASSOCIATION_CLASSES["CellSetDatasetIsAboutAnatomicalStructure"](
                 subject=csd,
-                predicate="is_about",
+                predicate="nlm-ckn:is_about",
                 object=anat,
             )
             tuples.extend(association_to_tuples(assoc, source="NSForest"))
@@ -184,7 +184,7 @@ def create_tuples(
             anat = AnatomicalStructure(ontology_purl=uberon_term.replace("_", ":"))
             assoc = ASSOCIATION_CLASSES["CellSetDerivesFromAnatomicalStructure"](
                 subject=cell_set,
-                predicate="derives_from",
+                predicate="nlm-ckn:derives_from",
                 object=anat,
             )
             tuples.extend(
@@ -196,7 +196,7 @@ def create_tuples(
         # CellSet expresses BinaryGeneSet
         assoc = ASSOCIATION_CLASSES["CellSetExpressesBinaryGeneSet"](
             subject=cell_set,
-            predicate="expresses",
+            predicate="nlm-ckn:expresses",
             object=bgs,
         )
         tuples.extend(
@@ -210,7 +210,7 @@ def create_tuples(
             gene = Gene(gene_symbol=gene_symbol)
             assoc = ASSOCIATION_CLASSES["CellSetExpressesGene"](
                 subject=cell_set,
-                predicate="expresses",
+                predicate="nlm-ckn:expresses",
                 object=gene,
             )
             tuples.extend(
@@ -224,7 +224,7 @@ def create_tuples(
             "CellSetHasCharacterizingMarkerSetBiomarkerCombination"
         ](
             subject=cell_set,
-            predicate="has_characterizing_marker_set",
+            predicate="nlm-ckn:has_characterizing_marker_set",
             object=bmc,
         )
         tuples.extend(
@@ -262,7 +262,7 @@ def create_tuples(
         for dvid, (csd, _) in csd_by_dvid.items():
             assoc = ASSOCIATION_CLASSES["CellSetMemberOfCellSetDataset"](
                 subject=cell_set,
-                predicate="member_of",
+                predicate="nlm-ckn:member_of",
                 object=csd,
             )
             tuples.extend(
@@ -276,7 +276,7 @@ def create_tuples(
             gene = Gene(gene_symbol=gene_symbol)
             assoc = ASSOCIATION_CLASSES["GenePartOfBiomarkerCombination"](
                 subject=gene,
-                predicate="part_of",
+                predicate="nlm-ckn:part_of",
                 object=bmc,
             )
             tuples.extend(
@@ -288,7 +288,7 @@ def create_tuples(
         # BiomarkerCombination subcluster_of BinaryGeneSet
         assoc = ASSOCIATION_CLASSES["BiomarkerCombinationSubclusterOfBinaryGeneSet"](
             subject=bmc,
-            predicate="subcluster_of",
+            predicate="nlm-ckn:subcluster_of",
             object=bgs,
         )
         tuples.extend(

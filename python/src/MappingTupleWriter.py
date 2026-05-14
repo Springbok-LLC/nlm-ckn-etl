@@ -50,7 +50,6 @@ def create_tuples(
     """Create tuples from author-to-CL mapping results.
 
     Produces:
-    - CellTypePartOfAnatomicalStructure
     - CellSetComposedPrimarilyOfCellType
     - CellTypeHasExemplarDataCellSetDataset
 
@@ -154,22 +153,10 @@ def create_tuples(
         ctx = {"uuid": uuid}
         annotated = set()
 
-        # CellType part_of AnatomicalStructure
-        assoc = ASSOCIATION_CLASSES["CellTypePartOfAnatomicalStructure"](
-            subject=cell_type,
-            predicate="part_of",
-            object=anat,
-        )
-        tuples.extend(
-            association_to_tuples(
-                assoc, ctx, source="Manual Mapping", annotated_terms=annotated
-            )
-        )
-
         # CellSet composed_primarily_of CellType
         assoc = ASSOCIATION_CLASSES["CellSetComposedPrimarilyOfCellType"](
             subject=cell_set,
-            predicate="composed_primarily_of",
+            predicate="nlm-ckn:composed_primarily_of",
             object=cell_type,
         )
         tuples.extend(
@@ -226,7 +213,7 @@ def create_tuples(
             )
             assoc = ASSOCIATION_CLASSES["CellTypeHasExemplarDataCellSetDataset"](
                 subject=cell_type,
-                predicate="has_exemplar_data",
+                predicate="nlm-ckn:has_exemplar_data",
                 object=csd,
             )
             tuples.extend(
