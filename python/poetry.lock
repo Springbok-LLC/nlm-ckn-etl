@@ -1228,25 +1228,24 @@ files = [
 
 [[package]]
 name = "ckn-schema"
-version = "0.1.dev86+g522010d84"
+version = "0.0.0a1.dev0+ga586c9762.d20260514"
 description = "LinkML data model for cell phenotypes and biological entities."
 optional = false
 python-versions = ">=3.9"
 groups = ["main"]
-files = []
-develop = false
+files = [
+    {file = "ckn_schema-0.0.0a1.dev0+ga586c9762.d20260514-py3-none-any.whl", hash = "sha256:546872729bbf5630af222db892ff93832983310242293094a9d3a79208810f27"},
+]
 
 [package.dependencies]
 linkml-runtime = ">=1.9,<2"
 
 [package.extras]
-dev = ["linkml (>=1.8,<2)"]
+dev = ["jsonschema", "linkml (>=1.8,<2)", "rdflib"]
 
 [package.source]
-type = "git"
-url = "ssh://git@github.com/Springbok-LLC/nlm-ckn-schema.git"
-reference = "ralatsdc/remove-gene-molecularly-interacts-with-gene"
-resolved_reference = "522010d8407696a6cbdafdff0168bf896960dcf4"
+type = "url"
+url = "https://github.com/Springbok-LLC/nlm-ckn-schema/releases/download/v0.0.0-alpha/ckn_schema-0.0.0a1.dev0+ga586c9762.d20260514-py3-none-any.whl"
 
 [[package]]
 name = "class-resolver"
@@ -3875,8 +3874,9 @@ description = "A Python library and set of command line utilities for exchanging
 optional = false
 python-versions = "<4,>=3.10"
 groups = ["main"]
-files = []
-develop = false
+files = [
+    {file = "kgx-0.0.0.post1931.dev0+004034c-py3-none-any.whl", hash = "sha256:1844c9742a6cfd6b2a3b7bd351295c09df77027b20f0be6e29b5da424ed16d0e"},
+]
 
 [package.dependencies]
 bmt = ">=1.4.6,<2.0.0"
@@ -3913,10 +3913,8 @@ terminaltables = ">=3.1.0,<4.0.0"
 validators = ">=0.20.0,<1.0.0"
 
 [package.source]
-type = "git"
-url = "ssh://git@github.com/ralatsdc/kgx.git"
-reference = "master"
-resolved_reference = "004034cad6578f26a7d6af8ccea02e84155abc0e"
+type = "url"
+url = "https://github.com/rogermyung/kgx/releases/download/v0.0.0/kgx-0.0.0.post1931.dev0+004034c-py3-none-any.whl"
 
 [[package]]
 name = "kiwisolver"
@@ -5760,7 +5758,6 @@ description = "Powerful data structures for data analysis, time series, and stat
 optional = false
 python-versions = ">=3.9"
 groups = ["main"]
-markers = "python_version == \"3.10\""
 files = [
     {file = "pandas-2.3.3-cp310-cp310-macosx_10_9_x86_64.whl", hash = "sha256:376c6446ae31770764215a6c937f72d917f214b43560603cd60da6408f183b6c"},
     {file = "pandas-2.3.3-cp310-cp310-macosx_11_0_arm64.whl", hash = "sha256:e19d192383eab2f4ceb30b412b22ea30690c9e618f78870357ae1d682912015a"},
@@ -5820,7 +5817,11 @@ files = [
 ]
 
 [package.dependencies]
-numpy = {version = ">=1.22.4", markers = "python_version < \"3.11\""}
+numpy = [
+    {version = ">=1.22.4", markers = "python_version < \"3.11\""},
+    {version = ">=1.23.2", markers = "python_version == \"3.11\""},
+    {version = ">=1.26.0", markers = "python_version >= \"3.12\""},
+]
 python-dateutil = ">=2.8.2"
 pytz = ">=2020.1"
 tzdata = ">=2022.7"
@@ -5849,96 +5850,6 @@ spss = ["pyreadstat (>=1.2.0)"]
 sql-other = ["SQLAlchemy (>=2.0.0)", "adbc-driver-postgresql (>=0.8.0)", "adbc-driver-sqlite (>=0.8.0)"]
 test = ["hypothesis (>=6.46.1)", "pytest (>=7.3.2)", "pytest-xdist (>=2.2.0)"]
 xml = ["lxml (>=4.9.2)"]
-
-[[package]]
-name = "pandas"
-version = "3.0.3"
-description = "Powerful data structures for data analysis, time series, and statistics"
-optional = false
-python-versions = ">=3.11"
-groups = ["main"]
-markers = "python_version >= \"3.11\""
-files = [
-    {file = "pandas-3.0.3-cp311-cp311-macosx_10_9_x86_64.whl", hash = "sha256:455f6f8139d4282188f526868dbc3c828470e88a3d9d59a891bd46a455f21b98"},
-    {file = "pandas-3.0.3-cp311-cp311-macosx_11_0_arm64.whl", hash = "sha256:4e15135e2ee5df1063313e2425ceef8ac0f4ae775893815b0923651b806a5639"},
-    {file = "pandas-3.0.3-cp311-cp311-manylinux_2_24_aarch64.manylinux_2_28_aarch64.whl", hash = "sha256:05f1f1752b8533ea03f7f39a9c15b1a058d067bb48f4748948e7a8691e0510f2"},
-    {file = "pandas-3.0.3-cp311-cp311-manylinux_2_24_x86_64.manylinux_2_28_x86_64.whl", hash = "sha256:8a1e45c80cceb3b4a21bc5939d52e8cbd8d9b7305309219d59e9754d9ce09e27"},
-    {file = "pandas-3.0.3-cp311-cp311-musllinux_1_2_aarch64.whl", hash = "sha256:14da8316da4d0c5a77618425996bfb1248ca87fc2c1486e6fde4652bd18b5824"},
-    {file = "pandas-3.0.3-cp311-cp311-musllinux_1_2_x86_64.whl", hash = "sha256:a55066a0505dae0ba2b50a46637db34b46f9094c65c5d4800794ef6335010938"},
-    {file = "pandas-3.0.3-cp311-cp311-win_amd64.whl", hash = "sha256:6674ab18ad8c57802867264b00e15e7bb904700cdd9046e3b2fa1fce237439ea"},
-    {file = "pandas-3.0.3-cp311-cp311-win_arm64.whl", hash = "sha256:5cc09a68b3120e0f54870dede8287a7bb1fa463907e4fcec1ea77cab6179bf7a"},
-    {file = "pandas-3.0.3-cp312-cp312-macosx_10_13_x86_64.whl", hash = "sha256:fed2ff7fd9779120e388e285fc029bd5cf9490cdd2e4166a9ee22c0e49a9ab09"},
-    {file = "pandas-3.0.3-cp312-cp312-macosx_11_0_arm64.whl", hash = "sha256:b168fc218fd80a6cbdbdbc1a97ddc7889ed057d7eb45f50d866ceab5f39904c4"},
-    {file = "pandas-3.0.3-cp312-cp312-manylinux_2_24_aarch64.manylinux_2_28_aarch64.whl", hash = "sha256:0383c72c75cdcca61a9e116e611143902dbfd08bff356829c2f6d1cf40a9ca8c"},
-    {file = "pandas-3.0.3-cp312-cp312-manylinux_2_24_x86_64.manylinux_2_28_x86_64.whl", hash = "sha256:6dc0b3fd2169c9157deed50b4d519553a3655c8c6a96027136d654592be973a9"},
-    {file = "pandas-3.0.3-cp312-cp312-musllinux_1_2_aarch64.whl", hash = "sha256:7e65d5407dc0b394f509699650e4a2ec01c0514f21850f453fa60f3be79a5dbf"},
-    {file = "pandas-3.0.3-cp312-cp312-musllinux_1_2_x86_64.whl", hash = "sha256:f8894dc474d648fe7b6ff0ca9b0bd73950d19952bc1a6534540762c5d79d305c"},
-    {file = "pandas-3.0.3-cp312-cp312-win_amd64.whl", hash = "sha256:c7be265b62cef88e253a941e4698604973736dcfe242fdb5198f0f7bc473cdcc"},
-    {file = "pandas-3.0.3-cp312-cp312-win_arm64.whl", hash = "sha256:557409bc4178e70ee8d9ddb494798e51ebf6ea59330f6be22c51bab2a7db6c49"},
-    {file = "pandas-3.0.3-cp313-cp313-macosx_10_13_x86_64.whl", hash = "sha256:67b3b64c11910cfa29f4e94a14d3bff9ee693b6fc76055e7cad549cee0aec5fa"},
-    {file = "pandas-3.0.3-cp313-cp313-macosx_11_0_arm64.whl", hash = "sha256:39436b377d56d2a2e52d0395bdbee171f01068e99af5250509aceeb929f765c7"},
-    {file = "pandas-3.0.3-cp313-cp313-manylinux_2_24_aarch64.manylinux_2_28_aarch64.whl", hash = "sha256:d4be06d68f9ddcfc645b87534911da79a8fbffc7573c80e0edcf42a5020624d8"},
-    {file = "pandas-3.0.3-cp313-cp313-manylinux_2_24_x86_64.manylinux_2_28_x86_64.whl", hash = "sha256:a4eeb6830daf35a71cc09649bd823e2b542dac246cdee9614c6e4bd65028cd6a"},
-    {file = "pandas-3.0.3-cp313-cp313-musllinux_1_2_aarch64.whl", hash = "sha256:1928e07221f82db493cd4af1e23c1bfca524a19a4699887975bff68f49a72bfb"},
-    {file = "pandas-3.0.3-cp313-cp313-musllinux_1_2_x86_64.whl", hash = "sha256:51b1fe551acb77dac643c6fda86084d8d446c10fe64b06a9cc29c4cc8540e7f2"},
-    {file = "pandas-3.0.3-cp313-cp313-win_amd64.whl", hash = "sha256:a82d532a3351d435432cd913edbccaf8b8e01d4dd0e5ced5a8d2e8ecd94c7e44"},
-    {file = "pandas-3.0.3-cp313-cp313-win_arm64.whl", hash = "sha256:275c14e0fce14a2ec20eee474aecd305478ea3c1e6f6a9d8fe219a165542717e"},
-    {file = "pandas-3.0.3-cp313-cp313t-macosx_10_13_x86_64.whl", hash = "sha256:46997386d528eb40376ecd6b033cf4a8a1e5282580f68f43de875b78cba2199d"},
-    {file = "pandas-3.0.3-cp313-cp313t-macosx_11_0_arm64.whl", hash = "sha256:261e308dfb22448384b7580cf719d2f998fe2966c92893c3e77d14008af1f066"},
-    {file = "pandas-3.0.3-cp313-cp313t-manylinux_2_24_aarch64.manylinux_2_28_aarch64.whl", hash = "sha256:dd1a5d1def6a46002e964510bdc67c368aa0951df5d1d9f8365336f5a1f490cd"},
-    {file = "pandas-3.0.3-cp313-cp313t-manylinux_2_24_x86_64.manylinux_2_28_x86_64.whl", hash = "sha256:d72828c20c6d6e83e1e22a6a3b47b326b71664112fa9705dcbccfd7a39b62085"},
-    {file = "pandas-3.0.3-cp313-cp313t-musllinux_1_2_aarch64.whl", hash = "sha256:d26cbe1fcfc12e8fd900e2454163e466b2d3af84f7c75481df7683ffc073d870"},
-    {file = "pandas-3.0.3-cp313-cp313t-musllinux_1_2_x86_64.whl", hash = "sha256:3e91cec1879ada0624fc3dc9953c5cbd60208e59c0db28f540c5d6d47502422f"},
-    {file = "pandas-3.0.3-cp313-cp313t-win_amd64.whl", hash = "sha256:08d789b41f87e0905880e293cedf6197ce71fe67cc081358b1e148a491b9bd13"},
-    {file = "pandas-3.0.3-cp314-cp314-macosx_10_15_x86_64.whl", hash = "sha256:3650109c0f22879df8bd6179ab9ee3d7f1d1d4e7e0094a3f0032d9f51e2e64ac"},
-    {file = "pandas-3.0.3-cp314-cp314-macosx_11_0_arm64.whl", hash = "sha256:bab900348131a7db1f69a7309ef141fd5680f1487094193bcbbb61791573bf8f"},
-    {file = "pandas-3.0.3-cp314-cp314-manylinux_2_24_aarch64.manylinux_2_28_aarch64.whl", hash = "sha256:ba7e08b9ac1d54569cd1e256e3668975ed624d6826f7b68df0342b012007bddb"},
-    {file = "pandas-3.0.3-cp314-cp314-manylinux_2_24_x86_64.manylinux_2_28_x86_64.whl", hash = "sha256:9d71c63ae4ebdbf70209742096f1fc46a83a0613c99d4b23766cced9ff8cd62a"},
-    {file = "pandas-3.0.3-cp314-cp314-musllinux_1_2_aarch64.whl", hash = "sha256:e3a2ec42c98ffa2565a67e08e218d06d72576d758d90facb7c00805194d8f360"},
-    {file = "pandas-3.0.3-cp314-cp314-musllinux_1_2_x86_64.whl", hash = "sha256:335f62418ed562cfc3c49e9e196375c28b729dcef8543abf4f9438e381bf3c76"},
-    {file = "pandas-3.0.3-cp314-cp314-win_amd64.whl", hash = "sha256:3c20a521bbb85902f79f7270c80a59e1b5452d96d170c034f207181870f97ac5"},
-    {file = "pandas-3.0.3-cp314-cp314-win_arm64.whl", hash = "sha256:a2d2dff8a04f3917b55ab3910c32990f8ddf7eceba114947838cefa976a68977"},
-    {file = "pandas-3.0.3-cp314-cp314t-macosx_10_15_x86_64.whl", hash = "sha256:0d589105b3c14645af1738ff279b2995102d8f7a03b0a66dc8d95550eb513e04"},
-    {file = "pandas-3.0.3-cp314-cp314t-macosx_11_0_arm64.whl", hash = "sha256:13fc1e853d9e04743d11ba75a985ccbc2a317fe07d8af61e445a6fd24dacd6a6"},
-    {file = "pandas-3.0.3-cp314-cp314t-manylinux_2_24_aarch64.manylinux_2_28_aarch64.whl", hash = "sha256:819959dab7bbd0049c15623fbac4e29a191b9528160a61fb1032242d8ced2d9c"},
-    {file = "pandas-3.0.3-cp314-cp314t-manylinux_2_24_x86_64.manylinux_2_28_x86_64.whl", hash = "sha256:60ae316d3fd75d1858d450d0db0103ea2be3e7d4a95ec2f064f7e2ae63f7b028"},
-    {file = "pandas-3.0.3-cp314-cp314t-musllinux_1_2_aarch64.whl", hash = "sha256:bd3a518890b400d32f9023722dc9a9a5c969f00b415419a3c06c043f09bb5d7d"},
-    {file = "pandas-3.0.3-cp314-cp314t-musllinux_1_2_x86_64.whl", hash = "sha256:9c39be2d709d01fa972a0cabc522389fceca4f3969332ba25a7d6c5802cf976a"},
-    {file = "pandas-3.0.3-cp314-cp314t-win_amd64.whl", hash = "sha256:4db8c527972a821cf5286b40ccc57642a39bc62e62022b42f99f8a67fca8c3a1"},
-    {file = "pandas-3.0.3-cp314-cp314t-win_arm64.whl", hash = "sha256:b2c95f8bfc1ee412bf482605d7bfd30c12d1d26bd59fdd91efeef1d4718decb1"},
-    {file = "pandas-3.0.3.tar.gz", hash = "sha256:696a4a00a2a2a35d4e5deb3fc946641b96c944f02230e4f76137fe35d806c4fc"},
-]
-
-[package.dependencies]
-numpy = {version = ">=1.26.0", markers = "python_version < \"3.14\""}
-python-dateutil = ">=2.8.2"
-tzdata = {version = "*", markers = "sys_platform == \"win32\" or sys_platform == \"emscripten\""}
-
-[package.extras]
-all = ["PyQt5 (>=5.15.9)", "SQLAlchemy (>=2.0.36)", "adbc-driver-postgresql (>=1.2.0)", "adbc-driver-sqlite (>=1.2.0)", "beautifulsoup4 (>=4.12.3)", "bottleneck (>=1.4.2)", "fastparquet (>=2024.11.0)", "fsspec (>=2024.10.0)", "gcsfs (>=2024.10.0)", "html5lib (>=1.1)", "hypothesis (>=6.116.0)", "jinja2 (>=3.1.5)", "lxml (>=5.3.0)", "matplotlib (>=3.9.3)", "numba (>=0.60.0)", "numexpr (>=2.10.2)", "odfpy (>=1.4.1)", "openpyxl (>=3.1.5)", "psycopg2 (>=2.9.10)", "pyarrow (>=13.0.0)", "pyiceberg (>=0.8.1)", "pymysql (>=1.1.1)", "pyreadstat (>=1.2.8)", "pytest (>=8.3.4)", "pytest-xdist (>=3.6.1)", "python-calamine (>=0.3.0)", "pytz (>=2020.1)", "pyxlsb (>=1.0.10)", "qtpy (>=2.4.2)", "s3fs (>=2024.10.0)", "scipy (>=1.14.1)", "tables (>=3.10.1)", "tabulate (>=0.9.0)", "xarray (>=2024.10.0)", "xlrd (>=2.0.1)", "xlsxwriter (>=3.2.0)", "zstandard (>=0.23.0)"]
-aws = ["s3fs (>=2024.10.0)"]
-clipboard = ["PyQt5 (>=5.15.9)", "qtpy (>=2.4.2)"]
-compression = ["zstandard (>=0.23.0)"]
-computation = ["scipy (>=1.14.1)", "xarray (>=2024.10.0)"]
-excel = ["odfpy (>=1.4.1)", "openpyxl (>=3.1.5)", "python-calamine (>=0.3.0)", "pyxlsb (>=1.0.10)", "xlrd (>=2.0.1)", "xlsxwriter (>=3.2.0)"]
-feather = ["pyarrow (>=13.0.0)"]
-fss = ["fsspec (>=2024.10.0)"]
-gcp = ["gcsfs (>=2024.10.0)"]
-hdf5 = ["tables (>=3.10.1)"]
-html = ["beautifulsoup4 (>=4.12.3)", "html5lib (>=1.1)", "lxml (>=5.3.0)"]
-iceberg = ["pyiceberg (>=0.8.1)"]
-mysql = ["SQLAlchemy (>=2.0.36)", "pymysql (>=1.1.1)"]
-output-formatting = ["jinja2 (>=3.1.5)", "tabulate (>=0.9.0)"]
-parquet = ["pyarrow (>=13.0.0)"]
-performance = ["bottleneck (>=1.4.2)", "numba (>=0.60.0)", "numexpr (>=2.10.2)"]
-plot = ["matplotlib (>=3.9.3)"]
-postgresql = ["SQLAlchemy (>=2.0.36)", "adbc-driver-postgresql (>=1.2.0)", "psycopg2 (>=2.9.10)"]
-pyarrow = ["pyarrow (>=13.0.0)"]
-spss = ["pyreadstat (>=1.2.8)"]
-sql-other = ["SQLAlchemy (>=2.0.36)", "adbc-driver-postgresql (>=1.2.0)", "adbc-driver-sqlite (>=1.2.0)"]
-test = ["hypothesis (>=6.116.0)", "pytest (>=8.3.4)", "pytest-xdist (>=3.6.1)"]
-timezone = ["pytz (>=2020.1)"]
-xml = ["lxml (>=5.3.0)"]
 
 [[package]]
 name = "pandocfilters"
@@ -6629,7 +6540,7 @@ files = [
     {file = "ptyprocess-0.7.0-py2.py3-none-any.whl", hash = "sha256:4b41f3967fce3af57cc7e94b888626c18bf37a083e3651ca8feeb66d492fef35"},
     {file = "ptyprocess-0.7.0.tar.gz", hash = "sha256:5c5d0a3b48ceee0b48485e0c26037c0acd7d29765ca3fbb5cb3831d347423220"},
 ]
-markers = {main = "sys_platform != \"win32\" and sys_platform != \"emscripten\"", dev = "os_name != \"nt\" or sys_platform != \"win32\" and sys_platform != \"emscripten\""}
+markers = {main = "sys_platform != \"win32\" and sys_platform != \"emscripten\"", dev = "sys_platform != \"win32\" and sys_platform != \"emscripten\" or os_name != \"nt\""}
 
 [[package]]
 name = "pure-eval"
@@ -7333,7 +7244,7 @@ description = "Python for Window Extensions"
 optional = false
 python-versions = "*"
 groups = ["main"]
-markers = "platform_system == \"Windows\" or sys_platform == \"win32\""
+markers = "sys_platform == \"win32\" or platform_system == \"Windows\""
 files = [
     {file = "pywin32-311-cp310-cp310-win32.whl", hash = "sha256:d03ff496d2a0cd4a5893504789d4a15399133fe82517455e78bad62efbb7f0a3"},
     {file = "pywin32-311-cp310-cp310-win_amd64.whl", hash = "sha256:797c2772017851984b97180b0bebe4b620bb86328e8a884bb626156295a63b3b"},
@@ -9495,61 +9406,11 @@ blobfile = ["blobfile (>=2)"]
 
 [[package]]
 name = "tiledbsoma"
-version = "2.2.0"
-description = "Python API for efficient storage and retrieval of single-cell data using TileDB"
-optional = false
-python-versions = ">=3.9"
-groups = ["main"]
-markers = "python_version >= \"3.11\""
-files = [
-    {file = "tiledbsoma-2.2.0-cp310-cp310-macosx_13_0_arm64.whl", hash = "sha256:415fc043bb99ccedb8381e62d4b057c643d7d97acf0b6f61797347fba4470a44"},
-    {file = "tiledbsoma-2.2.0-cp310-cp310-macosx_13_0_x86_64.whl", hash = "sha256:0c0a612dbd4ecd7f017016e5ebb0599ecc70ca378a2ac1f01bec87e96bdf1dc2"},
-    {file = "tiledbsoma-2.2.0-cp310-cp310-manylinux_2_28_aarch64.whl", hash = "sha256:83b1a0b54bc96dbac29931867053580940fc355244963884008842b762170632"},
-    {file = "tiledbsoma-2.2.0-cp310-cp310-manylinux_2_28_x86_64.whl", hash = "sha256:165d03b7ee47d56fee4a3202f32b4d7cc352ed591dc798d8eb3d53de6291d258"},
-    {file = "tiledbsoma-2.2.0-cp311-cp311-macosx_13_0_arm64.whl", hash = "sha256:8b1b5041214e7c9e171d8fc4bd574ea6a385a0b4db06f015b5882d4f7d96031c"},
-    {file = "tiledbsoma-2.2.0-cp311-cp311-macosx_13_0_x86_64.whl", hash = "sha256:c0359e9e94ddc36e16cf66a3ad2e040f987894f107d9dbb1b910a5e9eac3dac5"},
-    {file = "tiledbsoma-2.2.0-cp311-cp311-manylinux_2_28_aarch64.whl", hash = "sha256:9150a66462666c7b39b802e7682dc3aac27a582c1b1e81aed01834de3d4cd42e"},
-    {file = "tiledbsoma-2.2.0-cp311-cp311-manylinux_2_28_x86_64.whl", hash = "sha256:33c1837735dc40cb33a2b303eb78c8de474d156ff5cafcf6d010ce96e142bb9f"},
-    {file = "tiledbsoma-2.2.0-cp312-cp312-macosx_13_0_arm64.whl", hash = "sha256:2ff3d24b428cb53c83eba4a92b53190e87510665f114b6640f05e4b66ddebcec"},
-    {file = "tiledbsoma-2.2.0-cp312-cp312-macosx_13_0_x86_64.whl", hash = "sha256:f67ff4042113dcd431e83bd484f93cc1903efa59142fbbb87af0036561b574df"},
-    {file = "tiledbsoma-2.2.0-cp312-cp312-manylinux_2_28_aarch64.whl", hash = "sha256:677336926a00bfd9e5512b49162bf43d34e69bf3d42731db7be85d80adc24b38"},
-    {file = "tiledbsoma-2.2.0-cp312-cp312-manylinux_2_28_x86_64.whl", hash = "sha256:266f0489a8ebf04ad4752c4034ed999cc2510b5507859a53ad9a4a4d4473636a"},
-    {file = "tiledbsoma-2.2.0-cp313-cp313-macosx_13_0_arm64.whl", hash = "sha256:63528e275dd2d7ced6217636513cc00c1cd19f22e5340909278cef0799fde6d7"},
-    {file = "tiledbsoma-2.2.0-cp313-cp313-macosx_13_0_x86_64.whl", hash = "sha256:e04a2f5cd1f8caf7643e308ae743cba074cf4759fa0c26542abbe58ae0fad717"},
-    {file = "tiledbsoma-2.2.0-cp313-cp313-manylinux_2_28_aarch64.whl", hash = "sha256:2631000a73c4b752814cafec55e79dc32b169842a65b142aedba955bdebf511e"},
-    {file = "tiledbsoma-2.2.0-cp313-cp313-manylinux_2_28_x86_64.whl", hash = "sha256:f23796f7832fab715d27e9300b17fe3e29f452ec78f68e8f0b4cc10a74f48827"},
-    {file = "tiledbsoma-2.2.0-cp39-cp39-macosx_13_0_arm64.whl", hash = "sha256:50958a28f31a2568042e14a96463003f90135422521f6678c845a8d387d83fb3"},
-    {file = "tiledbsoma-2.2.0-cp39-cp39-macosx_13_0_x86_64.whl", hash = "sha256:3f1af01f44c45b7f4b5c9995449dd56291a5e426187ff999e435e04a7eb61417"},
-    {file = "tiledbsoma-2.2.0-cp39-cp39-manylinux_2_28_aarch64.whl", hash = "sha256:5832dbed903c06a7385e26f869499d638080b51e91af77ff19d2faeda6e997a7"},
-    {file = "tiledbsoma-2.2.0-cp39-cp39-manylinux_2_28_x86_64.whl", hash = "sha256:724a1bf3bdbdef6e53ed5c474a150a528e86fe9166163fce780e512db04b4bb3"},
-    {file = "tiledbsoma-2.2.0.tar.gz", hash = "sha256:a033db98805d26acd0a46e6081c001b2c1a7594828459bfe1868171ca8844576"},
-]
-
-[package.dependencies]
-anndata = ">=0.10.1"
-attrs = ">=22.2"
-more-itertools = "*"
-numpy = "*"
-pandas = "*"
-pyarrow = "*"
-scanpy = ">=1.9.2"
-scipy = "*"
-somacore = "1.0.29"
-typing-extensions = ">=4.5.0"
-
-[package.extras]
-all = ["black", "dask", "dask", "deepdiff", "geopandas", "hypothesis", "more-itertools", "pillow", "pytest", "pytest-cov", "ruff", "sparse", "spatialdata (>=0.2.5)", "tifffile", "typeguard (==4.4.2)", "types-setuptools", "xarray"]
-dev = ["black", "dask", "deepdiff", "hypothesis", "more-itertools", "pytest", "pytest-cov", "ruff", "sparse", "typeguard (==4.4.2)", "types-setuptools"]
-spatial-io = ["dask", "geopandas", "pillow", "spatialdata (>=0.2.5)", "tifffile", "xarray"]
-
-[[package]]
-name = "tiledbsoma"
 version = "2.3.0"
 description = "Python API for efficient storage and retrieval of single-cell data using TileDB"
 optional = false
 python-versions = ">=3.9"
 groups = ["main"]
-markers = "python_version == \"3.10\""
 files = [
     {file = "tiledbsoma-2.3.0-cp310-cp310-macosx_13_0_arm64.whl", hash = "sha256:3ac272a4c77c5ecdc4b8c611080341e089bbd45c36dd8f0699bdc5a47b52448b"},
     {file = "tiledbsoma-2.3.0-cp310-cp310-macosx_13_0_x86_64.whl", hash = "sha256:149c655ded97d02a6dd18ad5ab6fc0ca1e5f6674de0fc812efe20deaf8e8aa6e"},
@@ -10470,4 +10331,4 @@ type = ["pytest-mypy"]
 [metadata]
 lock-version = "2.1"
 python-versions = ">=3.10,<3.13"
-content-hash = "14965e1475e135a8cdfc83ea7c277fb582784cb1dcfb78413dbd4067c7a0a972"
+content-hash = "fa906163b967a846fe2c7e994df147e7a39c0d70e43898254a19c905a1fbed8b"

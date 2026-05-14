@@ -9,10 +9,10 @@ package-mode = false
 [tool.poetry.dependencies]
 python = ">=3.10,<3.13"
 arango-rdf = ">=1.0"
-ckn-schema = {git = "git@github.com:Springbok-LLC/nlm-ckn-schema.git", branch = "ralatsdc/remove-gene-molecularly-interacts-with-gene"}
+ckn-schema = {url = "https://github.com/Springbok-LLC/nlm-ckn-schema/releases/download/v0.0.0-alpha/ckn_schema-0.0.0a1.dev0+ga586c9762.d20260514-py3-none-any.whl"}
 cellxgene-census = ">=1.14"
 gget = ">=0.29"
-kgx = {git = "git@github.com:ralatsdc/kgx.git", branch = "master"}
+kgx = {url = "https://github.com/rogermyung/kgx/releases/download/v0.0.0/kgx-0.0.0.post1931.dev0+004034c-py3-none-any.whl"}
 ontogpt = ">=0.3"
 plotly = ">=5.22"
 pybiomart = ">=0.2"

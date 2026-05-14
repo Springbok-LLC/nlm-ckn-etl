@@ -2,7 +2,7 @@
     "_comment": "Checked-in release config. Update cell_kn_tag and tar_source when starting a new release cycle, then commit alongside your code changes. See README for details.",
     "cell_kn_tag": "v0.0.0-alpha",
     "github_repo": "Springbok-LLC/nlm-ckn",
-    "tar_source": "https://github.com/Springbok-LLC/nlm-ckn/releases/download/v0.0.0-alpha/prod-data-Elmentaite-v0.0.0-alpha.tar.gz",
+    "tar_source": "https://github.com/Springbok-LLC/nlm-ckn/releases/download/v0.0.0-alpha/prod-data-Muraro-v0.0.0-alpha.tar.gz",
     "skip_ontology": false,
     "max_fetch_age_hours": 48,
     "hubmap_urls": [
