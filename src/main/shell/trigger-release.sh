@@ -291,9 +291,11 @@ out = {
     "type": "container",
     "containerProperties": cp,
 }
-# Preserve all top-level job definition properties from the existing revision
-for field in ("retryStrategy", "timeout", "tags", "propagateTags",
-              "platformCapabilities", "schedulingPriority", "parameters"):
+# Preserve all top-level job definition properties from the existing revision.
+# tags/propagateTags are intentionally excluded — CloudFormation-managed tags
+# require batch:TagResource and should not be copied to ad-hoc revisions.
+for field in ("retryStrategy", "timeout", "platformCapabilities",
+              "schedulingPriority", "parameters"):
     if field in jd:
         out[field] = jd[field]
 print(json.dumps(out))
