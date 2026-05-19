@@ -101,14 +101,14 @@ _require_arg() {
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
-    --tag)                  _require_arg "$1" "$2"; TAG="$2";                  shift 2 ;;
-    --tar-source)           _require_arg "$1" "$2"; TAR_SOURCE="$2";           shift 2 ;;
-    --skip-ontology)        SKIP_ONTOLOGY="true";                              shift   ;;
-    --run-name)             _require_arg "$1" "$2"; RUN_NAME="$2";             shift 2 ;;
-    --max-fetch-age-hours)  _require_arg "$1" "$2"; MAX_FETCH_AGE_HOURS="$2";  shift 2 ;;
-    --java-opts)            _require_arg "$1" "$2"; JAVA_OPTS="$2";            shift 2 ;;
-    --queue)                _require_arg "$1" "$2"; JOB_QUEUE="$2";            shift 2 ;;
-    --job-definition)       _require_arg "$1" "$2"; JOB_DEFINITION="$2";       shift 2 ;;
+    --tag)                  _require_arg "$1" "${2-}"; TAG="${2-}";                  shift 2 ;;
+    --tar-source)           _require_arg "$1" "${2-}"; TAR_SOURCE="${2-}";           shift 2 ;;
+    --skip-ontology)        SKIP_ONTOLOGY="true";                                    shift   ;;
+    --run-name)             _require_arg "$1" "${2-}"; RUN_NAME="${2-}";             shift 2 ;;
+    --max-fetch-age-hours)  _require_arg "$1" "${2-}"; MAX_FETCH_AGE_HOURS="${2-}";  shift 2 ;;
+    --java-opts)            _require_arg "$1" "${2-}"; JAVA_OPTS="${2-}";            shift 2 ;;
+    --queue)                _require_arg "$1" "${2-}"; JOB_QUEUE="${2-}";            shift 2 ;;
+    --job-definition)       _require_arg "$1" "${2-}"; JOB_DEFINITION="${2-}";       shift 2 ;;
     -h|--help)              usage ;;
     *) echo "Unknown argument: $1" >&2; usage ;;
   esac
@@ -170,11 +170,20 @@ if [[ -n "${GITHUB_DEPLOY_TOKEN:-}" && -n "${GITHUB_REPOSITORY:-}" && -n "${GITH
     -H "Accept: application/vnd.github+json" \
     -H "X-GitHub-Api-Version: 2022-11-28" \
     "https://api.github.com/repos/${GITHUB_REPOSITORY}/deployments?environment=production&per_page=20") || true
-  STALE_IDS=$(DEPLOYMENTS_JSON="${DEPLOYMENTS_JSON}" GITHUB_DEPLOY_TOKEN="${GITHUB_DEPLOY_TOKEN}" python3 - <<'PYEOF' 2>/dev/null) || true
+  STALE_IDS=$(DEPLOYMENTS_JSON="${DEPLOYMENTS_JSON}" GITHUB_DEPLOY_TOKEN="${GITHUB_DEPLOY_TOKEN}" \
+             GITHUB_REF="${GITHUB_REF:-}" GITHUB_ACTOR="${GITHUB_ACTOR:-}" python3 - <<'PYEOF' 2>/dev/null) || true
 import sys, json, os, urllib.request
 token = os.environ["GITHUB_DEPLOY_TOKEN"]
 deploys = json.loads(os.environ["DEPLOYMENTS_JSON"])
+ref    = os.environ.get("GITHUB_REF", "")
+actor  = os.environ.get("GITHUB_ACTOR", "")
 for d in deploys:
+    # Only inactivate deployments from the same ref and creator to avoid
+    # accidentally clobbering deployments triggered by other branches or users.
+    if ref and d.get("ref") != ref:
+        continue
+    if actor and d.get("creator", {}).get("login") != actor:
+        continue
     req = urllib.request.Request(d['statuses_url'],
         headers={'Authorization': f'Bearer {token}',
                  'Accept': 'application/vnd.github+json'})

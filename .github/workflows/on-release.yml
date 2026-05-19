@@ -34,7 +34,9 @@ jobs:
     name: Build and push pipeline image
     needs: test
     uses: ./.github/workflows/build-image.yml
-    secrets: inherit
+    secrets:
+      AWS_BUILD_ROLE_ARN: ${{ secrets.AWS_BUILD_ROLE_ARN }}
+      ECR_STACK_NAME: ${{ secrets.ECR_STACK_NAME }}
     permissions:
       id-token: write
       contents: read

@@ -127,7 +127,12 @@ Resources:
           FromPort: 53
           ToPort: 53
           CidrIp: '0.0.0.0/0'
-          Description: Allow DNS outbound
+          Description: Allow DNS outbound (UDP)
+        - IpProtocol: tcp
+          FromPort: 53
+          ToPort: 53
+          CidrIp: '0.0.0.0/0'
+          Description: Allow DNS outbound (TCP fallback)
       Tags:
         - Key: Name
           Value: nlm-ckn-release

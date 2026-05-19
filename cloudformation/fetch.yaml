@@ -63,6 +63,13 @@ Parameters:
       subnet-aaa,subnet-bbb). Subnets must have a NAT gateway for outbound
       internet access to external APIs.
 
+  CknRun:
+    Type: String
+    Default: 'latest'
+    Description: >
+      Run identifier passed to fetch.py as CKN_RUN (e.g. "latest" or a versioned
+      run name). Controls which S3 prefix the fetcher writes external cache files to.
+
   ScheduleExpression:
     Type: String
     Default: 'cron(0 2 * * ? *)'
@@ -131,7 +138,12 @@ Resources:
           FromPort: 53
           ToPort: 53
           CidrIp: '0.0.0.0/0'
-          Description: Allow DNS outbound
+          Description: Allow DNS outbound (UDP)
+        - IpProtocol: tcp
+          FromPort: 53
+          ToPort: 53
+          CidrIp: '0.0.0.0/0'
+          Description: Allow DNS outbound (TCP fallback)
       Tags:
         - Key: Name
           Value: nlm-ckn-fetch
@@ -293,7 +305,7 @@ Resources:
             - Name: S3_BUCKET
               Value: !Ref S3Bucket
             - Name: CKN_RUN
-              Value: latest
+              Value: !Ref CknRun
           Secrets:
             - Name: NCBI_EMAIL
               ValueFrom: !Sub 'arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/nlm-ckn/ncbi-email'

@@ -86,6 +86,10 @@ cfn_output() {
     --output text
 }
 
+# ── Resolve region early so all AWS CLI calls target the same region ──────────
+REGION="${AWS_REGION:-${AWS_DEFAULT_REGION:-$(aws configure get region 2>/dev/null || echo us-east-1)}}"
+export AWS_DEFAULT_REGION="${REGION}"
+
 # ── Step 1: Deploy ECR stack ──────────────────────────────────────────────────
 log "Deploying ECR stack (${ECR_STACK_NAME})..."
 aws cloudformation deploy \
@@ -101,7 +105,6 @@ if [[ -z "${PIPELINE_REPO_URI}" ]]; then
   echo "ERROR: CloudFormation output PipelineRepositoryUri not found in stack ${ECR_STACK_NAME}" >&2
   exit 1
 fi
-REGION="${AWS_REGION:-${AWS_DEFAULT_REGION:-$(aws configure get region 2>/dev/null || echo us-east-1)}}"
 REGISTRY="${PIPELINE_REPO_URI%%/*}"   # account.dkr.ecr.region.amazonaws.com
 
 log "Pipeline ECR URI: ${PIPELINE_REPO_URI}"

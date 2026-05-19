@@ -18,6 +18,8 @@ on:
       - 'Dockerfile'
       - '.github/workflows/build-image.yml'
       - '.github/workflows/ci.yml'
+      - '.github/workflows/java-build.yml'
+      - '.github/workflows/python-lint.yml'
   pull_request:
     paths:
       - 'src/**'
@@ -26,6 +28,8 @@ on:
       - 'Dockerfile'
       - '.github/workflows/build-image.yml'
       - '.github/workflows/ci.yml'
+      - '.github/workflows/java-build.yml'
+      - '.github/workflows/python-lint.yml'
 
 permissions:
   contents: read

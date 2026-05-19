@@ -26,6 +26,11 @@ on:
       pipeline_image:
         description: "Full ECR URI of the built pipeline image"
         value: ${{ jobs.build-and-push.outputs.pipeline_image }}
+    secrets:
+      AWS_BUILD_ROLE_ARN:
+        required: true
+      ECR_STACK_NAME:
+        required: true
   workflow_dispatch:
 
 jobs:
