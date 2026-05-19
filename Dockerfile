@@ -137,7 +137,7 @@ COPY python/pyproject.toml python/poetry.lock python/
 
 RUN --mount=type=cache,target=/root/.cache/uv \
     cd python \
-    && poetry export --without dev -f requirements.txt -o /tmp/requirements.txt \
+    && poetry export --without dev --without-hashes -f requirements.txt -o /tmp/requirements.txt \
     && uv pip install --system -r /tmp/requirements.txt
 
 # ── AWS CLI ────────────────────────────────────────────────────────────────
