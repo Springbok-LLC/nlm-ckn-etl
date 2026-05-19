@@ -1,5 +1,6 @@
 import argparse
 from concurrent.futures import ThreadPoolExecutor, as_completed
+import logging
 from datetime import datetime, timezone
 import json
 import os
@@ -660,7 +661,7 @@ class HuBMAPFetcher(DataFetcher):
                 continue
 
             json_url = m_url.group(0)
-            json_ver = float(m_url.group(1))
+            json_ver = m_url.group(1)
             json_urls.append((org, json_ver, json_url))
 
         if failures:
@@ -681,8 +682,10 @@ def _load_fetch_status(path: Path) -> dict:
     if path.exists():
         try:
             return json.loads(path.read_text())
-        except Exception:
-            pass
+        except Exception as e:
+            logging.getLogger(__name__).warning(
+                "Could not read fetch status from %s: %s", path, e
+            )
     return {}
 
 

@@ -94,6 +94,10 @@ log "ECR stack ready."
 
 # ── Step 2: Resolve ECR details ──────────────────────────────────────────────
 FETCHER_REPO_URI="$(cfn_output "${ECR_STACK_NAME}" FetcherRepositoryUri)"
+if [[ -z "${FETCHER_REPO_URI}" ]]; then
+  echo "ERROR: CloudFormation output FetcherRepositoryUri not found in stack ${ECR_STACK_NAME}" >&2
+  exit 1
+fi
 REGION="${AWS_REGION:-${AWS_DEFAULT_REGION:-$(aws configure get region 2>/dev/null || echo us-east-1)}}"
 REGISTRY="${FETCHER_REPO_URI%%/*}"   # account.dkr.ecr.region.amazonaws.com
 

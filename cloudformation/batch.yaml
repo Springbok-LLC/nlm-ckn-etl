@@ -87,6 +87,19 @@ Parameters:
       EBS root volume size (GiB) for compute instances. Needs to hold the
       ArangoDB data directory, baseline/golden dumps, OBO files, and tuple output.
 
+  GithubTokenSecretArn:
+    Type: String
+    Default: ''
+    Description: >
+      Optional. Secrets Manager ARN for a GitHub token used to post deployment
+      status updates. When provided, GITHUB_TOKEN is injected into the job
+      container via Secrets Manager rather than as a plain environment variable.
+      Create with deploy-batch.sh by setting GITHUB_TOKEN in the environment.
+
+Conditions:
+
+  HasGithubToken: !Not [!Equals [!Ref GithubTokenSecretArn, '']]
+
 Resources:
 
   # ── Logging ───────────────────────────────────────────────────────────────────
@@ -197,6 +210,13 @@ Resources:
                 Effect: Allow
                 Action: secretsmanager:GetSecretValue
                 Resource: !Ref NcbiApiKeySecretArn
+              - !If
+                - HasGithubToken
+                - Sid: ReadGithubTokenSecret
+                  Effect: Allow
+                  Action: secretsmanager:GetSecretValue
+                  Resource: !Ref GithubTokenSecretArn
+                - !Ref AWS::NoValue
       Tags:
         - Key: Project
           Value: nlm-ckn
@@ -345,6 +365,11 @@ Resources:
               arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter${NcbiEmailParameterName}
           - Name: NCBI_API_KEY
             ValueFrom: !Ref NcbiApiKeySecretArn
+          - !If
+            - HasGithubToken
+            - Name: GITHUB_TOKEN
+              ValueFrom: !Ref GithubTokenSecretArn
+            - !Ref AWS::NoValue
         Volumes:
           - Name: docker-socket
             Host:

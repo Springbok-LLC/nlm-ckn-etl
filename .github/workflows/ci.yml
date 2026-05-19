@@ -29,17 +29,23 @@ on:
 
 permissions:
   contents: read
-  checks: write
-  pull-requests: write
 
 jobs:
   test-java:
     name: Java tests
     uses: ./.github/workflows/java-build.yml
+    permissions:
+      contents: read
+      checks: write
+      pull-requests: write
 
   test-python:
     name: Python lint and tests
     uses: ./.github/workflows/python-lint.yml
+    permissions:
+      contents: read
+      checks: write
+      pull-requests: write
 
   smoke-test:
     name: Pipeline image smoke test

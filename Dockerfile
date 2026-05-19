@@ -129,7 +129,7 @@ RUN mkdir -p /root/.prefect
 # poetry is used only to export the pinned requirements from poetry.lock;
 # uv handles the actual install (parallel downloads, ~10-100x faster than pip).
 RUN pip install --no-cache-dir poetry==2.3.2 \
-    && poetry self add poetry-plugin-export==1.8.0
+    && poetry self add poetry-plugin-export
 
 WORKDIR /app
 
@@ -167,7 +167,12 @@ RUN mkdir -p /app/data/obo && touch /app/data/obo/deprecated_terms.txt
 FROM base AS fetcher
 
 COPY src/main/shell/fetch-entrypoint.sh /usr/local/bin/fetch-entrypoint
-RUN chmod +x /usr/local/bin/fetch-entrypoint
+RUN chmod +x /usr/local/bin/fetch-entrypoint \
+    && useradd --create-home --uid 10001 appuser \
+    && mkdir -p /home/appuser/.prefect \
+    && chown -R appuser:appuser /home/appuser /app
+USER appuser
+ENV HOME=/home/appuser
 
 ENTRYPOINT ["/usr/local/bin/fetch-entrypoint"]
 
@@ -176,6 +181,8 @@ ENTRYPOINT ["/usr/local/bin/fetch-entrypoint"]
 # Adds JRE so release.py can call Java graph builders via subprocess.
 # openjdk-21-jre-headless matches the JDK 21 used to compile the JAR
 # (see build-jar.yml).
+# Intentionally runs as root: pipeline.py mounts the Docker socket to start
+# an ArangoDB sidecar container, which requires root access.
 #
 # The default entrypoint runs the full release flow (release-entrypoint).
 # For local debugging of a single phase, override the entrypoint:

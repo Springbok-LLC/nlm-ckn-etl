@@ -122,9 +122,16 @@ Resources:
       GroupDescription: Outbound-only group for the NLM-CKN fetch Fargate task. No inbound rules are needed - the task initiates all connections.
       VpcId: !Ref VpcId
       SecurityGroupEgress:
-        - IpProtocol: '-1'
+        - IpProtocol: tcp
+          FromPort: 443
+          ToPort: 443
           CidrIp: '0.0.0.0/0'
-          Description: Allow all outbound (external APIs + S3 + ECR + Secrets Manager)
+          Description: Allow HTTPS outbound (external APIs, S3, ECR, Secrets Manager)
+        - IpProtocol: udp
+          FromPort: 53
+          ToPort: 53
+          CidrIp: '0.0.0.0/0'
+          Description: Allow DNS outbound
       Tags:
         - Key: Name
           Value: nlm-ckn-fetch

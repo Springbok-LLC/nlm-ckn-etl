@@ -93,16 +93,22 @@ usage() {
   exit 1
 }
 
+_require_arg() {
+  if [[ -z "${2:-}" || "${2}" == -* ]]; then
+    echo "ERROR: $1 requires a value" >&2; usage
+  fi
+}
+
 while [[ $# -gt 0 ]]; do
   case "$1" in
-    --tag)                  TAG="$2";                  shift 2 ;;
-    --tar-source)           TAR_SOURCE="$2";           shift 2 ;;
-    --skip-ontology)        SKIP_ONTOLOGY="true";      shift   ;;
-    --run-name)             RUN_NAME="$2";             shift 2 ;;
-    --max-fetch-age-hours)  MAX_FETCH_AGE_HOURS="$2";  shift 2 ;;
-    --java-opts)            JAVA_OPTS="$2";            shift 2 ;;
-    --queue)                JOB_QUEUE="$2";            shift 2 ;;
-    --job-definition)       JOB_DEFINITION="$2";       shift 2 ;;
+    --tag)                  _require_arg "$1" "$2"; TAG="$2";                  shift 2 ;;
+    --tar-source)           _require_arg "$1" "$2"; TAR_SOURCE="$2";           shift 2 ;;
+    --skip-ontology)        SKIP_ONTOLOGY="true";                              shift   ;;
+    --run-name)             _require_arg "$1" "$2"; RUN_NAME="$2";             shift 2 ;;
+    --max-fetch-age-hours)  _require_arg "$1" "$2"; MAX_FETCH_AGE_HOURS="$2";  shift 2 ;;
+    --java-opts)            _require_arg "$1" "$2"; JAVA_OPTS="$2";            shift 2 ;;
+    --queue)                _require_arg "$1" "$2"; JOB_QUEUE="$2";            shift 2 ;;
+    --job-definition)       _require_arg "$1" "$2"; JOB_DEFINITION="$2";       shift 2 ;;
     -h|--help)              usage ;;
     *) echo "Unknown argument: $1" >&2; usage ;;
   esac
@@ -217,7 +223,8 @@ fi
 # CELL_KN_TAG and RELEASE_CONFIG are always set. The rest are only included
 # when non-empty so the job definition defaults remain in effect otherwise.
 # Use Python json.dumps for safe JSON building to handle special characters.
-CONTAINER_GH_TOKEN="${GITHUB_DEPLOY_TOKEN:-${GITHUB_TOKEN:-}}"
+# GITHUB_TOKEN is intentionally omitted here — it is injected by the Batch
+# job definition via Secrets Manager (see cloudformation/batch.yaml).
 env_json=$(
   CELL_KN_TAG="${TAG}" \
   RELEASE_CONFIG_S3="${RELEASE_CONFIG_S3}" \
@@ -225,7 +232,6 @@ env_json=$(
   RUN_NAME="${RUN_NAME}" \
   MAX_FETCH_AGE_HOURS="${MAX_FETCH_AGE_HOURS}" \
   JAVA_OPTS="${JAVA_OPTS}" \
-  CONTAINER_GH_TOKEN="${CONTAINER_GH_TOKEN}" \
   GITHUB_REPOSITORY="${GITHUB_REPOSITORY:-}" \
   GITHUB_DEPLOYMENT_ID="${GITHUB_DEPLOYMENT_ID}" \
   SKIP_ONTOLOGY="${SKIP_ONTOLOGY}" \
@@ -241,7 +247,6 @@ for key, envvar in [
     ("RUN_NAME",            "RUN_NAME"),
     ("MAX_FETCH_AGE_HOURS", "MAX_FETCH_AGE_HOURS"),
     ("JAVA_OPTS",           "JAVA_OPTS"),
-    ("GITHUB_TOKEN",        "CONTAINER_GH_TOKEN"),
     ("GITHUB_REPOSITORY",   "GITHUB_REPOSITORY"),
     ("GITHUB_DEPLOYMENT_ID","GITHUB_DEPLOYMENT_ID"),
 ]:

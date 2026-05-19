@@ -27,6 +27,10 @@
 #   NCBI_API_KEY_SECRET_ARN   Secrets Manager ARN from the fetch stack output
 #
 # Optional env vars:
+#   GITHUB_TOKEN         GitHub token for deployment status updates. When set,
+#                        stored/updated in Secrets Manager (nlm-ckn/github-token)
+#                        and injected into Batch jobs via the job definition secrets
+#                        rather than as a plain environment variable.
 #   AWS_REGION           AWS region (default: from AWS CLI config)
 #   ECR_STACK_NAME       CloudFormation stack name for ECR (default: nlm-ckn-etl-ecr)
 #   BATCH_STACK_NAME     CloudFormation stack name for Batch (default: nlm-ckn-etl-batch)
@@ -93,6 +97,10 @@ log "ECR stack ready."
 
 # ── Step 2: Resolve ECR details ───────────────────────────────────────────────
 PIPELINE_REPO_URI="$(cfn_output "${ECR_STACK_NAME}" PipelineRepositoryUri)"
+if [[ -z "${PIPELINE_REPO_URI}" ]]; then
+  echo "ERROR: CloudFormation output PipelineRepositoryUri not found in stack ${ECR_STACK_NAME}" >&2
+  exit 1
+fi
 REGION="${AWS_REGION:-${AWS_DEFAULT_REGION:-$(aws configure get region 2>/dev/null || echo us-east-1)}}"
 REGISTRY="${PIPELINE_REPO_URI%%/*}"   # account.dkr.ecr.region.amazonaws.com
 
@@ -129,6 +137,32 @@ fi
 
 log "NCBI API key secret ARN: ${NCBI_API_KEY_SECRET_ARN}"
 
+# ── Step 5b: Store GitHub token in Secrets Manager (optional) ─────────────────
+# When GITHUB_TOKEN is set, create or update the secret so the Batch job can
+# post deployment status updates without the token appearing in job env vars.
+GITHUB_TOKEN_SECRET_ARN=""
+if [[ -n "${GITHUB_TOKEN:-}" ]]; then
+  SECRET_NAME="nlm-ckn/github-token"
+  GITHUB_TOKEN_SECRET_ARN=$(aws secretsmanager describe-secret \
+    --secret-id "${SECRET_NAME}" \
+    --query 'ARN' --output text 2>/dev/null) || true
+
+  if [[ -z "${GITHUB_TOKEN_SECRET_ARN}" ]]; then
+    log "Creating GitHub token secret (${SECRET_NAME})..."
+    GITHUB_TOKEN_SECRET_ARN=$(aws secretsmanager create-secret \
+      --name "${SECRET_NAME}" \
+      --description "GitHub token for deployment status updates in nlm-ckn-etl Batch jobs" \
+      --secret-string "${GITHUB_TOKEN}" \
+      --query ARN --output text)
+  else
+    log "Updating GitHub token secret (${SECRET_NAME})..."
+    aws secretsmanager put-secret-value \
+      --secret-id "${SECRET_NAME}" \
+      --secret-string "${GITHUB_TOKEN}" > /dev/null
+  fi
+  log "GitHub token secret ARN: ${GITHUB_TOKEN_SECRET_ARN}"
+fi
+
 # ── Step 6: Deploy Batch stack ────────────────────────────────────────────────
 log "Deploying Batch stack (${BATCH_STACK_NAME})..."
 aws cloudformation deploy \
@@ -140,6 +174,7 @@ aws cloudformation deploy \
     S3Bucket="${S3_BUCKET}" \
     EcrImageUri="${PIPELINE_REPO_URI}:latest" \
     NcbiApiKeySecretArn="${NCBI_API_KEY_SECRET_ARN}" \
+    GithubTokenSecretArn="${GITHUB_TOKEN_SECRET_ARN}" \
     VpcId="${VPC_ID}" \
     SubnetIds="${SUBNET_IDS}" \
     InstanceTypes="${INSTANCE_TYPES}" \
