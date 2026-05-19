@@ -364,17 +364,18 @@ def nlm_ckn_release(
     if not hubmap_urls:
         raise ValueError("hubmap_urls is empty in release.json — cannot proceed")
 
-    # Guard against placeholder/development values being used in a real release.
+    # Guard against the default placeholder values being committed unchanged.
+    _PLACEHOLDER_TAG = "v0.0.0-alpha"
     cfg_tag = cfg.get("cell_kn_tag", "")
-    if cfg_tag and any(p in cfg_tag for p in ("alpha", "beta", "0.0.0")):
+    if cfg_tag == _PLACEHOLDER_TAG:
         raise ValueError(
-            f"release.json contains a placeholder cell_kn_tag ({cfg_tag!r}). "
+            f"release.json still contains the default placeholder cell_kn_tag ({cfg_tag!r}). "
             "Update cell_kn_tag and tar_source to real release values before running."
         )
     cfg_tar = cfg.get("tar_source", "")
-    if cfg_tar and any(p in cfg_tar for p in ("alpha", "beta", "0.0.0")):
+    if _PLACEHOLDER_TAG in cfg_tar:
         raise ValueError(
-            f"release.json contains a placeholder tar_source ({cfg_tar!r}). "
+            f"release.json still contains the default placeholder in tar_source ({cfg_tar!r}). "
             "Update tar_source to a real release URL before running."
         )
 
