@@ -278,42 +278,30 @@ if [[ -n "${PIPELINE_IMAGE:-}" ]]; then
     --query 'jobDefinitions[0]' \
     --output json)
 
-  REGISTER_ARGS=$(EXISTING="${EXISTING}" PIPELINE_IMAGE="${PIPELINE_IMAGE}" python3 - <<'PYEOF'
-import json, os, shlex
+  REGISTER_JSON=$(EXISTING="${EXISTING}" PIPELINE_IMAGE="${PIPELINE_IMAGE}" JOB_DEFINITION="${JOB_DEFINITION}" python3 - <<'PYEOF'
+import json, os
 jd = json.loads(os.environ["EXISTING"])
 cp = jd["containerProperties"]
 cp["image"] = os.environ["PIPELINE_IMAGE"]
-# Remove runtime-only fields that cannot be re-registered
+# Remove read-only fields that cannot be re-registered
 for key in ("taskArn",):
     cp.pop(key, None)
-args = ["--container-properties", json.dumps(cp)]
-# Preserve optional job definition properties if present
-for field, flag in [
-    ("retryStrategy",       "--retry-strategy"),
-    ("timeout",             "--timeout"),
-    ("tags",                "--tags"),
-    ("propagateTags",       "--propagate-tags"),
-    ("platformCapabilities","--platform-capabilities"),
-    ("schedulingPriority",  "--scheduling-priority"),
-]:
-    val = jd.get(field)
-    if val is not None:
-        if isinstance(val, bool):
-            if val:
-                args.append(flag)
-        elif isinstance(val, (dict, list)):
-            args += [flag, json.dumps(val)]
-        else:
-            args += [flag, str(val)]
-print(" ".join(shlex.quote(a) for a in args))
+out = {
+    "jobDefinitionName": os.environ["JOB_DEFINITION"],
+    "type": "container",
+    "containerProperties": cp,
+}
+# Preserve all top-level job definition properties from the existing revision
+for field in ("retryStrategy", "timeout", "tags", "propagateTags",
+              "platformCapabilities", "schedulingPriority", "parameters"):
+    if field in jd:
+        out[field] = jd[field]
+print(json.dumps(out))
 PYEOF
   )
 
-  # shellcheck disable=SC2086
   NEW_DEF=$(aws batch register-job-definition \
-    --job-definition-name "${JOB_DEFINITION}" \
-    --type container \
-    ${REGISTER_ARGS} \
+    --cli-input-json "${REGISTER_JSON}" \
     --query 'jobDefinitionArn' \
     --output text)
 
