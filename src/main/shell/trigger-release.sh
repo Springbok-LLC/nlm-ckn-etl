@@ -159,15 +159,15 @@ GITHUB_DEPLOYMENT_ID=""
 if [[ -n "${GITHUB_DEPLOY_TOKEN:-}" && -n "${GITHUB_REPOSITORY:-}" && -n "${GITHUB_REF_NAME:-}" ]]; then
   # Mark any previous in_progress deployments for this environment as inactive
   # so the deployments page doesn't accumulate stale "Deploying" entries.
-  STALE_IDS=$(curl -s \
+  DEPLOYMENTS_JSON=$(curl -s \
     -H "Authorization: Bearer ${GITHUB_DEPLOY_TOKEN}" \
     -H "Accept: application/vnd.github+json" \
     -H "X-GitHub-Api-Version: 2022-11-28" \
-    "https://api.github.com/repos/${GITHUB_REPOSITORY}/deployments?environment=production&per_page=20" \
-    | python3 - "${GITHUB_DEPLOY_TOKEN}" <<'PYEOF' 2>/dev/null) || true
-import sys, json, urllib.request
-token = sys.argv[1]
-deploys = json.load(sys.stdin)
+    "https://api.github.com/repos/${GITHUB_REPOSITORY}/deployments?environment=production&per_page=20") || true
+  STALE_IDS=$(DEPLOYMENTS_JSON="${DEPLOYMENTS_JSON}" GITHUB_DEPLOY_TOKEN="${GITHUB_DEPLOY_TOKEN}" python3 - <<'PYEOF' 2>/dev/null) || true
+import sys, json, os, urllib.request
+token = os.environ["GITHUB_DEPLOY_TOKEN"]
+deploys = json.loads(os.environ["DEPLOYMENTS_JSON"])
 for d in deploys:
     req = urllib.request.Request(d['statuses_url'],
         headers={'Authorization': f'Bearer {token}',
@@ -216,18 +216,41 @@ fi
 # ── Build container environment overrides ────────────────────────────────────
 # CELL_KN_TAG and RELEASE_CONFIG are always set. The rest are only included
 # when non-empty so the job definition defaults remain in effect otherwise.
-env_json="[{\"name\":\"CELL_KN_TAG\",\"value\":\"${TAG}\"}"
-env_json+=",{\"name\":\"RELEASE_CONFIG\",\"value\":\"${RELEASE_CONFIG_S3}\"}"
-[[ -n "${TAR_SOURCE}"              ]] && env_json+=",{\"name\":\"TAR_SOURCE\",\"value\":\"${TAR_SOURCE}\"}"
-[[ -n "${RUN_NAME}"                ]] && env_json+=",{\"name\":\"RUN_NAME\",\"value\":\"${RUN_NAME}\"}"
-[[ -n "${MAX_FETCH_AGE_HOURS}"     ]] && env_json+=",{\"name\":\"MAX_FETCH_AGE_HOURS\",\"value\":\"${MAX_FETCH_AGE_HOURS}\"}"
-[[ -n "${JAVA_OPTS}"               ]] && env_json+=",{\"name\":\"JAVA_OPTS\",\"value\":\"${JAVA_OPTS}\"}"
+# Use Python json.dumps for safe JSON building to handle special characters.
 CONTAINER_GH_TOKEN="${GITHUB_DEPLOY_TOKEN:-${GITHUB_TOKEN:-}}"
-[[ -n "${CONTAINER_GH_TOKEN}"      ]] && env_json+=",{\"name\":\"GITHUB_TOKEN\",\"value\":\"${CONTAINER_GH_TOKEN}\"}"
-[[ -n "${GITHUB_REPOSITORY:-}"     ]] && env_json+=",{\"name\":\"GITHUB_REPOSITORY\",\"value\":\"${GITHUB_REPOSITORY}\"}"
-[[ -n "${GITHUB_DEPLOYMENT_ID}"    ]] && env_json+=",{\"name\":\"GITHUB_DEPLOYMENT_ID\",\"value\":\"${GITHUB_DEPLOYMENT_ID}\"}"
-env_json+=",{\"name\":\"SKIP_ONTOLOGY\",\"value\":\"${SKIP_ONTOLOGY}\"}"
-env_json+="]"
+env_json=$(
+  CELL_KN_TAG="${TAG}" \
+  RELEASE_CONFIG_S3="${RELEASE_CONFIG_S3}" \
+  TAR_SOURCE="${TAR_SOURCE}" \
+  RUN_NAME="${RUN_NAME}" \
+  MAX_FETCH_AGE_HOURS="${MAX_FETCH_AGE_HOURS}" \
+  JAVA_OPTS="${JAVA_OPTS}" \
+  CONTAINER_GH_TOKEN="${CONTAINER_GH_TOKEN}" \
+  GITHUB_REPOSITORY="${GITHUB_REPOSITORY:-}" \
+  GITHUB_DEPLOYMENT_ID="${GITHUB_DEPLOYMENT_ID}" \
+  SKIP_ONTOLOGY="${SKIP_ONTOLOGY}" \
+  python3 - <<'PYEOF'
+import json, os
+env = [
+    {"name": "CELL_KN_TAG",      "value": os.environ["CELL_KN_TAG"]},
+    {"name": "RELEASE_CONFIG",   "value": os.environ["RELEASE_CONFIG_S3"]},
+    {"name": "SKIP_ONTOLOGY",    "value": os.environ["SKIP_ONTOLOGY"]},
+]
+for key, envvar in [
+    ("TAR_SOURCE",          "TAR_SOURCE"),
+    ("RUN_NAME",            "RUN_NAME"),
+    ("MAX_FETCH_AGE_HOURS", "MAX_FETCH_AGE_HOURS"),
+    ("JAVA_OPTS",           "JAVA_OPTS"),
+    ("GITHUB_TOKEN",        "CONTAINER_GH_TOKEN"),
+    ("GITHUB_REPOSITORY",   "GITHUB_REPOSITORY"),
+    ("GITHUB_DEPLOYMENT_ID","GITHUB_DEPLOYMENT_ID"),
+]:
+    val = os.environ.get(envvar, "")
+    if val:
+        env.append({"name": key, "value": val})
+print(json.dumps(env))
+PYEOF
+)
 
 # Sanitise the tag for use as a job name (Batch allows [a-zA-Z0-9_-]).
 LABEL="${RUN_NAME:-${TAG}}"
@@ -250,21 +273,42 @@ if [[ -n "${PIPELINE_IMAGE:-}" ]]; then
     --query 'jobDefinitions[0]' \
     --output json)
 
-  CONTAINER_PROPS=$(EXISTING="${EXISTING}" python3 - <<'PYEOF'
-import json, os
+  REGISTER_ARGS=$(EXISTING="${EXISTING}" PIPELINE_IMAGE="${PIPELINE_IMAGE}" python3 - <<'PYEOF'
+import json, os, shlex
 jd = json.loads(os.environ["EXISTING"])
 cp = jd["containerProperties"]
 cp["image"] = os.environ["PIPELINE_IMAGE"]
+# Remove runtime-only fields that cannot be re-registered
 for key in ("taskArn",):
     cp.pop(key, None)
-print(json.dumps(cp))
+args = ["--container-properties", json.dumps(cp)]
+# Preserve optional job definition properties if present
+for field, flag in [
+    ("retryStrategy",       "--retry-strategy"),
+    ("timeout",             "--timeout"),
+    ("tags",                "--tags"),
+    ("propagateTags",       "--propagate-tags"),
+    ("platformCapabilities","--platform-capabilities"),
+    ("schedulingPriority",  "--scheduling-priority"),
+]:
+    val = jd.get(field)
+    if val is not None:
+        if isinstance(val, bool):
+            if val:
+                args.append(flag)
+        elif isinstance(val, (dict, list)):
+            args += [flag, json.dumps(val)]
+        else:
+            args += [flag, str(val)]
+print(" ".join(shlex.quote(a) for a in args))
 PYEOF
   )
 
+  # shellcheck disable=SC2086
   NEW_DEF=$(aws batch register-job-definition \
     --job-definition-name "${JOB_DEFINITION}" \
     --type container \
-    --container-properties "${CONTAINER_PROPS}" \
+    ${REGISTER_ARGS} \
     --query 'jobDefinitionArn' \
     --output text)
 

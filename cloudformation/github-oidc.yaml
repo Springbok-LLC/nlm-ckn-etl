@@ -78,6 +78,7 @@ Resources:
             Condition:
               StringEquals:
                 token.actions.githubusercontent.com:aud: sts.amazonaws.com
+                token.actions.githubusercontent.com:job_workflow_ref: Springbok-LLC/nlm-ckn-etl/.github/workflows/build-image.yml@refs/heads/main
               StringLike:
                 token.actions.githubusercontent.com:sub: !Ref GitHubRepos
 
@@ -135,6 +136,7 @@ Resources:
             Condition:
               StringEquals:
                 token.actions.githubusercontent.com:aud: sts.amazonaws.com
+                token.actions.githubusercontent.com:job_workflow_ref: Springbok-LLC/nlm-ckn-etl/.github/workflows/on-release.yml@refs/heads/main
               StringLike:
                 token.actions.githubusercontent.com:sub: !Ref GitHubRepos
 

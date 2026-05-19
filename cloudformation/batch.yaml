@@ -105,9 +105,16 @@ Resources:
       GroupDescription: Outbound-only security group for NLM-CKN Batch - no inbound rules needed
       VpcId: !Ref VpcId
       SecurityGroupEgress:
-        - IpProtocol: '-1'
+        - IpProtocol: tcp
+          FromPort: 443
+          ToPort: 443
           CidrIp: '0.0.0.0/0'
-          Description: Allow all outbound (GitHub, NCBI, CELLxGENE, ECR, S3, Secrets Manager)
+          Description: Allow HTTPS outbound (GitHub, NCBI, CELLxGENE, ECR, S3, Secrets Manager)
+        - IpProtocol: udp
+          FromPort: 53
+          ToPort: 53
+          CidrIp: '0.0.0.0/0'
+          Description: Allow DNS outbound
       Tags:
         - Key: Name
           Value: nlm-ckn-release
@@ -250,6 +257,9 @@ Resources:
     Properties:
       LaunchTemplateName: nlm-ckn-release-lt
       LaunchTemplateData:
+        MetadataOptions:
+          HttpTokens: required
+          HttpEndpoint: enabled
         BlockDeviceMappings:
           - DeviceName: /dev/xvda
             Ebs:

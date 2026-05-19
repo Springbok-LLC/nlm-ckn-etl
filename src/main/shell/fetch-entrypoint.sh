@@ -21,7 +21,7 @@ set -euo pipefail
 : "${NCBI_API_KEY:?NCBI_API_KEY must be set}"
 
 echo "=== Running fetch flow ==="
-python /app/python/src/flows/fetch.py \
+exec python /app/python/src/flows/fetch.py \
     --ncbi-email   "${NCBI_EMAIL}" \
     --ncbi-api-key "${NCBI_API_KEY}" \
     --force

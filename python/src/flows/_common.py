@@ -244,12 +244,18 @@ def _s3_download_tar(s3_path: str, local_dir: Path) -> None:
         tmp_path = Path(tmp.name)
     try:
         boto3.client("s3").download_file(bucket, key, str(tmp_path))
+        base_dir = local_dir.resolve()
         with tarfile.open(tmp_path, "r:gz") as tar:
             for member in tar.getmembers():
                 parts = Path(member.name).parts
                 if len(parts) <= 1:
                     continue
+                if member.issym() or member.islnk():
+                    continue
                 member.name = str(Path(*parts[1:]))
+                resolved = (local_dir / member.name).resolve()
+                if not str(resolved).startswith(str(base_dir) + os.sep):
+                    continue
                 tar.extract(member, local_dir)
     finally:
         tmp_path.unlink(missing_ok=True)

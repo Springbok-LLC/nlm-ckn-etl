@@ -138,7 +138,7 @@ def update_downloads(urls, download_dirpath, find_version):
                 download_filepath_new.rename(download_filepath_cur)
 
             else:
-                print("New version is not newer than current version")
+                print(f"New version ({version_new}) is not newer than current version ({version_cur})")
                 print(f"Removing {download_filepath_new}")
                 download_filepath_new.unlink()
 

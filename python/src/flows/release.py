@@ -144,13 +144,20 @@ def extract_release_tarball(
     # organ, author, and year) so collisions are not a concern. This keeps
     # results_dir flat, consistent with what LoaderUtilities expects.
     logger.info(f"Extracting → {results_dir.name}/ (flat)")
+    base_dir = results_dir.resolve()
     with tarfile.open(tar_path, "r:gz") as tf:
         for member in tf.getmembers():
             if not member.name.startswith(_TARBALL_PREFIX):
                 continue
-            if member.isdir():
+            if member.isdir() or member.issym() or member.islnk():
                 continue
-            member.name = Path(member.name).name
+            filename = Path(member.name).name
+            if not filename:
+                continue
+            resolved = (results_dir / filename).resolve()
+            if not str(resolved).startswith(str(base_dir) + os.sep):
+                continue
+            member.name = filename
             tf.extract(member, results_dir)
 
     # Remove downloaded tarball — contents are now in results_dir.
@@ -357,6 +364,20 @@ def nlm_ckn_release(
     if not hubmap_urls:
         raise ValueError("hubmap_urls is empty in release.json — cannot proceed")
 
+    # Guard against placeholder/development values being used in a real release.
+    cfg_tag = cfg.get("cell_kn_tag", "")
+    if cfg_tag and any(p in cfg_tag for p in ("alpha", "beta", "0.0.0")):
+        raise ValueError(
+            f"release.json contains a placeholder cell_kn_tag ({cfg_tag!r}). "
+            "Update cell_kn_tag and tar_source to real release values before running."
+        )
+    cfg_tar = cfg.get("tar_source", "")
+    if cfg_tar and any(p in cfg_tar for p in ("alpha", "beta", "0.0.0")):
+        raise ValueError(
+            f"release.json contains a placeholder tar_source ({cfg_tar!r}). "
+            "Update tar_source to a real release URL before running."
+        )
+
     # Derive tarball URL from tag if not explicitly provided.
     if not tar_source:
         tar_name = f"prod-data-{cell_kn_tag}.tar.gz"
@@ -427,7 +448,7 @@ def nlm_ckn_release(
     try:
         nlm_ckn_etl(
             run_ontology=not skip_ontology,
-            force_ontology=not skip_ontology,
+            force_ontology=False,
             run_results=True,
             force_results=True,
             run_archive=True,

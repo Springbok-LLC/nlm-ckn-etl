@@ -93,7 +93,7 @@ log "ECR stack ready."
 
 # ── Step 2: Resolve ECR details ───────────────────────────────────────────────
 PIPELINE_REPO_URI="$(cfn_output "${ECR_STACK_NAME}" PipelineRepositoryUri)"
-REGION="$(aws configure get region 2>/dev/null || echo "${AWS_DEFAULT_REGION:-us-east-1}")"
+REGION="${AWS_REGION:-${AWS_DEFAULT_REGION:-$(aws configure get region 2>/dev/null || echo us-east-1)}}"
 REGISTRY="${PIPELINE_REPO_URI%%/*}"   # account.dkr.ecr.region.amazonaws.com
 
 log "Pipeline ECR URI: ${PIPELINE_REPO_URI}"

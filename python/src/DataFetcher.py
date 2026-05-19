@@ -759,7 +759,12 @@ def main():
         }
 
     if file_paths["nsforest_paths"]:
-        dataset_version_id_lists = get_dataset_version_id_lists(file_paths)
+        try:
+            dataset_version_id_lists = get_dataset_version_id_lists(file_paths)
+        except Exception as exc:
+            print(f"WARNING: Failed to build dataset version ID lists: {exc}\n"
+                  "Fetchers that depend on dataset version IDs will receive an empty list.")
+            dataset_version_id_lists = []
     else:
         print(
             f"WARNING: No *_results.csv files found in {results_dir.name}/ — "
@@ -805,7 +810,10 @@ def main():
                     status.setdefault(fetcher.name, {})["last_outcome"] = "skipped"
                     _save_fetch_status(status_path, status)
                     # Load cached results so downstream fetchers (e.g. uniprot → gene) still work
-                    context[f"{fetcher.name}_results"] = fetcher._load()
+                    if fetcher.output_path.is_dir():
+                        context[f"{fetcher.name}_results"] = {}
+                    else:
+                        context[f"{fetcher.name}_results"] = fetcher._load()
                     continue
 
         # Record that we are attempting this source

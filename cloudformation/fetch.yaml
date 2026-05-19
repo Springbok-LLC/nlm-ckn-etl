@@ -216,7 +216,6 @@ Resources:
                 Effect: Allow
                 Action:
                   - s3:PutObject
-                  - s3:CopyObject
                 Resource:
                   - !Sub 'arn:aws:s3:::${S3Bucket}/runs/*/external-staging/*'
                   - !Sub 'arn:aws:s3:::${S3Bucket}/external/*'

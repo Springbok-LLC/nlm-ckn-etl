@@ -68,6 +68,7 @@ See the README for full instructions.
 import argparse
 import io
 import json
+import tempfile
 import os
 import re
 import shutil
@@ -205,13 +206,13 @@ def start_arangodb(arango_db_home: str, arango_db_password: str) -> int:
     if _get_arangodb_id():
         logger.info("ArangoDB container already running")
         client = docker_sdk.from_env()
-        containers = client.containers.list(
-            filters={"name": "arangodb", "status": "running"}
-        )
-        if containers:
-            ports = containers[0].ports.get("8529/tcp")
+        try:
+            container = client.containers.get(_get_arangodb_id())
+            ports = container.ports.get("8529/tcp")
             if ports:
                 return int(ports[0]["HostPort"])
+        except Exception:
+            pass
         return ARANGO_DB_PORT
 
     arango_db_port = _find_free_port()
@@ -454,13 +455,17 @@ def dump_arangodb(
         )
 
     stream, _ = container.get_archive(container_out)
-    with tarfile.open(fileobj=io.BytesIO(b"".join(stream))) as tar:
-        for member in tar.getmembers():
-            parts = Path(member.name).parts
-            if len(parts) <= 1:
-                continue
-            member.name = str(Path(*parts[1:]))
-            tar.extract(member, dump_dir)
+    with tempfile.TemporaryFile() as tmp:
+        for chunk in stream:
+            tmp.write(chunk)
+        tmp.seek(0)
+        with tarfile.open(fileobj=tmp) as tar:
+            for member in tar.getmembers():
+                parts = Path(member.name).parts
+                if len(parts) <= 1:
+                    continue
+                member.name = str(Path(*parts[1:]))
+                tar.extract(member, dump_dir)
 
     dump_files = list(dump_dir.glob("*"))
     logger.info(f"Dump complete{tag}: {len(dump_files)} file(s) in {dump_dir.name}/")
@@ -1062,18 +1067,20 @@ def nlm_ckn_etl(
                 f"(jar_key={jar_key})"
             )
 
-    # ── Ensure ArangoDB is running for Phase 2/3 when Phase 1 didn't start it ──
-    # Covers: --run-results only, --run-archive only, or --run-ontology when the
-    # baseline already existed and Phase 1 was a no-op.
+    # ── Ensure ArangoDB is running for Phase 2 when Phase 1 didn't start it ──
+    # Covers: --run-results only, or --run-ontology when the baseline already
+    # existed and Phase 1 was a no-op.
+    # Archive-only mode is intentionally excluded: Phase 3 requires data that
+    # was loaded in Phase 2 (same invocation or a remote host). Starting a fresh
+    # ArangoDB for archive-only would dump an empty database.
     if ARANGO_DB_HOST == "localhost" and not phase1_started_arangodb:
-        if run_results or force_results or run_archive or force_archive:
+        if run_results or force_results:
             # Wipe ArangoDB data (bind-mount dir or named Docker volume) before
             # starting so ArangoDB initialises fresh with the current password.
             # Without this, ArangoDB ignores ARANGO_ROOT_PASSWORD on restart and
             # keeps the password baked into the existing data, causing a 401 if
             # the password was regenerated (e.g. in a new Batch container).
-            if run_results or force_results:
-                _wipe_arangodb_data(arango_db_home, logger)
+            _wipe_arangodb_data(arango_db_home, logger)
             actual_port = start_arangodb(arango_db_home, arango_db_password)
             _set_arango_port(actual_port)
 

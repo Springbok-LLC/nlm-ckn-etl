@@ -308,10 +308,10 @@ class GeneTransformer(BaseTransformer):
                 transformed[gene_entrez_id] = {}
                 continue
 
-            xml_data = gzip.decompress(base64.b64decode(raw["xml_gz_b64"])).decode(
-                "utf-8"
-            )
             try:
+                xml_data = gzip.decompress(base64.b64decode(raw["xml_gz_b64"])).decode(
+                    "utf-8"
+                )
                 transformed[gene_entrez_id] = parse_xml_for_gene_id(
                     gene_entrez_id, xml_data
                 )

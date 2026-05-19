@@ -27,22 +27,27 @@ on:
       - '.github/workflows/build-image.yml'
       - '.github/workflows/ci.yml'
 
+permissions:
+  contents: read
+  checks: write
+  pull-requests: write
+
 jobs:
   test-java:
     name: Java tests
     uses: ./.github/workflows/java-build.yml
-    secrets: inherit
 
   test-python:
     name: Python lint and tests
     uses: ./.github/workflows/python-lint.yml
-    secrets: inherit
 
   smoke-test:
     name: Pipeline image smoke test
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3

@@ -103,7 +103,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && rm -rf /var/lib/apt/lists/*
 
 # ── uv (fast Python installer) ─────────────────────────────────────────────
-COPY --from=ghcr.io/astral-sh/uv:latest /uv /bin/uv
+COPY --from=ghcr.io/astral-sh/uv:0.5.18 /uv /bin/uv
 ENV UV_SYSTEM_PYTHON=1
 
 # ── Prefect runtime settings ───────────────────────────────────────────────
@@ -129,7 +129,7 @@ RUN mkdir -p /root/.prefect
 # poetry is used only to export the pinned requirements from poetry.lock;
 # uv handles the actual install (parallel downloads, ~10-100x faster than pip).
 RUN pip install --no-cache-dir poetry==2.3.2 \
-    && poetry self add poetry-plugin-export
+    && poetry self add poetry-plugin-export==1.8.0
 
 WORKDIR /app
 
@@ -137,12 +137,12 @@ COPY python/pyproject.toml python/poetry.lock python/
 
 RUN --mount=type=cache,target=/root/.cache/uv \
     cd python \
-    && poetry export --without dev --without-hashes -f requirements.txt -o /tmp/requirements.txt \
+    && poetry export --without dev -f requirements.txt -o /tmp/requirements.txt \
     && uv pip install --system -r /tmp/requirements.txt
 
 # ── AWS CLI ────────────────────────────────────────────────────────────────
 # Used by S3 sync tasks in fetcher.py and pipeline.py.
-RUN pip install --no-cache-dir awscli
+RUN pip install --no-cache-dir awscli==1.36.12
 
 # ── Application source ────────────────────────────────────────────────────
 COPY python/src /app/python/src
