@@ -25,6 +25,10 @@ jobs:
   test:
     name: Run tests
     uses: ./.github/workflows/ci.yml
+    permissions:
+      contents: read
+      checks: write
+      pull-requests: write
 
   build:
     name: Build and push pipeline image

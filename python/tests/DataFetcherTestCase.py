@@ -550,7 +550,7 @@ class HuBMAPFetcherTestCase(unittest.TestCase):
         self.assertEqual(len(urls), 1)
         org, ver, url = urls[0]
         self.assertEqual(org, "kidney")
-        self.assertEqual(ver, 2.1)
+        self.assertEqual(ver, "2.1")
         self.assertIn("v2.1/graph.json", url)
 
     @patch("DataFetcher.requests.get")
@@ -577,7 +577,7 @@ class HuBMAPFetcherTestCase(unittest.TestCase):
     @patch.object(HuBMAPFetcher, "_get_hubmap_json_urls")
     def test_run_downloads_new_file(self, mock_urls, mock_get):
         """run() downloads a new file when it does not exist."""
-        mock_urls.return_value = [("kidney", 2.1, "https://example.com/v2.1/graph.json")]
+        mock_urls.return_value = [("kidney", "2.1", "https://example.com/v2.1/graph.json")]
         mock_get.return_value = MagicMock(status_code=200, text='{"data": "test"}')
 
         fetcher = self._make_fetcher()
@@ -592,7 +592,7 @@ class HuBMAPFetcherTestCase(unittest.TestCase):
     @patch.object(HuBMAPFetcher, "_get_hubmap_json_urls")
     def test_run_skips_existing_file(self, mock_urls):
         """run() skips download when the file already exists."""
-        mock_urls.return_value = [("kidney", 2.1, "https://example.com/v2.1/graph.json")]
+        mock_urls.return_value = [("kidney", "2.1", "https://example.com/v2.1/graph.json")]
 
         # Pre-create the file
         filepath = self.hubmap_dir / "kidney-v2.1.json"
@@ -610,7 +610,7 @@ class HuBMAPFetcherTestCase(unittest.TestCase):
     @patch.object(HuBMAPFetcher, "_get_hubmap_json_urls")
     def test_run_archives_old_version(self, mock_urls, mock_get):
         """run() moves old version files to .archive/ before downloading."""
-        mock_urls.return_value = [("kidney", 2.1, "https://example.com/v2.1/graph.json")]
+        mock_urls.return_value = [("kidney", "2.1", "https://example.com/v2.1/graph.json")]
         mock_get.return_value = MagicMock(status_code=200, text='{"new": true}')
 
         # Pre-create an older version
@@ -634,7 +634,7 @@ class HuBMAPFetcherTestCase(unittest.TestCase):
     @patch.object(HuBMAPFetcher, "_get_hubmap_json_urls")
     def test_run_no_file_on_download_failure(self, mock_urls, mock_get):
         """run() does not create a file when download returns non-200."""
-        mock_urls.return_value = [("kidney", 2.1, "https://example.com/v2.1/graph.json")]
+        mock_urls.return_value = [("kidney", "2.1", "https://example.com/v2.1/graph.json")]
         mock_get.return_value = MagicMock(status_code=500)
 
         fetcher = self._make_fetcher()
