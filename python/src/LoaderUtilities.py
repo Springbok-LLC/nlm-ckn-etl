@@ -560,12 +560,11 @@ def get_gene_names_and_ensembl_and_entrez_ids():
             gene_names_and_ids = (
                 sc.queries.biomart_annotations(
                     "hsapiens",
-                    ["external_gene_name", "ensembl_gene_id", "ncbi_gene_id"],
+                    ["external_gene_name", "ensembl_gene_id", "entrezgene_id"],
                     use_cache=True,
                 )
                 .dropna()
                 .drop_duplicates()
-                .rename(columns={"ncbi_gene_id": "entrezgene_id"})
             )
             break
         except Exception as exc:
