@@ -3,7 +3,6 @@ import boto3
 from botocore.exceptions import ClientError
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
-import io
 import json
 import os
 from pathlib import Path
@@ -11,7 +10,6 @@ import random
 import re
 import string
 from time import sleep
-import urllib.request
 
 from lxml import etree
 import pandas as pd
