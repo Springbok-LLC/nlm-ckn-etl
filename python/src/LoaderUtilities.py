@@ -1,5 +1,9 @@
 import ast
+import boto3
+from botocore.exceptions import ClientError
 from dataclasses import dataclass, field
+from datetime import datetime, timezone
+import io
 import json
 import os
 from pathlib import Path
@@ -7,6 +11,7 @@ import random
 import re
 import string
 from time import sleep
+import urllib.request
 
 from lxml import etree
 import pandas as pd
@@ -43,6 +48,8 @@ RDF_NS = "{http://www.w3.org/1999/02/22-rdf-syntax-ns#}"
 DATA_DIRPATH = Path(__file__).resolve().parents[2] / "data"
 BIOMART_DIRPATH = DATA_DIRPATH / "biomart"
 GENE_MAPPING_PATH = BIOMART_DIRPATH / "gene_mapping.csv"
+_S3_BUCKET = os.getenv("S3_BUCKET", "")
+_S3_GENE_MAPPING_KEY = "cache/biomart/gene_mapping.csv"
 
 DEFAULT_RUN_NAME = "full"
 
@@ -494,13 +501,58 @@ def get_gene_names_and_ensembl_and_entrez_ids():
         DataFrame with columns containing gene names, and Ensembl and
         Entrez ids
     """
+    max_fetch_age_hours = float(os.getenv("MAX_FETCH_AGE_HOURS", "48"))
     if GENE_MAPPING_PATH.exists():
-        print(f"Loading gene mapping from {GENE_MAPPING_PATH}")
-        gene_names_and_ids = pd.read_csv(GENE_MAPPING_PATH, index_col=0)
-        gene_names_and_ids["entrezgene_id"] = gene_names_and_ids[
-            "entrezgene_id"
-        ].astype(str)
-        return gene_names_and_ids
+        age_hours = (
+            datetime.now(timezone.utc)
+            - datetime.fromtimestamp(
+                GENE_MAPPING_PATH.stat().st_mtime, tz=timezone.utc
+            )
+        ).total_seconds() / 3600
+        if age_hours <= max_fetch_age_hours:
+            print(f"Loading gene mapping from {GENE_MAPPING_PATH} ({age_hours:.1f}h old)")
+            gene_names_and_ids = pd.read_csv(GENE_MAPPING_PATH, index_col=0)
+            gene_names_and_ids["entrezgene_id"] = gene_names_and_ids[
+                "entrezgene_id"
+            ].astype(str)
+            return gene_names_and_ids
+        print(
+            f"Local gene mapping is {age_hours:.1f}h old"
+            f" (threshold: {max_fetch_age_hours}h) — re-fetching"
+        )
+    if _S3_BUCKET:
+        try:
+            s3 = boto3.client("s3")
+            head = s3.head_object(Bucket=_S3_BUCKET, Key=_S3_GENE_MAPPING_KEY)
+            last_modified = head["LastModified"]  # timezone-aware datetime
+            age_hours = (
+                datetime.now(timezone.utc) - last_modified
+            ).total_seconds() / 3600
+            if age_hours <= max_fetch_age_hours:
+                BIOMART_DIRPATH.mkdir(parents=True, exist_ok=True)
+                s3.download_file(
+                    _S3_BUCKET, _S3_GENE_MAPPING_KEY, str(GENE_MAPPING_PATH)
+                )
+                print(
+                    f"Loaded gene mapping from s3://{_S3_BUCKET}/{_S3_GENE_MAPPING_KEY}"
+                    f" ({age_hours:.1f}h old)"
+                )
+                gene_names_and_ids = pd.read_csv(GENE_MAPPING_PATH, index_col=0)
+                gene_names_and_ids["entrezgene_id"] = gene_names_and_ids[
+                    "entrezgene_id"
+                ].astype(str)
+                return gene_names_and_ids
+            print(
+                f"Gene mapping cache is {age_hours:.1f}h old"
+                f" (threshold: {max_fetch_age_hours}h) — re-fetching"
+            )
+        except ClientError as exc:
+            if exc.response["Error"]["Code"] not in ("404", "NoSuchKey"):
+                raise
+            print(
+                f"Gene mapping not in S3 (s3://{_S3_BUCKET}/{_S3_GENE_MAPPING_KEY});"
+                " fetching from source"
+            )
 
     print("Getting gene names, and Ensembl and Entrez ids from BioMart")
     biomart_retries = 3
@@ -510,11 +562,12 @@ def get_gene_names_and_ensembl_and_entrez_ids():
             gene_names_and_ids = (
                 sc.queries.biomart_annotations(
                     "hsapiens",
-                    ["external_gene_name", "ensembl_gene_id", "entrezgene_id"],
+                    ["external_gene_name", "ensembl_gene_id", "ncbi_gene_id"],
                     use_cache=True,
                 )
                 .dropna()
                 .drop_duplicates()
+                .rename(columns={"ncbi_gene_id": "entrezgene_id"})
             )
             break
         except Exception as exc:
@@ -531,6 +584,13 @@ def get_gene_names_and_ensembl_and_entrez_ids():
     )
     BIOMART_DIRPATH.mkdir(parents=True, exist_ok=True)
     gene_names_and_ids.to_csv(GENE_MAPPING_PATH)
+    if _S3_BUCKET:
+        boto3.client("s3").upload_file(
+            str(GENE_MAPPING_PATH), _S3_BUCKET, _S3_GENE_MAPPING_KEY
+        )
+        print(
+            f"Cached gene mapping to s3://{_S3_BUCKET}/{_S3_GENE_MAPPING_KEY}"
+        )
     return gene_names_and_ids
 
 

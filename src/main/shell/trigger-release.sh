@@ -170,16 +170,18 @@ if [[ -n "${GITHUB_DEPLOY_TOKEN:-}" && -n "${GITHUB_REPOSITORY:-}" && -n "${GITH
     -H "Accept: application/vnd.github+json" \
     -H "X-GitHub-Api-Version: 2022-11-28" \
     "https://api.github.com/repos/${GITHUB_REPOSITORY}/deployments?environment=production&per_page=20") || true
-  STALE_IDS=$(DEPLOYMENTS_JSON="${DEPLOYMENTS_JSON}" GITHUB_DEPLOY_TOKEN="${GITHUB_DEPLOY_TOKEN}" \
-             GITHUB_REF="${GITHUB_REF:-}" GITHUB_ACTOR="${GITHUB_ACTOR:-}" python3 - <<'PYEOF' 2>/dev/null) || true
-import sys, json, os, urllib.request
+  _INPUT=$(mktemp /tmp/trigger-input-XXXXXXXX.json)
+  printf '%s' "${DEPLOYMENTS_JSON}" > "${_INPUT}"
+  STALE_IDS=$(
+    GITHUB_DEPLOY_TOKEN="${GITHUB_DEPLOY_TOKEN}" \
+    GITHUB_REF="${GITHUB_REF:-}" GITHUB_ACTOR="${GITHUB_ACTOR:-}" \
+    python3 - "${_INPUT}" 2>/dev/null <<'PYEOF'
+import json, os, sys, urllib.request
 token = os.environ["GITHUB_DEPLOY_TOKEN"]
-deploys = json.loads(os.environ["DEPLOYMENTS_JSON"])
+deploys = json.load(open(sys.argv[1]))
 ref    = os.environ.get("GITHUB_REF", "")
 actor  = os.environ.get("GITHUB_ACTOR", "")
 for d in deploys:
-    # Only inactivate deployments from the same ref and creator to avoid
-    # accidentally clobbering deployments triggered by other branches or users.
     if ref and d.get("ref") != ref:
         continue
     if actor and d.get("creator", {}).get("login") != actor:
@@ -195,6 +197,8 @@ for d in deploys:
     if latest in ('in_progress', 'pending'):
         print(d['id'])
 PYEOF
+  ) || true
+  rm -f "${_INPUT}"
   for stale_id in ${STALE_IDS}; do
     curl -sf -X POST \
       -H "Authorization: Bearer ${GITHUB_DEPLOY_TOKEN}" \
@@ -287,12 +291,15 @@ if [[ -n "${PIPELINE_IMAGE:-}" ]]; then
     --query 'jobDefinitions[0]' \
     --output json)
 
-  REGISTER_JSON=$(EXISTING="${EXISTING}" PIPELINE_IMAGE="${PIPELINE_IMAGE}" JOB_DEFINITION="${JOB_DEFINITION}" python3 - <<'PYEOF'
-import json, os
-jd = json.loads(os.environ["EXISTING"])
+  _INPUT=$(mktemp /tmp/trigger-input-XXXXXXXX.json)
+  printf '%s' "${EXISTING}" > "${_INPUT}"
+  REGISTER_JSON=$(
+    PIPELINE_IMAGE="${PIPELINE_IMAGE}" JOB_DEFINITION="${JOB_DEFINITION}" \
+    python3 - "${_INPUT}" <<'PYEOF'
+import json, os, sys
+jd = json.load(open(sys.argv[1]))
 cp = jd["containerProperties"]
 cp["image"] = os.environ["PIPELINE_IMAGE"]
-# Remove read-only fields that cannot be re-registered
 for key in ("taskArn",):
     cp.pop(key, None)
 out = {
@@ -300,9 +307,7 @@ out = {
     "type": "container",
     "containerProperties": cp,
 }
-# Preserve all top-level job definition properties from the existing revision.
-# tags/propagateTags are intentionally excluded — CloudFormation-managed tags
-# require batch:TagResource and should not be copied to ad-hoc revisions.
+# tags/propagateTags excluded — require batch:TagResource, should not be copied
 for field in ("retryStrategy", "timeout", "platformCapabilities",
               "schedulingPriority", "parameters"):
     if field in jd:
@@ -310,6 +315,7 @@ for field in ("retryStrategy", "timeout", "platformCapabilities",
 print(json.dumps(out))
 PYEOF
   )
+  rm -f "${_INPUT}"
 
   NEW_DEF=$(aws batch register-job-definition \
     --cli-input-json "${REGISTER_JSON}" \

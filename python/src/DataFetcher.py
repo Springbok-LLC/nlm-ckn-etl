@@ -379,7 +379,7 @@ class OpenTargetsFetcher(DataFetcher):
 
     def get_ids(self, context):
         """Return gene Ensembl IDs."""
-        if "gene_data" not in context:
+        if not context.get("gene_data"):
             raise ValueError("OpenTargetsFetcher requires 'gene_data' in context")
         return context["gene_data"]["gene_ensembl_ids"]
 
@@ -436,7 +436,7 @@ class GeneFetcher(DataFetcher):
 
     def get_ids(self, context):
         """Return gene Entrez IDs."""
-        if "gene_data" not in context:
+        if not context.get("gene_data"):
             raise ValueError("GeneFetcher requires 'gene_data' in context")
         return context["gene_data"]["gene_entrez_ids"]
 
@@ -818,6 +818,29 @@ def main():
                     else:
                         context[f"{fetcher.name}_results"] = fetcher._load()
                     continue
+
+        # Check cache before attempting a live fetch when context is incomplete.
+        # Fetchers like opentargets and gene require gene_data; if BioMart failed,
+        # gene_data is None and get_ids() will raise. Use cached output if available
+        # rather than failing the whole run.
+        try:
+            fetcher.get_ids(context)
+        except (ValueError, KeyError) as exc:
+            cached = fetcher._load()
+            if cached:
+                print(
+                    f"[{fetcher.name}] {exc}; using cached results"
+                )
+                context[f"{fetcher.name}_results"] = cached
+                status.setdefault(fetcher.name, {})["last_outcome"] = "cached"
+                _save_fetch_status(status_path, status)
+                continue
+            print(f"ERROR: Fetcher '{fetcher.name}' requires missing context: {exc}")
+            context[f"{fetcher.name}_results"] = {}
+            status.setdefault(fetcher.name, {})["last_outcome"] = "failed"
+            _save_fetch_status(status_path, status)
+            failed_fetchers.append(fetcher.name)
+            continue
 
         # Record that we are attempting this source
         status.setdefault(fetcher.name, {})["last_attempt_at"] = now_iso
