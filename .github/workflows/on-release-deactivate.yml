@@ -1,0 +1,92 @@
+name: On Release Removed — Delete Deployment
+
+# Fires when a GitHub Release is deleted or unpublished on this repo.
+# Finds any GitHub deployment for the release's tag/ref in the "production"
+# environment and deletes it so the deployments page stays clean.
+#
+# GitHub requires a deployment to have no active status before deletion, so
+# each matching deployment is marked inactive first, then deleted.
+#
+# Required GitHub secrets:
+#   DEPLOYMENTS_TOKEN  — PAT with deployments:write scope
+
+on:
+  release:
+    types: [deleted, unpublished]
+
+jobs:
+  deactivate:
+    name: Mark deployment inactive
+    runs-on: ubuntu-latest
+    permissions:
+      deployments: write
+
+    steps:
+      - name: Delete matching deployments
+        env:
+          GITHUB_DEPLOY_TOKEN: ${{ secrets.DEPLOYMENTS_TOKEN }}
+          GITHUB_REPOSITORY:   ${{ github.repository }}
+          REF_NAME:            ${{ github.event.release.tag_name }}
+        run: |
+          python3 - <<'PYEOF'
+          import json, os, sys, urllib.request, urllib.error
+
+          token = os.environ["GITHUB_DEPLOY_TOKEN"]
+          repo  = os.environ["GITHUB_REPOSITORY"]
+          ref   = os.environ["REF_NAME"]
+
+          headers = {
+              "Authorization": f"Bearer {token}",
+              "Accept": "application/vnd.github+json",
+              "X-GitHub-Api-Version": "2022-11-28",
+          }
+
+          def gh(method, url, body=None):
+              data = json.dumps(body).encode() if body else None
+              req = urllib.request.Request(url, data=data, headers=headers, method=method)
+              try:
+                  with urllib.request.urlopen(req, timeout=10) as r:
+                      return r.read()  # raw bytes — callers parse only when needed
+              except urllib.error.HTTPError as exc:
+                  print(f"  HTTP {exc.code} {method} {url}: {exc.read().decode()}", file=sys.stderr)
+                  return None
+
+          print(f"Looking for deployments: ref={ref} environment=production")
+          raw = gh("GET",
+              f"https://api.github.com/repos/{repo}/deployments"
+              f"?environment=production&ref={ref}&per_page=100"
+          )
+          deploys = json.loads(raw) if raw else []
+
+          deleted = 0
+          for d in deploys:
+              dep_id = d["id"]
+
+              # Step 1: check current status — skip if already inactive/terminal
+              raw_statuses = gh("GET", d["statuses_url"])
+              statuses = json.loads(raw_statuses) if raw_statuses else []
+              latest = statuses[0]["state"] if statuses else "pending"
+
+              # Step 2: mark inactive first (GitHub requires this before deletion)
+              if latest not in ("inactive", "failure", "error"):
+                  result = gh("POST",
+                      f"https://api.github.com/repos/{repo}/deployments/{dep_id}/statuses",
+                      {"state": "inactive", "description": f"Release {ref} removed"},
+                  )
+                  if result is None:
+                      print(f"  Deployment {dep_id}: could not mark inactive, skipping delete", file=sys.stderr)
+                      continue
+                  print(f"  Deployment {dep_id}: marked inactive (was {latest})")
+
+              # Step 3: delete
+              result = gh("DELETE",
+                  f"https://api.github.com/repos/{repo}/deployments/{dep_id}",
+              )
+              if result is not None:
+                  print(f"  Deployment {dep_id}: deleted")
+                  deleted += 1
+              else:
+                  print(f"  Deployment {dep_id}: delete failed", file=sys.stderr)
+
+          print(f"Done. Deleted {deleted} deployment(s).")
+          PYEOF

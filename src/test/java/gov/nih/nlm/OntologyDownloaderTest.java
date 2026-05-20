@@ -65,7 +65,7 @@ class OntologyDownloaderTest {
         Path tempDir = Files.createTempDirectory("obo-download-test");
         try {
             // Download a small OBO file (ro.owl)
-            List<String> urls = List.of("http://purl.obolibrary.org/obo/ro.owl");
+            List<String> urls = List.of("https://purl.obolibrary.org/obo/ro.owl");
             OntologyDownloader.updateDownloads(urls, tempDir);
 
             // Verify the file was downloaded and renamed from ro-new.owl to ro.owl
