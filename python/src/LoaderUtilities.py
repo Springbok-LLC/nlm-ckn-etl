@@ -417,7 +417,7 @@ def get_cl_terms(author_to_cl_paths):
             continue
         author_to_cl_results = load_results(author_to_cl_path[0])
 
-        cl_terms.union(
+        cl_terms.update(
             author_to_cl_results.loc[
                 author_to_cl_results["cell_ontology_id"].str.contains("CL"),
                 "cell_ontology_id",

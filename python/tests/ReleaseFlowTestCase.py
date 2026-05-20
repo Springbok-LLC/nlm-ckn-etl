@@ -159,8 +159,8 @@ class ResolveFetchForceTestCase(unittest.TestCase):
             result = resolve_fetch_force.fn(run="test-run", max_fetch_age_hours=48.0)
 
         self.assertTrue(result, "Bad fetch-info.json should trigger force re-fetch")
-        if created_paths:
-            self.assertFalse(created_paths[0].exists(), "Temp file must be cleaned up")
+        self.assertEqual(len(created_paths), 1, "download must have been attempted")
+        self.assertFalse(created_paths[0].exists(), "Temp file must be cleaned up")
 
     def test_s3_temp_file_cleaned_up_on_success(self):
         """Temp file is removed after a successful S3 fetch-info.json read."""
