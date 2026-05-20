@@ -3,7 +3,6 @@ import boto3
 from botocore.exceptions import ClientError
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
-import json
 import os
 from pathlib import Path
 import random
@@ -335,16 +334,16 @@ def get_dataset_version_id_lists(file_paths):
         file_paths["mapping_paths"],
         file_paths["nsforest_paths"],
     ):
-        if len(mapping_path) == 1:
-            dataset_version_ids = (
-                pd.read_csv(mapping_path[0]).loc[0, "dataset_version_id"].split("--")
-            )
-
-        elif len(summary_path) >= 1:
+        if len(summary_path) >= 1:
             dataset_version_ids = [
                 pd.read_csv(p)["h5ad_url"][0].split("/")[-1].split(".")[0]
                 for p in summary_path
             ]
+
+        elif len(mapping_path) == 1:
+            dataset_version_ids = (
+                pd.read_csv(mapping_path[0]).loc[0, "dataset_version_id"].split("--")
+            )
 
         else:
             raise Exception(f"No dataset version id found for {nsforest_path}")
@@ -546,11 +545,15 @@ def get_gene_names_and_ensembl_and_entrez_ids():
             )
         except ClientError as exc:
             if exc.response["Error"]["Code"] not in ("404", "NoSuchKey"):
-                raise
-            print(
-                f"Gene mapping not in S3 (s3://{_S3_BUCKET}/{_S3_GENE_MAPPING_KEY});"
-                " fetching from source"
-            )
+                print(
+                    f"WARNING: S3 head_object failed for"
+                    f" s3://{_S3_BUCKET}/{_S3_GENE_MAPPING_KEY}: {exc}; falling back to source"
+                )
+            else:
+                print(
+                    f"Gene mapping not in S3 (s3://{_S3_BUCKET}/{_S3_GENE_MAPPING_KEY});"
+                    " fetching from source"
+                )
 
     print("Getting gene names, and Ensembl and Entrez ids from BioMart")
     biomart_retries = 3
@@ -582,12 +585,18 @@ def get_gene_names_and_ensembl_and_entrez_ids():
     BIOMART_DIRPATH.mkdir(parents=True, exist_ok=True)
     gene_names_and_ids.to_csv(GENE_MAPPING_PATH)
     if _S3_BUCKET:
-        boto3.client("s3").upload_file(
-            str(GENE_MAPPING_PATH), _S3_BUCKET, _S3_GENE_MAPPING_KEY
-        )
-        print(
-            f"Cached gene mapping to s3://{_S3_BUCKET}/{_S3_GENE_MAPPING_KEY}"
-        )
+        try:
+            boto3.client("s3").upload_file(
+                str(GENE_MAPPING_PATH), _S3_BUCKET, _S3_GENE_MAPPING_KEY
+            )
+            print(
+                f"Cached gene mapping to s3://{_S3_BUCKET}/{_S3_GENE_MAPPING_KEY}"
+            )
+        except Exception as exc:
+            print(
+                f"WARNING: Failed to cache gene mapping to"
+                f" s3://{_S3_BUCKET}/{_S3_GENE_MAPPING_KEY}: {exc}"
+            )
     return gene_names_and_ids
 
 
@@ -1263,20 +1272,18 @@ def get_values_or_none(data, list_key, value_keys):
 
 
 def main():
+    import sys
 
-    results_sources_path = DATA_DIRPATH / "results-sources-2026-01-06-6253d09e2fc7.json"
+    results_dir = Path(sys.argv[1]) if len(sys.argv) > 1 else DATA_DIRPATH / "results"
 
-    with open(results_sources_path, "r") as fp:
-        results_sources = json.load(fp)
+    harvester_data = get_cellxgene_harvester_data(results_dir)
 
-    harvester_data = get_cellxgene_harvester_data(results_sources)
-
-    file_paths = get_dataset_file_paths(results_sources)
+    file_paths = get_dataset_file_paths(results_dir)
 
     dataset_version_id_lists = get_dataset_version_id_lists(file_paths)
 
-    return results_sources, harvester_data, file_paths, dataset_version_id_lists
+    return harvester_data, file_paths, dataset_version_id_lists
 
 
 if __name__ == "__main__":
-    results_sources, harvester_data, file_paths, dataset_version_id_lists = main()
+    harvester_data, file_paths, dataset_version_id_lists = main()

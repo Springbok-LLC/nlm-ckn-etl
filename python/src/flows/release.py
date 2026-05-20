@@ -365,17 +365,18 @@ def nlm_ckn_release(
         raise ValueError("hubmap_urls is empty in release.json — cannot proceed")
 
     # Guard against the default placeholder values being committed unchanged.
+    # Validate against the effective values after --tag/--tar-source overrides.
     _PLACEHOLDER_TAG = "v0.0.0-alpha"
-    cfg_tag = cfg.get("cell_kn_tag", "")
-    if cfg_tag == _PLACEHOLDER_TAG:
+    if cell_kn_tag == _PLACEHOLDER_TAG:
         raise ValueError(
-            f"release.json still contains the default placeholder cell_kn_tag ({cfg_tag!r}). "
-            "Update cell_kn_tag and tar_source to real release values before running."
+            f"cell_kn_tag is still the default placeholder ({cell_kn_tag!r}). "
+            "Provide a real release tag via --tag or update cell_kn_tag in release.json."
         )
     cfg_tar = cfg.get("tar_source", "")
-    if _PLACEHOLDER_TAG in cfg_tar:
+    effective_tar = tar_source or cfg_tar
+    if _PLACEHOLDER_TAG in effective_tar:
         raise ValueError(
-            f"release.json still contains the default placeholder in tar_source ({cfg_tar!r}). "
+            f"release.json still contains the default placeholder in tar_source ({effective_tar!r}). "
             "Update tar_source to a real release URL before running."
         )
 

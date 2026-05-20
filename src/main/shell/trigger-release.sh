@@ -106,7 +106,7 @@ while [[ $# -gt 0 ]]; do
     --skip-ontology)        SKIP_ONTOLOGY="true";                                    shift   ;;
     --run-name)             _require_arg "$1" "${2-}"; RUN_NAME="${2-}";             shift 2 ;;
     --max-fetch-age-hours)  _require_arg "$1" "${2-}"; MAX_FETCH_AGE_HOURS="${2-}";  shift 2 ;;
-    --java-opts)            _require_arg "$1" "${2-}"; JAVA_OPTS="${2-}";            shift 2 ;;
+    --java-opts)            JAVA_OPTS="${2-}"; [[ -z "${JAVA_OPTS}" ]] && { echo "ERROR: --java-opts requires a value" >&2; usage; }; shift 2 ;;
     --queue)                _require_arg "$1" "${2-}"; JOB_QUEUE="${2-}";            shift 2 ;;
     --job-definition)       _require_arg "$1" "${2-}"; JOB_DEFINITION="${2-}";       shift 2 ;;
     -h|--help)              usage ;;
@@ -174,12 +174,12 @@ if [[ -n "${GITHUB_DEPLOY_TOKEN:-}" && -n "${GITHUB_REPOSITORY:-}" && -n "${GITH
   printf '%s' "${DEPLOYMENTS_JSON}" > "${_INPUT}"
   STALE_IDS=$(
     GITHUB_DEPLOY_TOKEN="${GITHUB_DEPLOY_TOKEN}" \
-    GITHUB_REF="${GITHUB_REF:-}" GITHUB_ACTOR="${GITHUB_ACTOR:-}" \
+    GITHUB_REF_NAME="${GITHUB_REF_NAME:-}" GITHUB_ACTOR="${GITHUB_ACTOR:-}" \
     python3 - "${_INPUT}" 2>/dev/null <<'PYEOF'
 import json, os, sys, urllib.request
 token = os.environ["GITHUB_DEPLOY_TOKEN"]
 deploys = json.load(open(sys.argv[1]))
-ref    = os.environ.get("GITHUB_REF", "")
+ref    = os.environ.get("GITHUB_REF_NAME", "")
 actor  = os.environ.get("GITHUB_ACTOR", "")
 for d in deploys:
     if ref and d.get("ref") != ref:

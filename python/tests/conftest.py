@@ -43,6 +43,6 @@ def mock_biomart():
     session so no test ever makes a live BioMart network call."""
     with patch(
         "LoaderUtilities.get_gene_names_and_ensembl_and_entrez_ids",
-        return_value=_GENE_MAPPING.copy(),
+        side_effect=lambda *a, **kw: _GENE_MAPPING.copy(),
     ):
         yield
