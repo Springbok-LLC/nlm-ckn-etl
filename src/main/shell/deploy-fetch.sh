@@ -30,7 +30,7 @@
 #   ECR_STACK_NAME       CloudFormation stack name for ECR (default: nlm-ckn-etl-ecr)
 #   FETCH_STACK_NAME     CloudFormation stack name for fetch (default: nlm-ckn-etl-fetch)
 #   SCHEDULE_EXPRESSION  EventBridge cron expression (default: cron(0 2 * * ? *))
-#   CKN_RUN              Run name passed to fetch.py (default: full)
+#   CKN_RUN              Run name passed to fetch.py (default: latest)
 #   TASK_CPU             Fargate vCPU units (default: 2048)
 #   TASK_MEMORY_MIB      Fargate memory in MiB (default: 8192)
 #

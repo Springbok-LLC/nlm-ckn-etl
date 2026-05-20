@@ -252,6 +252,7 @@ def resolve_fetch_force(run: str = "", max_fetch_age_hours: float = 48.0) -> boo
     fetch_info = None
 
     if S3_BUCKET:
+        tmp_path = None
         try:
             with tempfile.NamedTemporaryFile(suffix=".json", delete=False) as tmp:
                 tmp_path = Path(tmp.name)
@@ -259,9 +260,11 @@ def resolve_fetch_force(run: str = "", max_fetch_age_hours: float = 48.0) -> boo
                 S3_BUCKET, "external/fetch-info.json", str(tmp_path)
             )
             fetch_info = json.loads(tmp_path.read_text())
-            tmp_path.unlink(missing_ok=True)
         except Exception as exc:
             logger.info(f"Could not read fetch-info.json from S3: {exc}")
+        finally:
+            if tmp_path is not None:
+                tmp_path.unlink(missing_ok=True)
     else:
         info_path = _external_dir(run) / "fetch-info.json"
         if info_path.exists():
@@ -372,20 +375,17 @@ def nlm_ckn_release(
             f"cell_kn_tag is still the default placeholder ({cell_kn_tag!r}). "
             "Provide a real release tag via --tag or update cell_kn_tag in release.json."
         )
-    cfg_tar = cfg.get("tar_source", "")
-    effective_tar = tar_source or cfg_tar
-    if _PLACEHOLDER_TAG in effective_tar:
-        raise ValueError(
-            f"release.json still contains the default placeholder in tar_source ({effective_tar!r}). "
-            "Update tar_source to a real release URL before running."
-        )
-
     # Derive tarball URL from tag if not explicitly provided.
     if not tar_source:
         tar_name = f"prod-data-{cell_kn_tag}.tar.gz"
         tar_source = (
             f"https://github.com/{github_repo}/releases/download"
             f"/{cell_kn_tag}/{tar_name}"
+        )
+    if _PLACEHOLDER_TAG in tar_source:
+        raise ValueError(
+            f"tar_source still contains the default placeholder ({tar_source!r}). "
+            "Update tar_source to a real release URL or provide --tar-source."
         )
 
     # ── Step 1: Extract release tarball ──────────────────────────────────
@@ -480,7 +480,7 @@ def nlm_ckn_release(
     # scheduled fetch targets the new gene set going forward.
     promote_results_to_latest(run=run_name)
     logger.info(f"Release {cell_kn_tag} complete (run={run_name})")
-    elapsed   = datetime.now(timezone.utc) - start
+    elapsed = datetime.now(timezone.utc) - start
     minutes, seconds = divmod(int(elapsed.total_seconds()), 60)
     post_github_deployment_status(
         state="success",
@@ -496,12 +496,15 @@ def _read_release_json(release_config: str = "") -> dict:
     if path.startswith("s3://"):
         without_scheme = path[len("s3://"):]
         bucket, _, key = without_scheme.partition("/")
-        with tempfile.NamedTemporaryFile(suffix=".json", delete=False) as tmp:
-            tmp_path = Path(tmp.name)
-        boto3.client("s3").download_file(bucket, key, str(tmp_path))
-        data = json.loads(tmp_path.read_text())
-        tmp_path.unlink(missing_ok=True)
-        return data
+        tmp_path = None
+        try:
+            with tempfile.NamedTemporaryFile(suffix=".json", delete=False) as tmp:
+                tmp_path = Path(tmp.name)
+            boto3.client("s3").download_file(bucket, key, str(tmp_path))
+            return json.loads(tmp_path.read_text())
+        finally:
+            if tmp_path is not None:
+                tmp_path.unlink(missing_ok=True)
     p = Path(path)
     return json.loads(p.read_text()) if p.exists() else {}
 

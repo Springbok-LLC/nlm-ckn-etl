@@ -1,6 +1,6 @@
 import ast
 import boto3
-from botocore.exceptions import ClientError
+from botocore.exceptions import ClientError, NoCredentialsError, PartialCredentialsError
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 import os
@@ -334,6 +334,10 @@ def get_dataset_version_id_lists(file_paths):
         file_paths["mapping_paths"],
         file_paths["nsforest_paths"],
     ):
+        # Summary files are checked first because a single results file can
+        # correspond to multiple datasets (one summary per dataset), whereas
+        # mapping files encode all dataset IDs as a "--"-delimited string in a
+        # single row and cannot represent multiple summaries independently.
         if len(summary_path) >= 1:
             dataset_version_ids = [
                 pd.read_csv(p)["h5ad_url"][0].split("/")[-1].split(".")[0]
@@ -542,6 +546,11 @@ def get_gene_names_and_ensembl_and_entrez_ids():
             print(
                 f"Gene mapping cache is {age_hours:.1f}h old"
                 f" (threshold: {max_fetch_age_hours}h) — re-fetching"
+            )
+        except (NoCredentialsError, PartialCredentialsError) as exc:
+            print(
+                f"WARNING: S3 credential error for"
+                f" s3://{_S3_BUCKET}/{_S3_GENE_MAPPING_KEY}: {exc}; falling back to source"
             )
         except ClientError as exc:
             if exc.response["Error"]["Code"] not in ("404", "NoSuchKey"):
