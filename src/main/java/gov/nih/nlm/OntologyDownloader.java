@@ -23,16 +23,16 @@ import static gov.nih.nlm.PathUtilities.OBO_DIR;
 public class OntologyDownloader {
 
     // Assign OBO Foundry PURLs
-    static final List<String> OBO_PURLS = List.of("http://purl.obolibrary.org/obo/cl.owl",
-            "http://purl.obolibrary.org/obo/go.owl",
-            "http://purl.obolibrary.org/obo/pr.owl",
-            "http://purl.obolibrary.org/obo/uberon/uberon-base.owl",
-            "http://purl.obolibrary.org/obo/ncbitaxon/subsets/taxslim.owl",
-            "http://purl.obolibrary.org/obo/mondo/mondo-simple.owl",
-            "http://purl.obolibrary.org/obo/hp.owl",
-            "http://purl.obolibrary.org/obo/pato.owl",
-            "http://purl.obolibrary.org/obo/hsapdv.owl",
-            "http://purl.obolibrary.org/obo/ro.owl");
+    static final List<String> OBO_PURLS = List.of("https://purl.obolibrary.org/obo/cl.owl",
+            "https://purl.obolibrary.org/obo/go.owl",
+            "https://purl.obolibrary.org/obo/pr.owl",
+            "https://purl.obolibrary.org/obo/uberon/uberon-base.owl",
+            "https://purl.obolibrary.org/obo/ncbitaxon/subsets/taxslim.owl",
+            "https://purl.obolibrary.org/obo/mondo/mondo-simple.owl",
+            "https://purl.obolibrary.org/obo/hp.owl",
+            "https://purl.obolibrary.org/obo/pato.owl",
+            "https://purl.obolibrary.org/obo/hsapdv.owl",
+            "https://purl.obolibrary.org/obo/ro.owl");
     // Assign pattern for extracting YYYY-MM-DD dates
     private static final Pattern DATE_PATTERN = Pattern.compile("(\\d{4}-\\d{2}-\\d{2})");
 
