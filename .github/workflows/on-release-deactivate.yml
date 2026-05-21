@@ -56,7 +56,10 @@ jobs:
               f"https://api.github.com/repos/{repo}/deployments"
               f"?environment=production&ref={ref}&per_page=100"
           )
-          deploys = json.loads(raw) if raw else []
+          if not raw:
+              print("ERROR: failed to list deployments (check DEPLOYMENTS_TOKEN permissions)", file=sys.stderr)
+              sys.exit(1)
+          deploys = json.loads(raw)
 
           deleted = 0
           for d in deploys:

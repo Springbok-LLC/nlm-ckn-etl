@@ -478,7 +478,16 @@ def nlm_ckn_release(
 
     # Promote this release's results to the stable latest/ pointer so the
     # scheduled fetch targets the new gene set going forward.
-    promote_results_to_latest(run=run_name)
+    try:
+        promote_results_to_latest(run=run_name)
+    except Exception as exc:
+        logger.error("Promotion of %s failed: %s", cell_kn_tag, exc)
+        post_github_deployment_status(
+            state="failure",
+            description=f"Promotion of {cell_kn_tag} failed: {exc}"[:140],
+        )
+        raise
+
     logger.info(f"Release {cell_kn_tag} complete (run={run_name})")
     elapsed = datetime.now(timezone.utc) - start
     minutes, seconds = divmod(int(elapsed.total_seconds()), 60)

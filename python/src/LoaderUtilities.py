@@ -1283,7 +1283,8 @@ def get_values_or_none(data, list_key, value_keys):
 def main():
     import sys
 
-    results_dir = Path(sys.argv[1]) if len(sys.argv) > 1 else DATA_DIRPATH / "results"
+    # Pass None when no path is given so each callee resolves via get_current_run().
+    results_dir = Path(sys.argv[1]) if len(sys.argv) > 1 else None
 
     harvester_data = get_cellxgene_harvester_data(results_dir)
 
