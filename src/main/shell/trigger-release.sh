@@ -106,7 +106,7 @@ while [[ $# -gt 0 ]]; do
     --skip-ontology)        SKIP_ONTOLOGY="true";                                    shift   ;;
     --run-name)             _require_arg "$1" "${2-}"; RUN_NAME="${2-}";             shift 2 ;;
     --max-fetch-age-hours)  _require_arg "$1" "${2-}"; MAX_FETCH_AGE_HOURS="${2-}";  shift 2 ;;
-    --java-opts)            _require_arg "$1" "${2-}"; JAVA_OPTS="${2-}";            shift 2 ;;
+    --java-opts)            [[ -z "${2-}" ]] && { echo "ERROR: $1 requires a value" >&2; usage; }; JAVA_OPTS="${2-}"; shift 2 ;;
     --queue)                _require_arg "$1" "${2-}"; JOB_QUEUE="${2-}";            shift 2 ;;
     --job-definition)       _require_arg "$1" "${2-}"; JOB_DEFINITION="${2-}";       shift 2 ;;
     -h|--help)              usage ;;
