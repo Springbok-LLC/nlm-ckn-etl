@@ -117,8 +117,6 @@ def _get_or_create_arango_password() -> str:
     if project_name and environment:
         secret_id = f"/{project_name}/{environment}/secrets/arangodb-password"
         try:
-            import boto3
-
             client = boto3.client("secretsmanager")
             response = client.get_secret_value(SecretId=secret_id)
             return response["SecretString"]

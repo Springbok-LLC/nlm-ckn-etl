@@ -508,9 +508,11 @@ def export_graphs_and_analyzers(
     headers = {"Authorization": f"Basic {auth}"}
     base_url = f"http://{ARANGO_DB_HOST}:{ARANGO_DB_PORT}"
 
+    _ARANGO_TIMEOUT = 30  # seconds; guards against a hung ArangoDB during export
+
     def _get(path: str) -> dict:
         req = urllib.request.Request(f"{base_url}{path}", headers=headers)
-        with urllib.request.urlopen(req) as resp:
+        with urllib.request.urlopen(req, timeout=_ARANGO_TIMEOUT) as resp:
             return json.loads(resp.read())
 
     databases = [
