@@ -79,11 +79,16 @@ ARANGO_DB_VOLUME_NAME = "nlm-ckn-arangodb-data"
 # S3 bucket for durable storage of external cache, tuples, JAR, and archives.
 # Empty string → local-only mode (no S3 operations performed).
 S3_BUCKET = os.getenv("S3_BUCKET", "")
+# KMS key ARN/ID for server-side encryption of S3 uploads.  Required in
+# deployed environments; empty string falls back to SSE-S3 (AES-256).
+S3_KMS_KEY_ID = os.getenv("S3_KMS_KEY_ID", "")
 
 # PYTHONPATH injected into every direct Python script invocation so that
 # sibling imports (LoaderUtilities, ArangoDbUtilities, …) resolve correctly.
 PYTHON_SRC = str(REPO_ROOT / "python" / "src")
 
+
+_log = logging.getLogger(__name__)
 
 # ── Private helpers ────────────────────────────────────────────────────────
 
@@ -117,8 +122,14 @@ def _get_or_create_arango_password() -> str:
             client = boto3.client("secretsmanager")
             response = client.get_secret_value(SecretId=secret_id)
             return response["SecretString"]
-        except Exception:
-            pass  # Fall through to local file / generated password
+        except Exception as e:
+            _log.error(
+                "Failed to retrieve ArangoDB password from Secrets Manager "
+                "(secret_id=%s): %s",
+                secret_id,
+                e,
+            )
+            raise
 
     password_file = REPO_ROOT / ".arangodb-password"
     if password_file.exists():
@@ -232,18 +243,30 @@ def _s3_upload_tar(local_dir: Path, s3_path: str) -> None:
 
     Produces a single object with a stable hash, reducing per-file S3 API
     overhead and enabling integrity checking.  No-op when ``S3_BUCKET`` is empty.
+
+    Security note: uploads always use server-side encryption (SSE-KMS when
+    S3_KMS_KEY_ID is set, otherwise SSE-S3/AES-256).  Bucket-level public-access
+    blocks and S3/CloudTrail logging must also be enforced via infrastructure
+    policy — this call alone is not sufficient.
     """
     if not S3_BUCKET:
         return
     local_dir = Path(local_dir)
     bucket, key = _parse_s3_url(s3_path)
+    sse_args: dict = (
+        {"ServerSideEncryption": "aws:kms", "SSEKMSKeyId": S3_KMS_KEY_ID}
+        if S3_KMS_KEY_ID
+        else {"ServerSideEncryption": "AES256"}
+    )
     with tempfile.NamedTemporaryFile(suffix=".tar.gz", delete=False) as tmp:
         tmp_path = Path(tmp.name)
     try:
         with tarfile.open(tmp_path, "w:gz") as tar:
             tar.add(local_dir, arcname=local_dir.name,
                     filter=lambda m: None if "/.archive/" in m.name else m)
-        boto3.client("s3").upload_file(str(tmp_path), bucket, key)
+        boto3.client("s3").upload_file(
+            str(tmp_path), bucket, key, ExtraArgs={"ACL": "private", **sse_args}
+        )
     finally:
         tmp_path.unlink(missing_ok=True)
 
@@ -337,6 +360,11 @@ def _s3_sync(src: str, dst: str) -> None:
         # Upload: local → S3
         local_dir = Path(src)
         bucket, prefix = _parse_s3_url(dst)
+        sse_args = (
+            {"ServerSideEncryption": "aws:kms", "SSEKMSKeyId": S3_KMS_KEY_ID}
+            if S3_KMS_KEY_ID
+            else {"ServerSideEncryption": "AES256"}
+        )
         s3_index: dict[str, int] = {}
         paginator = s3.get_paginator("list_objects_v2")
         for page in paginator.paginate(Bucket=bucket, Prefix=prefix):
@@ -349,23 +377,13 @@ def _s3_sync(src: str, dst: str) -> None:
                 continue
             relative = path.relative_to(local_dir).as_posix()
             if relative not in s3_index or s3_index[relative] != path.stat().st_size:
-                s3.upload_file(str(path), bucket, prefix + relative)
-
-
-def _s3_cp(src: str, dst: str) -> None:
-    """Upload a single local file to S3.
-
-    No-op when ``S3_BUCKET`` is empty (local-only mode).
-    """
-    if not S3_BUCKET:
-        return
-    bucket, key = _parse_s3_url(dst)
-    boto3.client("s3").upload_file(src, bucket, key)
+                s3.upload_file(
+                    str(path), bucket, prefix + relative,
+                    ExtraArgs={"ACL": "private", **sse_args},
+                )
 
 
 # ── GitHub deployment status ───────────────────────────────────────────────
-
-_log = logging.getLogger(__name__)
 
 
 def _cloudwatch_log_url() -> str:

@@ -140,10 +140,6 @@ RUN --mount=type=cache,target=/root/.cache/uv \
     && poetry export --without dev --without-hashes -f requirements.txt -o /tmp/requirements.txt \
     && uv pip install --system -r /tmp/requirements.txt
 
-# ── AWS CLI ────────────────────────────────────────────────────────────────
-# Used by S3 sync tasks in fetcher.py and pipeline.py.
-RUN pip install --no-cache-dir awscli==1.36.12
-
 # ── Application source ────────────────────────────────────────────────────
 COPY python/src /app/python/src
 

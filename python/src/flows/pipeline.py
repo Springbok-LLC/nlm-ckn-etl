@@ -13,7 +13,7 @@ The pipeline is split into three phases that share a common ArangoDB
 **Phase 1 — Upstream Build** (``--run-ontology``):
   Download OWL ontologies → slim → load into ArangoDB → ``arangodump``
   the resulting database to ``data/arangodump-baseline-<run>/``.  This phase
-  is expensive (hours) but only needs to rerun when ontologies change.  Once
+  is expensive but only needs to rerun when ontologies change.  Once
   the baseline dump exists, Phase 1 is skipped automatically on subsequent
   invocations unless ``--force-ontology`` is passed.
 
@@ -93,14 +93,15 @@ from _common import (
     DEFAULT_JAVA_OPTS,
     REPO_ROOT,
     S3_BUCKET,
+    S3_KMS_KEY_ID,
     _arango_env,
     _external_dir,
     _find_free_port,
     _get_arangodb_id,
     _get_or_create_arango_password,
     _jar_key,
+    _parse_s3_url,
     _run_python_script,
-    _s3_cp,
     _s3_download_tar,
     _s3_sync,
     _s3_upload_tar,
@@ -912,7 +913,17 @@ def promote_to_production(
 
     build_info_path = REPO_ROOT / "build-info.txt"
     build_info_path.write_text("\n".join(build_info_lines) + "\n")
-    _s3_cp(str(build_info_path), f"{run_prefix}/build-info.txt")
+    if S3_BUCKET:
+        bucket, key = _parse_s3_url(f"{run_prefix}/build-info.txt")
+        sse_args = (
+            {"ServerSideEncryption": "aws:kms", "SSEKMSKeyId": S3_KMS_KEY_ID}
+            if S3_KMS_KEY_ID
+            else {"ServerSideEncryption": "AES256"}
+        )
+        boto3.client("s3").upload_file(
+            str(build_info_path), bucket, key,
+            ExtraArgs={"ACL": "private", **sse_args},
+        )
 
     logger.info(f"All artifacts promoted to {run_prefix}/")
 
