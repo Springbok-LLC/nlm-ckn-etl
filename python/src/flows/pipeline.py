@@ -448,7 +448,6 @@ def dump_arangodb(
             f"--output-directory={container_out}",
             "--overwrite=true",
             "--all-databases=true",
-            "--include-system-collections=true",
         ]
     )
     if result.exit_code != 0:
@@ -471,6 +470,75 @@ def dump_arangodb(
 
     dump_files = list(dump_dir.glob("*"))
     logger.info(f"Dump complete{tag}: {len(dump_files)} file(s) in {dump_dir.name}/")
+
+
+@task(name="export-graphs-and-analyzers", log_prints=True)
+def export_graphs_and_analyzers(
+    dump_dir: Path,
+    arango_db_password: str,
+) -> None:
+    """Export named graph definitions and custom analyzers as sidecar files.
+
+    Writes two files per database into ``dump_dir/<db>/``:
+
+    - ``ckn-graphs.ndjson``    — graph objects from ``GET /_db/<db>/_api/gharial``
+    - ``ckn-analyzers.ndjson`` — user-defined analyzers from ``GET /_db/<db>/_api/analyzer``
+      (only those whose name contains ``::``).
+
+    The ``.ndjson`` extension is intentionally non-standard so that
+    ``arangorestore`` ignores these files during restore.  The UI deploy
+    pipeline (``deploy-dataset.sh``) reads them after ``arangorestore``
+    completes and recreates the graphs and analyzers via the REST API,
+    avoiding any dependency on ``--include-system-collections``.
+
+    Parameters
+    ----------
+    dump_dir:
+        Dump directory produced by ``dump_arangodb``.
+    arango_db_password:
+        ArangoDB root password.
+    """
+    import base64
+    import urllib.request
+
+    logger = get_run_logger()
+    dump_dir = Path(dump_dir)
+
+    auth = base64.b64encode(f"root:{arango_db_password}".encode()).decode()
+    headers = {"Authorization": f"Basic {auth}"}
+    base_url = f"http://{ARANGO_DB_HOST}:{ARANGO_DB_PORT}"
+
+    def _get(path: str) -> dict:
+        req = urllib.request.Request(f"{base_url}{path}", headers=headers)
+        with urllib.request.urlopen(req) as resp:
+            return json.loads(resp.read())
+
+    databases = [
+        d.name for d in dump_dir.iterdir()
+        if d.is_dir() and not d.name.startswith("_")
+    ]
+
+    for db in sorted(databases):
+        db_dir = dump_dir / db
+
+        try:
+            data = _get(f"/_db/{db}/_api/gharial")
+            graphs = data.get("graphs", [])
+            (db_dir / "ckn-graphs.ndjson").write_text(json.dumps(graphs, indent=2))
+            logger.info(f"Exported {len(graphs)} graph(s) → {db}/ckn-graphs.ndjson")
+        except Exception as exc:
+            logger.warning(f"Could not export graphs for {db}: {exc}")
+
+        try:
+            data = _get(f"/_db/{db}/_api/analyzer")
+            analyzers = [
+                a for a in data.get("result", [])
+                if "::" in a.get("name", "")
+            ]
+            (db_dir / "ckn-analyzers.ndjson").write_text(json.dumps(analyzers, indent=2))
+            logger.info(f"Exported {len(analyzers)} analyzer(s) → {db}/ckn-analyzers.ndjson")
+        except Exception as exc:
+            logger.warning(f"Could not export analyzers for {db}: {exc}")
 
 
 @task(name="restore-arangodb", log_prints=True)
@@ -1157,6 +1225,7 @@ def nlm_ckn_etl(
         if golden_dump_dir.is_dir():
             shutil.rmtree(golden_dump_dir)
         dump_arangodb(golden_dump_dir, arango_db_password, label="golden")
+        export_graphs_and_analyzers(golden_dump_dir, arango_db_password)
 
         # Promote all production artifacts to a versioned S3 path.
         # The baseline dump is NOT re-uploaded here — it lives permanently at
