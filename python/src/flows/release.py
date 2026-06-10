@@ -228,10 +228,23 @@ def promote_results_to_latest(run: str = "") -> None:
     logger.info(f"Promoted {count} result file(s) to runs/latest/01-results/")
 
 
-def _fetch_info_age_hours(fetch_info: dict) -> float:
-    """Age in hours of a ``fetch-info.json`` payload, from its ``fetched_at``."""
-    fetched_at = datetime.fromisoformat(fetch_info["fetched_at"])
-    return (datetime.now(timezone.utc) - fetched_at).total_seconds() / 3600
+def _fetch_info_age_hours(fetch_info: dict, logger=None) -> float:
+    """Age in hours of a ``fetch-info.json`` payload, from its ``fetched_at``.
+
+    Returns ``inf`` (treated as expired by callers, forcing a re-fetch) when
+    ``fetched_at`` is missing, unparseable, or a naive datetime, so a corrupt
+    marker can never make a stale cache look reusable.
+    """
+    try:
+        fetched_at = datetime.fromisoformat(fetch_info["fetched_at"])
+        return (datetime.now(timezone.utc) - fetched_at).total_seconds() / 3600
+    except (KeyError, ValueError, TypeError) as exc:
+        if logger is not None:
+            logger.warning(
+                f"fetch-info.json has a missing/invalid 'fetched_at' ({exc!r}) "
+                "— treating cache as expired"
+            )
+        return float("inf")
 
 
 def _read_fetch_info_s3(key: str, logger) -> dict | None:
@@ -297,7 +310,7 @@ def resolve_fetch_force(run: str = "", max_fetch_age_hours: float = 48.0) -> boo
                 f"{staging_prefix}fetch-info.json", logger
             )
             if staging_info is not None:
-                age_hours = _fetch_info_age_hours(staging_info)
+                age_hours = _fetch_info_age_hours(staging_info, logger)
                 if age_hours > max_fetch_age_hours:
                     logger.info(
                         f"Staging cache is {age_hours:.1f}h old "
@@ -324,7 +337,7 @@ def resolve_fetch_force(run: str = "", max_fetch_age_hours: float = 48.0) -> boo
         logger.info("No fetch-info.json found — forcing full re-fetch")
         return True
 
-    age_hours = _fetch_info_age_hours(fetch_info)
+    age_hours = _fetch_info_age_hours(fetch_info, logger)
     if age_hours > max_fetch_age_hours:
         logger.info(
             f"External cache is {age_hours:.1f}h old (threshold: {max_fetch_age_hours}h)"

@@ -25,6 +25,7 @@ sys.path.insert(0, str(_SRC))
 
 import release as _release_module
 from release import (
+    _fetch_info_age_hours,
     _read_release_json,
     extract_release_tarball,
     resolve_fetch_force,
@@ -98,6 +99,28 @@ class ReadReleaseJsonTestCase(unittest.TestCase):
 
         self.assertEqual(len(created_paths), 1)
         self.assertFalse(created_paths[0].exists(), "Temp file must be cleaned up on error")
+
+
+class FetchInfoAgeHoursTestCase(unittest.TestCase):
+    """Tests for the _fetch_info_age_hours helper."""
+
+    def test_computes_age_for_valid_timestamp(self):
+        recent = datetime.now(timezone.utc) - timedelta(hours=3)
+        age = _fetch_info_age_hours({"fetched_at": recent.isoformat()})
+        self.assertAlmostEqual(age, 3, delta=0.1)
+
+    def test_returns_inf_when_fetched_at_missing(self):
+        self.assertEqual(_fetch_info_age_hours({}), float("inf"))
+
+    def test_returns_inf_when_fetched_at_invalid(self):
+        self.assertEqual(
+            _fetch_info_age_hours({"fetched_at": "not-a-date"}), float("inf")
+        )
+
+    def test_returns_inf_when_fetched_at_naive(self):
+        # Naive datetime → subtraction from aware now() raises TypeError → inf.
+        naive = datetime(2026, 1, 1, 0, 0, 0).isoformat()
+        self.assertEqual(_fetch_info_age_hours({"fetched_at": naive}), float("inf"))
 
 
 class ResolveFetchForceTestCase(unittest.TestCase):

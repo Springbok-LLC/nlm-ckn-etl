@@ -879,6 +879,7 @@ def write_release_manifest(
     golden_dump_dir: Path,
     arango_db_password: str,
     run: str = "",
+    compressed_bytes: int | None = None,
 ) -> None:
     """Capture dataset size and counts as a versioned release manifest artifact.
 
@@ -915,18 +916,21 @@ def write_release_manifest(
 
         uncompressed_bytes = _dir_size_bytes(golden_dump_dir)
 
-        # Measure the compressed size by tarring to a temp file (discarded).
-        compressed_bytes = 0
-        with tempfile.NamedTemporaryFile(suffix=".tar.gz", delete=False) as tmp:
-            tmp_path = Path(tmp.name)
-        try:
-            with tarfile.open(tmp_path, "w:gz") as tar:
-                tar.add(golden_dump_dir, arcname=golden_dump_dir.name)
-            compressed_bytes = tmp_path.stat().st_size
-        except Exception as exc:
-            logger.warning(f"Could not measure compressed dump size: {exc}")
-        finally:
-            tmp_path.unlink(missing_ok=True)
+        # Prefer the size of the 06-golden-dump.tar.gz that promote_to_production
+        # already produced.  Only fall back to compressing here (e.g. local mode,
+        # where promotion is skipped) so the dump is never tarred twice.
+        if compressed_bytes is None:
+            compressed_bytes = 0
+            with tempfile.NamedTemporaryFile(suffix=".tar.gz", delete=False) as tmp:
+                tmp_path = Path(tmp.name)
+            try:
+                with tarfile.open(tmp_path, "w:gz") as tar:
+                    tar.add(golden_dump_dir, arcname=golden_dump_dir.name)
+                compressed_bytes = tmp_path.stat().st_size
+            except Exception as exc:
+                logger.warning(f"Could not measure compressed dump size: {exc}")
+            finally:
+                tmp_path.unlink(missing_ok=True)
 
         databases = _collect_db_figures(golden_dump_dir, arango_db_password, logger)
 
@@ -1363,7 +1367,7 @@ def promote_to_production(
     arango_db_password: str,
     jar_key: str = "",
     run: str = "",
-) -> None:
+) -> int | None:
     """Upload the golden ArangoDB dump and supporting artifacts to production S3.
 
     Syncs the following to ``s3://${S3_BUCKET}/runs/<run>/``:
@@ -1394,7 +1398,7 @@ def promote_to_production(
     logger = get_run_logger()
     if not S3_BUCKET:
         logger.info("S3_BUCKET not set — skipping production promotion (local mode)")
-        return
+        return None
 
     golden_dump_dir = Path(golden_dump_dir)
     if not golden_dump_dir.is_dir():
@@ -1407,10 +1411,11 @@ def promote_to_production(
     run_prefix = f"s3://{S3_BUCKET}/runs/{run_name}"
     logger.info(f"Promoting artifacts to {run_prefix}/")
 
-    # Upload golden dump (06-golden-dump.tar.gz)
+    # Upload golden dump (06-golden-dump.tar.gz). Keep the compressed size so the
+    # release manifest can record it without compressing the dump a second time.
     s3_golden = f"{run_prefix}/06-golden-dump.tar.gz"
     logger.info(f"Compressing and uploading golden dump → {s3_golden}")
-    _s3_upload_tar(golden_dump_dir, s3_golden)
+    golden_compressed_bytes = _s3_upload_tar(golden_dump_dir, s3_golden)
 
     # Snapshot OBO files into the run (03-obo.tar.gz)
     obo_dir = REPO_ROOT / "data" / "obo"
@@ -1506,6 +1511,7 @@ def promote_to_production(
         )
 
     logger.info(f"All artifacts promoted to {run_prefix}/")
+    return golden_compressed_bytes
 
 
 # ── Flow ───────────────────────────────────────────────────────────────────
@@ -1827,13 +1833,19 @@ def nlm_ckn_etl(
         # Promote all production artifacts to a versioned S3 path.
         # The baseline dump is NOT re-uploaded here — it lives permanently at
         # s3://bucket/baselines/<jar_key>/ from the end of Phase 1.
-        promote_to_production(
+        golden_compressed_bytes = promote_to_production(
             golden_dump_dir, arango_db_password, jar_key=jar_key, run=run
         )
 
         # Capture a versioned release manifest (dataset size + counts) alongside
-        # the dump.  Best-effort: never fails the release.
-        write_release_manifest(golden_dump_dir, arango_db_password, run=run)
+        # the dump.  Best-effort: never fails the release.  Reuse the compressed
+        # size measured during promotion rather than tarring the dump again.
+        write_release_manifest(
+            golden_dump_dir,
+            arango_db_password,
+            run=run,
+            compressed_bytes=golden_compressed_bytes,
+        )
 
         logger.info("Phase 3 complete")
 

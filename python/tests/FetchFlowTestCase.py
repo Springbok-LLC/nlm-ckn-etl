@@ -145,6 +145,19 @@ class RecordFetchArtifactTestCase(unittest.TestCase):
                 mock_artifact.call_args.kwargs["key"], "fetch-summary"
             )
 
+    def test_preserves_existing_fetched_at(self):
+        """A refresh keeps the original fetch-completion timestamp."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            ext = Path(tmpdir)
+            original = "2026-01-01T00:00:00+00:00"
+            (ext / "fetch-info.json").write_text(
+                json.dumps({"fetched_at": original, "commit": "old", "files": {}})
+            )
+            self._run(ext)
+            info = json.loads((ext / "fetch-info.json").read_text())
+            self.assertEqual(info["fetched_at"], original)
+            self.assertEqual(info["commit"], "abc")  # commit still refreshed
+
     def test_tolerates_missing_fetch_status(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             # No fetch-status.json present.

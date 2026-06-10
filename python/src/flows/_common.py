@@ -239,11 +239,13 @@ def _parse_s3_url(s3_url: str) -> tuple[str, str]:
     return bucket, key
 
 
-def _s3_upload_tar(local_dir: Path, s3_path: str) -> None:
+def _s3_upload_tar(local_dir: Path, s3_path: str) -> int | None:
     """Compress ``local_dir`` to a .tar.gz and upload to ``s3_path``.
 
     Produces a single object with a stable hash, reducing per-file S3 API
-    overhead and enabling integrity checking.  No-op when ``S3_BUCKET`` is empty.
+    overhead and enabling integrity checking.  No-op (returns ``None``) when
+    ``S3_BUCKET`` is empty; otherwise returns the compressed tarball size in
+    bytes so callers can record it without recompressing.
 
     Security note: uploads always use server-side encryption (SSE-KMS when
     S3_KMS_KEY_ID is set, otherwise SSE-S3/AES-256).  Bucket-level public-access
@@ -251,7 +253,7 @@ def _s3_upload_tar(local_dir: Path, s3_path: str) -> None:
     policy — this call alone is not sufficient.
     """
     if not S3_BUCKET:
-        return
+        return None
     local_dir = Path(local_dir)
     bucket, key = _parse_s3_url(s3_path)
     sse_args: dict = (
@@ -265,9 +267,11 @@ def _s3_upload_tar(local_dir: Path, s3_path: str) -> None:
         with tarfile.open(tmp_path, "w:gz") as tar:
             tar.add(local_dir, arcname=local_dir.name,
                     filter=lambda m: None if "/.archive/" in m.name else m)
+        compressed_bytes = tmp_path.stat().st_size
         boto3.client("s3").upload_file(
             str(tmp_path), bucket, key, ExtraArgs={"ACL": "private", **sse_args}
         )
+        return compressed_bytes
     finally:
         tmp_path.unlink(missing_ok=True)
 

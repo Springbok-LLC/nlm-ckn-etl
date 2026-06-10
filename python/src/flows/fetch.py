@@ -234,12 +234,19 @@ def _git_short_commit() -> str:
         return "unknown"
 
 
-def _write_fetch_info(external_dir: Path, run: str) -> dict:
+def _write_fetch_info(
+    external_dir: Path, run: str, fetched_at: str | None = None
+) -> dict:
     """Write ``fetch-info.json`` into *external_dir* and return its contents.
 
     ``files`` maps each required cache file to its byte size (``None`` when
     absent — e.g. the ``*_transformed.json`` outputs before the transform
     step runs, when this is called early to mark a freshly-fetched cache).
+
+    *fetched_at* lets a refresh (e.g. ``record_fetch_artifact`` after the
+    transform) update the ``commit``/``files`` fields while preserving the
+    original fetch-completion timestamp, so a promoted cache never appears
+    newer than when its data was actually fetched.  Defaults to now (UTC).
     """
     files_info: dict[str, int | None] = {}
     for name in _REQUIRED_CACHE_FILES:
@@ -247,7 +254,7 @@ def _write_fetch_info(external_dir: Path, run: str) -> dict:
         files_info[name] = path.stat().st_size if path.exists() else None
 
     info = {
-        "fetched_at": datetime.now(timezone.utc).isoformat(),
+        "fetched_at": fetched_at or datetime.now(timezone.utc).isoformat(),
         "commit": _git_short_commit(),
         "run": run or os.getenv("CKN_RUN", "full"),
         "files": files_info,
@@ -255,6 +262,17 @@ def _write_fetch_info(external_dir: Path, run: str) -> dict:
     info_path = external_dir / "fetch-info.json"
     info_path.write_text(json.dumps(info, indent=2))
     return info
+
+
+def _existing_fetched_at(external_dir: Path) -> str | None:
+    """Return the ``fetched_at`` recorded by an earlier marker, or ``None``."""
+    info_path = external_dir / "fetch-info.json"
+    if info_path.exists():
+        try:
+            return json.loads(info_path.read_text()).get("fetched_at")
+        except Exception:
+            return None
+    return None
 
 
 @task(name="write-fetch-marker", log_prints=True)
@@ -311,7 +329,11 @@ def record_fetch_artifact(run: str = "") -> None:
     logger = get_run_logger()
     external_dir = _external_dir(run)
 
-    info = _write_fetch_info(external_dir, run)
+    # Preserve the fetch-completion timestamp written by write_fetch_marker;
+    # this refresh only updates commit/files (now that transformed outputs exist).
+    info = _write_fetch_info(
+        external_dir, run, fetched_at=_existing_fetched_at(external_dir)
+    )
     commit = info["commit"]
     files_info = info["files"]
     info_path = external_dir / "fetch-info.json"
