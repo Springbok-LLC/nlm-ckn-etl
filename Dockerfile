@@ -113,6 +113,12 @@ ENV UV_SYSTEM_PYTHON=1
 # slow enough to trigger the default 20-second startup timeout.
 ENV PYTHONPATH=/app/python/src:/app/python/src/flows
 
+# Commit the image was built from, baked in so entrypoints can echo it to
+# CloudWatch — maps a running task back to a git commit.  Defaults to
+# "unknown" for local builds that don't pass --build-arg GIT_SHA=...
+ARG GIT_SHA=unknown
+ENV GIT_SHA=${GIT_SHA}
+
 ENV PREFECT_HOME=/tmp/prefect
 # Raise the ephemeral API server startup timeout to 120 seconds.
 # The default (20 s) is tight for Rosetta-emulated containers; this is a
@@ -149,6 +155,10 @@ COPY python/src /app/python/src
 # synced from S3 at runtime.
 COPY data/*.json data/*.csv /app/data/
 COPY data/schema/ /app/data/schema/
+# Checked-in release config (nlm_ckn_tag, max_fetch_age_hours, etc.).  The
+# fetch-entrypoint reads max_fetch_age_hours from here so the scheduled fetch
+# tracks release.json without hardcoding the value.
+COPY release.json /app/release.json
 # data/obo/ files are generated at runtime:
 #   deprecated_terms.txt and edge_labels.txt are WRITTEN by OntologyGraphBuilder
 #   during --run-ontology; *.owl files are downloaded by OntologyDownloader.

@@ -78,7 +78,12 @@ Resources:
             Condition:
               StringEquals:
                 token.actions.githubusercontent.com:aud: sts.amazonaws.com
-                token.actions.githubusercontent.com:job_workflow_ref: Springbok-LLC/nlm-ckn-etl/.github/workflows/build-image.yml@refs/heads/main
+                # job_workflow_ref is the file defining the job that assumes the
+                # role.  build-image.yml builds both images during a release;
+                # ci.yml builds/pushes the fetcher image on every main build.
+                token.actions.githubusercontent.com:job_workflow_ref:
+                  - Springbok-LLC/nlm-ckn-etl/.github/workflows/build-image.yml@refs/heads/main
+                  - Springbok-LLC/nlm-ckn-etl/.github/workflows/ci.yml@refs/heads/main
               StringLike:
                 token.actions.githubusercontent.com:sub: !Ref GitHubRepos
 

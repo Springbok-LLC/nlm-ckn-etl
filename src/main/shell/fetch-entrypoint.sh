@@ -21,13 +21,22 @@ set -euo pipefail
 : "${NCBI_API_KEY:?NCBI_API_KEY must be set}"
 
 # --max-fetch-age-hours auto-resolves whether to force a full re-fetch: it forces
-# only if the cached external data is missing, older than 4 weeks (672h), or was
+# only if the cached external data is missing, older than the threshold, or was
 # produced by changed fetch code; otherwise it reuses the cache and retries any
 # previously-failed entries.  Avoids a full re-fetch on every scheduled run.
-echo "=== Running fetch flow ==="
+#
+# The threshold is read from release.json (max_fetch_age_hours) so the release
+# flow and the scheduled fetch share one value; falls back to 672h (four weeks)
+# if release.json is missing or omits the key.
+RELEASE_JSON="${RELEASE_JSON:-/app/release.json}"
+MAX_FETCH_AGE_HOURS="$(
+    python -c "import json; print(json.load(open('${RELEASE_JSON}')).get('max_fetch_age_hours', 672))" \
+        2>/dev/null || echo 672
+)"
+echo "=== Running fetch flow (git-sha=${GIT_SHA:-unknown}, max-fetch-age-hours=${MAX_FETCH_AGE_HOURS}) ==="
 exec python /app/python/src/flows/fetch.py \
     --ncbi-email          "${NCBI_EMAIL}" \
     --ncbi-api-key        "${NCBI_API_KEY}" \
-    --max-fetch-age-hours 672
+    --max-fetch-age-hours "${MAX_FETCH_AGE_HOURS}"
 
 echo "=== Fetch complete ==="

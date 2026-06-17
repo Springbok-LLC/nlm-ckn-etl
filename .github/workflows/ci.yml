@@ -16,6 +16,7 @@ on:
       - 'pom.xml'
       - 'python/**'
       - 'Dockerfile'
+      - 'release.json'
       - '.github/workflows/build-image.yml'
       - '.github/workflows/ci.yml'
       - '.github/workflows/java-build.yml'
@@ -26,6 +27,7 @@ on:
       - 'pom.xml'
       - 'python/**'
       - 'Dockerfile'
+      - 'release.json'
       - '.github/workflows/build-image.yml'
       - '.github/workflows/ci.yml'
       - '.github/workflows/java-build.yml'
@@ -77,3 +79,71 @@ jobs:
           docker run --rm --entrypoint python \
             pipeline-test \
             -c "from flows import release, pipeline, fetch; print('OK')"
+
+  # Build and push ONLY the fetcher image to ECR on every successful main build,
+  # so the daily ECS Fargate fetch picks up fetch-code / release.json changes
+  # without waiting for a release.  The pipeline image is intentionally NOT
+  # pushed here — it is only built/pushed by the release flow (build-image.yml).
+  build-fetcher:
+    name: Build and push fetcher image to ECR
+    needs: [test-java, test-python, smoke-test]
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write   # required for OIDC role assumption
+      contents: read
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5  # v4
+        with:
+          persist-credentials: false
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@7474bc4690e29a8392af63c5b98e7449536d5c3a  # v4
+        with:
+          role-to-assume: ${{ secrets.AWS_BUILD_ROLE_ARN }}
+          aws-region: us-east-1
+
+      - name: Resolve fetcher ECR repository URI from CloudFormation
+        id: ecr
+        env:
+          ECR_STACK: ${{ secrets.ECR_STACK_NAME }}
+        run: |
+          STACK="${ECR_STACK:-nlm-ckn-etl-ecr}"
+
+          FETCHER_URI=$(aws cloudformation describe-stacks \
+            --stack-name "${STACK}" \
+            --query "Stacks[0].Outputs[?OutputKey=='FetcherRepositoryUri'].OutputValue" \
+            --output text)
+
+          if [ -z "$FETCHER_URI" ]; then
+            echo "ERROR: CloudFormation stack '${STACK}' missing output: FetcherRepositoryUri" >&2
+            exit 1
+          fi
+
+          echo "fetcher_uri=${FETCHER_URI}"   >> "$GITHUB_OUTPUT"
+          echo "registry=${FETCHER_URI%%/*}"  >> "$GITHUB_OUTPUT"
+
+      - name: Log in to ECR
+        env:
+          REGISTRY: ${{ steps.ecr.outputs.registry }}
+          AWS_REGION: us-east-1
+        run: |
+          aws ecr get-login-password --region "${AWS_REGION}" \
+            | docker login --username AWS --password-stdin "${REGISTRY}"
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f  # v3
+
+      - name: Build and push fetcher image
+        uses: docker/build-push-action@ca052bb54ab0790a636c9b5f226502c73d547a25  # v5
+        with:
+          context: .
+          target: fetcher
+          push: true
+          build-args: |
+            GIT_SHA=${{ github.sha }}
+          tags: |
+            ${{ steps.ecr.outputs.fetcher_uri }}:latest
+            ${{ steps.ecr.outputs.fetcher_uri }}:${{ github.sha }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max

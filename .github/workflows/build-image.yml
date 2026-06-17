@@ -13,7 +13,9 @@ name: Build and Push Docker Images
 #
 # fetcher image (nlm-ckn-etl-fetcher):
 #   Python only, no Java.
-#   Rebuilt on: Python source, Dockerfile, fetch-entrypoint.
+#   Rebuilt on: Python source, Dockerfile, fetch-entrypoint, release.json.
+#   Also pushed (fetcher only) by ci.yml on every main build, so the daily
+#   ECS Fargate fetch picks up changes without waiting for a release.
 #
 # Required GitHub secrets:
 #   AWS_BUILD_ROLE_ARN  — IAM role to assume (needs ecr:GetAuthorizationToken,
@@ -122,6 +124,8 @@ jobs:
           context: .
           target: pipeline
           push: true
+          build-args: |
+            GIT_SHA=${{ github.sha }}
           tags: ${{ steps.tags.outputs.pipeline }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
@@ -132,6 +136,8 @@ jobs:
           context: .
           target: fetcher
           push: true
+          build-args: |
+            GIT_SHA=${{ github.sha }}
           tags: ${{ steps.tags.outputs.fetcher }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
