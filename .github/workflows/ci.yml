@@ -36,6 +36,14 @@ on:
 permissions:
   contents: read
 
+# Serialize runs per ref so overlapping main builds can't push the mutable
+# `latest` fetcher tag out of order (an older commit finishing last would
+# otherwise clobber a newer one).  Cancelling the in-progress run guarantees
+# only the most recent commit on a ref pushes its image.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   test-java:
     name: Java tests
@@ -100,7 +108,7 @@ jobs:
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@7474bc4690e29a8392af63c5b98e7449536d5c3a  # v4
         with:
-          role-to-assume: ${{ secrets.AWS_BUILD_ROLE_ARN }}
+          role-to-assume: ${{ secrets.AWS_FETCHER_PUSH_ROLE_ARN }}
           aws-region: us-east-1
 
       - name: Resolve fetcher ECR repository URI from CloudFormation

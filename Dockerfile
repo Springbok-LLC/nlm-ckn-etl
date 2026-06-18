@@ -113,12 +113,6 @@ ENV UV_SYSTEM_PYTHON=1
 # slow enough to trigger the default 20-second startup timeout.
 ENV PYTHONPATH=/app/python/src:/app/python/src/flows
 
-# Commit the image was built from, baked in so entrypoints can echo it to
-# CloudWatch — maps a running task back to a git commit.  Defaults to
-# "unknown" for local builds that don't pass --build-arg GIT_SHA=...
-ARG GIT_SHA=unknown
-ENV GIT_SHA=${GIT_SHA}
-
 ENV PREFECT_HOME=/tmp/prefect
 # Raise the ephemeral API server startup timeout to 120 seconds.
 # The default (20 s) is tight for Rosetta-emulated containers; this is a
@@ -166,6 +160,15 @@ COPY release.json /app/release.json
 # (which opens it at module import time) doesn't crash with FileNotFoundError
 # when the pipeline container starts before --run-ontology has run.
 RUN mkdir -p /app/data/obo && touch /app/data/obo/deprecated_terms.txt
+
+# Commit the image was built from, baked in so entrypoints can echo it to
+# CloudWatch — maps a running task back to a git commit.  Defaults to
+# "unknown" for local builds that don't pass --build-arg GIT_SHA=...
+# Declared last in the base stage: GIT_SHA changes every commit, so keeping it
+# after the cache-heavy dependency install / source copy layers preserves their
+# cache while still propagating GIT_SHA into the fetcher and pipeline stages.
+ARG GIT_SHA=unknown
+ENV GIT_SHA=${GIT_SHA}
 
 
 # ── Stage 2: fetcher (ECS Fargate scheduled fetch task) ─────────────────────

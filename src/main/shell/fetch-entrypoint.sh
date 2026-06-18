@@ -28,11 +28,15 @@ set -euo pipefail
 # The threshold is read from release.json (max_fetch_age_hours) so the release
 # flow and the scheduled fetch share one value; falls back to 672h (four weeks)
 # if release.json is missing or omits the key.
+# An explicit MAX_FETCH_AGE_HOURS in the environment wins; only fall back to
+# release.json when it is unset.  A null/missing key in the JSON resolves to 672
+# (the `or 672` guards against json null, which would otherwise print "None"
+# and fetch.py cannot parse as a float).
 RELEASE_JSON="${RELEASE_JSON:-/app/release.json}"
-MAX_FETCH_AGE_HOURS="$(
-    python -c "import json; print(json.load(open('${RELEASE_JSON}')).get('max_fetch_age_hours', 672))" \
+MAX_FETCH_AGE_HOURS="${MAX_FETCH_AGE_HOURS:-$(
+    python -c "import json; print(json.load(open('${RELEASE_JSON}')).get('max_fetch_age_hours') or 672)" \
         2>/dev/null || echo 672
-)"
+)}"
 echo "=== Running fetch flow (git-sha=${GIT_SHA:-unknown}, max-fetch-age-hours=${MAX_FETCH_AGE_HOURS}) ==="
 exec python /app/python/src/flows/fetch.py \
     --ncbi-email          "${NCBI_EMAIL}" \
