@@ -1,0 +1,137 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: >
+  NLM-CKN Grafana Cloud CloudWatch data source — IAM role that Grafana Cloud
+  assumes (cross-account, with an external ID) to read CloudWatch metrics and
+  Logs on our behalf.
+
+  This implements the "Pull Method" described in adr/0001-grafana-cloud.md:
+  Grafana queries our existing CloudWatch log groups (/batch/nlm-ckn-release
+  and /ecs/nlm-ckn-fetch) directly, with no log-shipping infrastructure.
+
+  The role grants read-only access only. The trust policy restricts assumption
+  to Grafana's AWS account AND requires the per-stack external ID, so the role
+  cannot be assumed without both (mitigates the confused-deputy problem).
+
+# ── Deployment ────────────────────────────────────────────────────────────────
+#
+# Deploy once per AWS account. The stack creates an IAM role with an explicit
+# RoleName, so CAPABILITY_NAMED_IAM is required.
+#
+#   aws cloudformation deploy \
+#     --stack-name nlm-ckn-etl-grafana-cloudwatch \
+#     --template-file cloudformation/grafana-cloudwatch.yaml \
+#     --capabilities CAPABILITY_NAMED_IAM \
+#     --parameter-overrides \
+#       GrafanaAccountId=008923505280 \
+#       ExternalId=1704081
+#
+# The GrafanaAccountId and ExternalId come from the Grafana Cloud CloudWatch
+# data-source setup screen ("Add data source" -> CloudWatch -> AWS SDK Default
+# / Assume Role ARN). They are specific to your Grafana Cloud stack.
+#
+# After the stack is created, copy the role ARN from the GrafanaCloudWatchRoleArn
+# output into the Grafana CloudWatch data source's "Assume Role ARN" field and
+# set the external ID to the same value used here:
+#
+#   aws cloudformation describe-stacks \
+#     --stack-name nlm-ckn-etl-grafana-cloudwatch \
+#     --query "Stacks[0].Outputs" --output table
+
+# ── Parameters ──────────────────────────────────────────────────────────────
+Parameters:
+
+  GrafanaAccountId:
+    Type: String
+    Default: "008923505280"
+    AllowedPattern: "^[0-9]{12}$"
+    Description: >
+      AWS account ID of the Grafana Cloud account permitted to assume this role.
+      Shown on the Grafana CloudWatch data-source setup screen.
+
+  ExternalId:
+    Type: String
+    Default: "1704081"
+    NoEcho: true
+    Description: >
+      External ID required when Grafana assumes the role. Must match the value
+      entered in the Grafana CloudWatch data source. Guards against the
+      confused-deputy problem.
+
+# ── Resources ────────────────────────────────────────────────────────────────
+Resources:
+
+  GrafanaCloudWatchRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: nlm-ckn-etl-grafana-cloudwatch
+      Description: Assumed by Grafana Cloud to read CloudWatch metrics and Logs
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              AWS: !Sub "arn:aws:iam::${GrafanaAccountId}:root"
+            Action: sts:AssumeRole
+            Condition:
+              StringEquals:
+                sts:ExternalId: !Ref ExternalId
+
+  GrafanaCloudWatchPolicy:
+    Type: AWS::IAM::Policy
+    Properties:
+      PolicyName: nlm-ckn-etl-grafana-cloudwatch
+      Roles:
+        - !Ref GrafanaCloudWatchRole
+      PolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          # CloudWatch metrics — list/read metric data and alarms. None of these
+          # read actions support resource-level restriction, so Resource is "*".
+          - Sid: CloudWatchMetricsRead
+            Effect: Allow
+            Action:
+              - cloudwatch:DescribeAlarmsForMetric
+              - cloudwatch:DescribeAlarmHistory
+              - cloudwatch:DescribeAlarms
+              - cloudwatch:ListMetrics
+              - cloudwatch:GetMetricData
+              - cloudwatch:GetInsightRuleReport
+            Resource: "*"
+
+          # CloudWatch Logs — discover log groups and run Logs Insights queries.
+          # Required to view /batch/nlm-ckn-release and /ecs/nlm-ckn-fetch.
+          - Sid: CloudWatchLogsRead
+            Effect: Allow
+            Action:
+              - logs:DescribeLogGroups
+              - logs:GetLogGroupFields
+              - logs:StartQuery
+              - logs:StopQuery
+              - logs:GetQueryResults
+              - logs:GetLogEvents
+            Resource: "*"
+
+          # EC2 — resolves dimensions/regions for EC2-sourced metrics (e.g. the
+          # Batch compute environment instances) and the region picker.
+          - Sid: Ec2MetricMetadata
+            Effect: Allow
+            Action:
+              - ec2:DescribeTags
+              - ec2:DescribeInstances
+              - ec2:DescribeRegions
+            Resource: "*"
+
+          # Resource Groups Tagging API — lets Grafana filter metrics by tag.
+          - Sid: TagsRead
+            Effect: Allow
+            Action: tag:GetResources
+            Resource: "*"
+
+# ── Outputs ──────────────────────────────────────────────────────────────────
+Outputs:
+
+  GrafanaCloudWatchRoleArn:
+    Description: ARN to enter as the "Assume Role ARN" in the Grafana CloudWatch data source
+    Value: !GetAtt GrafanaCloudWatchRole.Arn
+    Export:
+      Name: !Sub "${AWS::StackName}-GrafanaCloudWatchRoleArn"
