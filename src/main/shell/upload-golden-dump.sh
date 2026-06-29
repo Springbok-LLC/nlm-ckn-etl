@@ -43,8 +43,10 @@ REPO_ROOT="$(cd "${SCRIPT_DIR}/../../.." && pwd)"
 # clobber the cross-account destination set below.
 ENV_FILE="${REPO_ROOT}/.env"
 if [[ -f "${ENV_FILE}" ]]; then
-  # shellcheck disable=SC1090
-  set -o allexport; source "${ENV_FILE}"; set +o allexport
+  set -o allexport
+  # shellcheck source=/dev/null
+  source "${ENV_FILE}"
+  set +o allexport
 fi
 
 # ── Cross-account upload target (partner account 675671393318) ───────────────
@@ -56,7 +58,7 @@ REGION="${GOLDEN_DUMP_REGION:-eu-north-1}"
 # ── Defaults ──────────────────────────────────────────────────────────────────
 ETL_VERSION=""
 VERSION_FILE=""
-TAR_SOURCE="${REPO_ROOT}/data/06-golden-dump.tar.gz"
+TAR_SOURCE="${TAR_SOURCE:-${REPO_ROOT}/data/06-golden-dump.tar.gz}"
 DEST_NAME=""
 DRY_RUN=0
 
@@ -102,7 +104,14 @@ fi
 [[ -f "${TAR_SOURCE}" ]] || { echo "ERROR: tar source not found: ${TAR_SOURCE}" >&2; exit 1; }
 
 # ── Compose the destination key (prefix is always DATA/) ─────────────────────
-DEST_PREFIX="${DEST_PREFIX%/}/"                               # normalise trailing slash
+DEST_PREFIX="${DEST_PREFIX#/}"                                # no leading slash
+DEST_PREFIX="${DEST_PREFIX%/}/"                               # exactly one trailing slash
+# The ingress role policy only permits s3:PutObject under DATA/; reject anything
+# that would escape that prefix before we ever attempt the upload.
+if [[ "${DEST_PREFIX}" != "DATA/" && "${DEST_PREFIX}" != DATA/* ]]; then
+  echo "ERROR: destination prefix must be under DATA/ (got: ${DEST_PREFIX})" >&2
+  exit 1
+fi
 DEST_NAME="${DEST_NAME:-nlm-ckn-golden-dump-${ETL_VERSION}.tar.gz}"
 S3_URI="s3://${DEST_BUCKET}/${DEST_PREFIX}${DEST_NAME}"
 
