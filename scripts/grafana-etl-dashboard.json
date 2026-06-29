@@ -1,0 +1,479 @@
+{
+  "__inputs": [],
+  "__requires": [
+    {
+      "type": "grafana",
+      "id": "grafana",
+      "name": "Grafana",
+      "version": "9.0.0"
+    },
+    {
+      "type": "datasource",
+      "id": "cloudwatch",
+      "name": "CloudWatch",
+      "version": "1.0.0"
+    },
+    {
+      "type": "panel",
+      "id": "logs",
+      "name": "Logs",
+      "version": ""
+    },
+    {
+      "type": "panel",
+      "id": "table",
+      "name": "Table",
+      "version": ""
+    }
+  ],
+  "title": "nlm-ckn-etl",
+  "uid": "nlm-ckn-etl",
+  "tags": [
+    "nlm-ckn",
+    "etl",
+    "prefect",
+    "cloudwatch"
+  ],
+  "timezone": "browser",
+  "schemaVersion": 39,
+  "version": 1,
+  "editable": true,
+  "refresh": "1m",
+  "time": {
+    "from": "now-24h",
+    "to": "now"
+  },
+  "templating": {
+    "list": [
+      {
+        "name": "datasource",
+        "type": "datasource",
+        "label": "CloudWatch datasource",
+        "query": "cloudwatch",
+        "current": {},
+        "hide": 0,
+        "refresh": 1
+      },
+      {
+        "name": "region",
+        "type": "constant",
+        "label": "Region",
+        "query": "us-east-1",
+        "current": {
+          "text": "us-east-1",
+          "value": "us-east-1"
+        },
+        "hide": 2
+      },
+      {
+        "name": "run",
+        "type": "textbox",
+        "label": "Run (paste @logStream from decoder)",
+        "query": "",
+        "current": {
+          "text": "",
+          "value": ""
+        },
+        "hide": 0
+      }
+    ]
+  },
+  "panels": [
+    {
+      "id": 1,
+      "type": "row",
+      "title": "Run overview",
+      "collapsed": false,
+      "gridPos": {
+        "x": 0,
+        "y": 0,
+        "w": 24,
+        "h": 1
+      }
+    },
+    {
+      "id": 2,
+      "type": "table",
+      "title": "Runs: release version -> log stream (newest first)",
+      "description": "Decoder mapping each run's release version (RUN_NAME) and source tag (NLM_CKN_TAG) to its log stream. Top row = latest run. Paste a @logStream into the `run` dashboard variable to pin all panels to it.",
+      "datasource": {
+        "type": "cloudwatch",
+        "uid": "${datasource}"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 1,
+        "w": 24,
+        "h": 8
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "cloudwatch",
+            "uid": "${datasource}"
+          },
+          "queryMode": "Logs",
+          "region": "${region}",
+          "expression": "fields @timestamp, @logStream, @message\n| filter @logStream like \"$run\"\n| filter @message like /Release: tag=/\n| parse @message /Release: tag=(?<source_tag>\\S+)\\s+run=(?<run_version>\\S+)/\n| stats min(@timestamp) as started by run_version, source_tag, @logStream\n| sort started desc\n| limit 50",
+          "logGroupNames": [
+            "/batch/nlm-ckn-release"
+          ],
+          "statsGroups": [],
+          "id": ""
+        }
+      ],
+      "options": {
+        "showHeader": true
+      },
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "align": "auto",
+            "filterable": true
+          }
+        },
+        "overrides": []
+      }
+    },
+    {
+      "id": 3,
+      "type": "row",
+      "title": "Result & task status",
+      "collapsed": false,
+      "gridPos": {
+        "x": 0,
+        "y": 9,
+        "w": 24,
+        "h": 1
+      }
+    },
+    {
+      "id": 4,
+      "type": "logs",
+      "title": "Flow & subflow results",
+      "description": "`Flow run '..' - Finished in state ..` lines. Look for Completed vs Failed; the top-level flow is the nlm-ckn-release one.",
+      "datasource": {
+        "type": "cloudwatch",
+        "uid": "${datasource}"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 10,
+        "w": 24,
+        "h": 5
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "cloudwatch",
+            "uid": "${datasource}"
+          },
+          "queryMode": "Logs",
+          "region": "${region}",
+          "expression": "fields @timestamp, @logStream, @message\n| filter @logStream like \"$run\"\n| filter @message like /Flow run/ and @message like /Finished in state/\n| sort @timestamp desc\n| limit 100",
+          "logGroupNames": [
+            "/batch/nlm-ckn-release"
+          ],
+          "statsGroups": [],
+          "id": ""
+        }
+      ],
+      "options": {
+        "showTime": true,
+        "wrapLogMessage": true,
+        "sortOrder": "Descending",
+        "enableLogDetails": true
+      }
+    },
+    {
+      "id": 5,
+      "type": "table",
+      "title": "1. Release tasks (nlm-ckn-release)",
+      "description": "Top-level release flow: pull the release tarball, push it to S3, decide fetch-force, and (at the end) promote results to latest.",
+      "datasource": {
+        "type": "cloudwatch",
+        "uid": "${datasource}"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 15,
+        "w": 8,
+        "h": 12
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "cloudwatch",
+            "uid": "${datasource}"
+          },
+          "queryMode": "Logs",
+          "region": "${region}",
+          "expression": "fields @timestamp, @logStream, @message\n| filter @logStream like \"$run\"\n| parse @message /Task run '(?<taskfull>[^']+)' - Finished in state (?<state>\\w+)/\n| filter ispresent(taskfull)\n| parse taskfull /(?<taskbase>.+)-[0-9a-z]{3}$/\n| fields coalesce(taskbase, taskfull) as task\n| filter task in [\"extract-release-tarball\", \"sync-release-dir-to-s3\", \"resolve-fetch-force\", \"promote-results-to-latest\"]\n| stats latest(state) as last_state, count(*) as runs, latest(@timestamp) as finished_at by @logStream, task\n| sort @logStream desc, finished_at asc\n| limit 500",
+          "logGroupNames": [
+            "/batch/nlm-ckn-release"
+          ],
+          "statsGroups": [],
+          "id": ""
+        }
+      ],
+      "options": {
+        "showHeader": true
+      },
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "align": "auto",
+            "filterable": true
+          }
+        },
+        "overrides": []
+      }
+    },
+    {
+      "id": 6,
+      "type": "table",
+      "title": "2. Fetch tasks (nlm-ckn-fetch)",
+      "description": "External-API fetch subflow. The shared sync/validate util tasks are listed here (they also run in etl); `runs` counts every invocation.",
+      "datasource": {
+        "type": "cloudwatch",
+        "uid": "${datasource}"
+      },
+      "gridPos": {
+        "x": 8,
+        "y": 15,
+        "w": 8,
+        "h": 12
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "cloudwatch",
+            "uid": "${datasource}"
+          },
+          "queryMode": "Logs",
+          "region": "${region}",
+          "expression": "fields @timestamp, @logStream, @message\n| filter @logStream like \"$run\"\n| parse @message /Task run '(?<taskfull>[^']+)' - Finished in state (?<state>\\w+)/\n| filter ispresent(taskfull)\n| parse taskfull /(?<taskbase>.+)-[0-9a-z]{3}$/\n| fields coalesce(taskbase, taskfull) as task\n| filter task in [\"sync-results-from-s3\", \"validate-release-dir\", \"sync-external-from-s3\", \"clean-empty-external-files\", \"retry-failed-cache-entries\", \"fetch-external-api-results\", \"transform-external-api-results\", \"validate-external-files\", \"record-fetch-artifact\", \"sync-external-to-s3-staging\", \"promote-external-staging\"]\n| stats latest(state) as last_state, count(*) as runs, latest(@timestamp) as finished_at by @logStream, task\n| sort @logStream desc, finished_at asc\n| limit 500",
+          "logGroupNames": [
+            "/batch/nlm-ckn-release"
+          ],
+          "statsGroups": [],
+          "id": ""
+        }
+      ],
+      "options": {
+        "showHeader": true
+      },
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "align": "auto",
+            "filterable": true
+          }
+        },
+        "overrides": []
+      }
+    },
+    {
+      "id": 7,
+      "type": "table",
+      "title": "3. ETL tasks (nlm-ckn-etl)",
+      "description": "ETL subflow: build ontology/results/induced graphs, write tuples, create analyzers/views, and promote to production.",
+      "datasource": {
+        "type": "cloudwatch",
+        "uid": "${datasource}"
+      },
+      "gridPos": {
+        "x": 16,
+        "y": 15,
+        "w": 8,
+        "h": 12
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "cloudwatch",
+            "uid": "${datasource}"
+          },
+          "queryMode": "Logs",
+          "region": "${region}",
+          "expression": "fields @timestamp, @logStream, @message\n| filter @logStream like \"$run\"\n| parse @message /Task run '(?<taskfull>[^']+)' - Finished in state (?<state>\\w+)/\n| filter ispresent(taskfull)\n| parse taskfull /(?<taskbase>.+)-[0-9a-z]{3}$/\n| fields coalesce(taskbase, taskfull) as task\n| filter task in [\"ensure-jar\", \"stop-arangodb\", \"start-arangodb\", \"require-arangodb\", \"download-ontologies\", \"slim-ontologies\", \"build-ontology-graph\", \"dump-arangodb\", \"export-graphs-and-analyzers\", \"import-graphs-from-sidecar\", \"restore-arangodb\", \"sync-baseline-dump-to-s3\", \"sync-baseline-dump-from-s3\", \"sync-results-dump-to-s3\", \"sync-results-dump-from-s3\", \"write-tuples\", \"sync-tuples-to-s3\", \"validate-tuple-files\", \"build-results-graph\", \"build-induced-subgraph\", \"create-analyzers-and-views\", \"promote-to-production\"]\n| stats latest(state) as last_state, count(*) as runs, latest(@timestamp) as finished_at by @logStream, task\n| sort @logStream desc, finished_at asc\n| limit 500",
+          "logGroupNames": [
+            "/batch/nlm-ckn-release"
+          ],
+          "statsGroups": [],
+          "id": ""
+        }
+      ],
+      "options": {
+        "showHeader": true
+      },
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "align": "auto",
+            "filterable": true
+          }
+        },
+        "overrides": []
+      }
+    },
+    {
+      "id": 8,
+      "type": "row",
+      "title": "Failures & errors",
+      "collapsed": false,
+      "gridPos": {
+        "x": 0,
+        "y": 27,
+        "w": 24,
+        "h": 1
+      }
+    },
+    {
+      "id": 9,
+      "type": "logs",
+      "title": "Failures & errors",
+      "description": "ERROR-level logs, failed states, and tracebacks. Empty here = the runs in range had no errors.",
+      "datasource": {
+        "type": "cloudwatch",
+        "uid": "${datasource}"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 28,
+        "w": 24,
+        "h": 9
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "cloudwatch",
+            "uid": "${datasource}"
+          },
+          "queryMode": "Logs",
+          "region": "${region}",
+          "expression": "fields @timestamp, @logStream, @message\n| filter @logStream like \"$run\"\n| filter @message like /Finished in state Failed/ or @message like /ERROR/ or @message like /Traceback/ or @message like /CalledProcessError/\n| sort @timestamp desc\n| limit 200",
+          "logGroupNames": [
+            "/batch/nlm-ckn-release"
+          ],
+          "statsGroups": [],
+          "id": ""
+        }
+      ],
+      "options": {
+        "showTime": true,
+        "wrapLogMessage": true,
+        "sortOrder": "Descending",
+        "enableLogDetails": true
+      }
+    },
+    {
+      "id": 10,
+      "type": "row",
+      "title": "Graph build metrics",
+      "collapsed": false,
+      "gridPos": {
+        "x": 0,
+        "y": 37,
+        "w": 24,
+        "h": 1
+      }
+    },
+    {
+      "id": 11,
+      "type": "table",
+      "title": "Vertices / edges / triples per run",
+      "description": "Graph load metrics parsed from `Constructed/Inserted N edges|vertices` and `N triples` lines, one row per run, newest first. Cross-reference @logStream with the decoder table for the release version.",
+      "datasource": {
+        "type": "cloudwatch",
+        "uid": "${datasource}"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 38,
+        "w": 16,
+        "h": 9
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "cloudwatch",
+            "uid": "${datasource}"
+          },
+          "queryMode": "Logs",
+          "region": "${region}",
+          "expression": "fields @logStream, @message\n| filter @logStream like \"$run\"\n| parse @message /Constructed (?<edges>\\d+) edges from (?<triples>\\d+) triples/\n| parse @message /Inserted (?<edges_ins>\\d+) edges/\n| parse @message /Constructed (?<vertices>\\d+) vertices/\n| parse @message /Inserted (?<vertices_ins>\\d+) vertices/\n| filter ispresent(edges) or ispresent(edges_ins) or ispresent(vertices) or ispresent(vertices_ins)\n| stats min(@timestamp) as started, max(triples) as triples_total, max(vertices) as vertices_built, max(vertices_ins) as vertices_inserted, max(edges) as edges_built, max(edges_ins) as edges_inserted by @logStream\n| sort started desc\n| limit 50",
+          "logGroupNames": [
+            "/batch/nlm-ckn-release"
+          ],
+          "statsGroups": [],
+          "id": ""
+        }
+      ],
+      "options": {
+        "showHeader": true
+      },
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "align": "auto",
+            "filterable": true
+          }
+        },
+        "overrides": []
+      }
+    },
+    {
+      "id": 12,
+      "type": "table",
+      "title": "Tuples written per run",
+      "description": "Sum of `Wrote N tuples to ...` across all NSForest files in each run, newest first. Cross-reference @logStream with the decoder table.",
+      "datasource": {
+        "type": "cloudwatch",
+        "uid": "${datasource}"
+      },
+      "gridPos": {
+        "x": 16,
+        "y": 38,
+        "w": 8,
+        "h": 9
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "cloudwatch",
+            "uid": "${datasource}"
+          },
+          "queryMode": "Logs",
+          "region": "${region}",
+          "expression": "fields @logStream, @message\n| filter @logStream like \"$run\"\n| parse @message /Wrote (?<n>\\d+) tuples/\n| filter ispresent(n)\n| stats min(@timestamp) as started, sum(n) as total_tuples, count(n) as tuple_files by @logStream\n| sort started desc\n| limit 50",
+          "logGroupNames": [
+            "/batch/nlm-ckn-release"
+          ],
+          "statsGroups": [],
+          "id": ""
+        }
+      ],
+      "options": {
+        "showHeader": true
+      },
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "align": "auto",
+            "filterable": true
+          }
+        },
+        "overrides": []
+      }
+    }
+  ]
+}
