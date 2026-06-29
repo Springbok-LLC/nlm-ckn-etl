@@ -22,8 +22,7 @@ Description: >
 #     --template-file cloudformation/grafana-cloudwatch.yaml \
 #     --capabilities CAPABILITY_NAMED_IAM \
 #     --parameter-overrides \
-#       GrafanaAccountId=008923505280 \
-#       ExternalId=1704081
+#       GrafanaAccountId=008923505280
 #
 # The GrafanaAccountId and ExternalId come from the Grafana Cloud CloudWatch
 # data-source setup screen ("Add data source" -> CloudWatch -> AWS SDK Default
@@ -50,7 +49,6 @@ Parameters:
 
   ExternalId:
     Type: String
-    Default: "1704081"
     NoEcho: true
     Description: >
       External ID required when Grafana assumes the role. Must match the value
