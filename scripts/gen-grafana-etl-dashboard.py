@@ -3,7 +3,7 @@
 # gen-grafana-etl-dashboard.py - Emit the `nlm-ckn-etl` Grafana dashboard
 #   (CloudWatch Logs Insights) for the nlm-ckn release/ETL pipeline.
 #
-#   python3 scripts/ops/gen-grafana-etl-dashboard.py > grafana-etl-dashboard.json
+#   python3 scripts/gen-grafana-etl-dashboard.py > grafana-etl-dashboard.json
 #
 # Then import the JSON in Grafana (Dashboards -> New -> Import) and pick your
 # CloudWatch datasource.
@@ -137,7 +137,7 @@ FLOW_TASKS = {
 
 
 def flow_tasks_panel(title, x, y, w, h, tasks, desc=""):
-    """Per-flow table of each Prefect task's terminal state, in execution order.
+    """Per-flow table of each Prefect task's terminal state, newest finish first.
 
     Task run names carry a random 3-char suffix per instance (e.g.
     write-tuples-bff); strip it to recover the canonical @task(name=..). Group by
@@ -154,7 +154,7 @@ def flow_tasks_panel(title, x, y, w, h, tasks, desc=""):
              "| filter task in " + task_list + "\n"
              "| stats latest(state) as last_state, count(*) as runs, "
              "latest(@timestamp) as finished_at by @logStream, task\n"
-             "| sort @logStream desc, finished_at asc\n"
+             "| sort finished_at desc\n"
              "| limit 500"),
         desc=desc)
 
@@ -205,7 +205,8 @@ panels.append(logs_panel(
 
 # Each Prefect task's terminal state, split into the three sequential flows so
 # the latest run reads as three phases: release -> fetch -> etl. Within each
-# table, tasks are ordered by finish time (execution order); newest run first.
+# table, rows are ordered by finish time (newest first), so since runs are
+# time-separated the latest run's tasks sit at the top of each table.
 panels.append(flow_tasks_panel(
     "1. Release tasks (nlm-ckn-release)", 0, 15, 8, 12, FLOW_TASKS["release"],
     desc="Top-level release flow: pull the release tarball, push it to S3, "
