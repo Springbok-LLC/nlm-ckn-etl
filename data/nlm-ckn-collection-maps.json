@@ -387,12 +387,6 @@
         "color": "#ffd8b1",
         "individual_labels": [
           {
-            "field_to_use": "Name",
-            "to_be_replaced": "",
-            "replace_with": "",
-            "make_lower_case": false
-          },
-          {
             "field_to_use": "Citation",
             "to_be_replaced": "",
             "replace_with": "",
@@ -913,6 +907,12 @@
         "display_name": "Protein",
         "color": "#aaffc3",
         "individual_labels": [
+          {
+            "field_to_use": "gene_symbol",
+            "to_be_replaced": "",
+            "replace_with": "",
+            "make_lower_case": false
+          },
           {
             "field_to_use": "label",
             "to_be_replaced": "",
