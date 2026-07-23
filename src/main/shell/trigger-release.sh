@@ -232,7 +232,8 @@ fi
 # when non-empty so the job definition defaults remain in effect otherwise.
 # Use Python json.dumps for safe JSON building to handle special characters.
 # GITHUB_TOKEN is intentionally omitted here — it is injected by the Batch
-# job definition via Secrets Manager (see cloudformation/batch.yaml).
+# job definition via Secrets Manager (see the batch stack in the nlm-ckn-iac
+# repo: https://github.com/Springbok-LLC/nlm-ckn-iac).
 env_json=$(
   NLM_CKN_TAG="${TAG}" \
   RELEASE_CONFIG_S3="${RELEASE_CONFIG_S3}" \

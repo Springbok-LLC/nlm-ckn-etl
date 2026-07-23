@@ -48,7 +48,6 @@ nlm-ckn-etl/
 ├── Dockerfile                       # Multi-stage build (Java + Python images)
 ├── compose.yaml                     # Local Docker Compose services
 ├── release.json                     # Release settings (tag, tar source, etc.)
-├── cloudformation/                  # AWS infrastructure templates (Batch, ECR, OIDC)
 ├── src/
 │   ├── main/
 │   │   ├── java/gov/nih/nlm/        # Java classes

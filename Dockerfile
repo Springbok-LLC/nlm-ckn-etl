@@ -63,8 +63,10 @@
 #
 # ── AWS usage ────────────────────────────────────────────────────────────────
 #   Both images are pushed to ECR by .github/workflows/build-image.yml.
-#   nlm-ckn-etl-fetcher  → used by the ECS Fargate task (cloudformation/fetch.yaml)
-#   nlm-ckn-etl-pipeline → used by the AWS Batch job   (cloudformation/batch.yaml)
+#   The infrastructure that consumes them lives in the nlm-ckn-iac repo
+#   (https://github.com/Springbok-LLC/nlm-ckn-iac):
+#   nlm-ckn-etl-fetcher  → used by the ECS Fargate task (fetch stack)
+#   nlm-ckn-etl-pipeline → used by the AWS Batch job     (batch stack)
 #                          Entrypoint runs release.py (fetch + full ETL).
 #                          Trigger via src/main/shell/trigger-release.sh.
 #
