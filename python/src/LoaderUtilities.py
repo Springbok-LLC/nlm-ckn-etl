@@ -1540,4 +1540,7 @@ def main():
 
 
 if __name__ == "__main__":
+    import JsonErrors
+
+    JsonErrors.install()
     harvester_data, file_paths, dataset_version_id_lists = main()

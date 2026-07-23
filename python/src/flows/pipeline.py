@@ -1582,6 +1582,9 @@ def nlm_ckn_etl(
 # ── CLI entry point ────────────────────────────────────────────────────────
 
 if __name__ == "__main__":
+    import JsonErrors
+
+    JsonErrors.install()
     parser = argparse.ArgumentParser(
         description="NLM-CKN ETL pipeline (Prefect) — three-phase",
         formatter_class=argparse.RawDescriptionHelpFormatter,

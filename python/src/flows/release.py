@@ -630,6 +630,9 @@ def _parse_args(argv=None):
 
 
 if __name__ == "__main__":
+    import JsonErrors
+
+    JsonErrors.install()
     # Resolve --release-config first so the file it points to (not just the
     # repo-root release.json) seeds every env-backed default below.
     _pre = argparse.ArgumentParser(add_help=False)

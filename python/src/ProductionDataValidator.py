@@ -744,4 +744,7 @@ def main(argv=None):
 
 
 if __name__ == "__main__":
+    import JsonErrors
+
+    JsonErrors.install()
     sys.exit(main())

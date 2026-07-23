@@ -392,6 +392,9 @@ def build_induced_subgraph(
 
 
 if __name__ == "__main__":
+    import JsonErrors
+
+    JsonErrors.install()
     ARANGO_DB_HOST = os.getenv("ARANGO_DB_HOST", "")
     ARANGO_DB_PORT = os.getenv("ARANGO_DB_PORT", "")
     ARANGO_DB_USER = os.getenv("ARANGO_DB_USER", "")

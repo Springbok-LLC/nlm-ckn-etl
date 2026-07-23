@@ -556,6 +556,9 @@ def _parse_args(argv=None):
 
 
 if __name__ == "__main__":
+    import JsonErrors
+
+    JsonErrors.install()
     args = _parse_args()
     nlm_ckn_fetch(
         ncbi_email=args.ncbi_email,
