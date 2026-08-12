@@ -204,12 +204,35 @@ PYEOF
   done
 
   echo "[trigger-release] Creating GitHub deployment for ${GITHUB_REF_NAME} (nlm-ckn tag: ${TAG}) ..."
+  # payload.run_name carries the resolved ETL run name (RUN) to consumers of the
+  # deployment_status event.  It must NOT be inferred from "ref": ref happens to
+  # equal the run name only when on-release.yml passes the release tag as
+  # --run-name; a manual trigger-release.yml dispatch can set --run-name to
+  # something else entirely.  The run name is what names the S3 prefix
+  # (runs/{run}/06-golden-dump.tar.gz), so bump-ui-etl-version.yml pins the UI's
+  # ETL_VERSION from this field and fails loudly when it is absent.
+  # Built with json.dumps rather than an interpolated -d "{...}" literal so a
+  # run name or tag containing quotes/backslashes cannot break the JSON.
+  DEPLOY_BODY=$(
+    GITHUB_REF_NAME="${GITHUB_REF_NAME}" TAG="${TAG}" RUN="${RUN}" \
+    python3 - <<'PYEOF'
+import json, os
+print(json.dumps({
+    "ref":               os.environ["GITHUB_REF_NAME"],
+    "environment":       "production",
+    "description":       f"nlm-ckn {os.environ['TAG']}",
+    "auto_merge":        False,
+    "required_contexts": [],
+    "payload":           {"run_name": os.environ["RUN"]},
+}))
+PYEOF
+  )
   DEPLOY_RESPONSE=$(curl -s -X POST \
     -H "Authorization: Bearer ${GITHUB_DEPLOY_TOKEN}" \
     -H "Accept: application/vnd.github+json" \
     -H "X-GitHub-Api-Version: 2022-11-28" \
     "https://api.github.com/repos/${GITHUB_REPOSITORY}/deployments" \
-    -d "{\"ref\":\"${GITHUB_REF_NAME}\",\"environment\":\"production\",\"description\":\"nlm-ckn ${TAG}\",\"auto_merge\":false,\"required_contexts\":[]}")
+    -d "${DEPLOY_BODY}")
   GITHUB_DEPLOYMENT_ID=$(python3 -c \
     "import sys,json; print(json.load(sys.stdin).get('id',''))" \
     <<< "${DEPLOY_RESPONSE}" 2>/dev/null) || true

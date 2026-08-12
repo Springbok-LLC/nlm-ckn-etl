@@ -1,0 +1,456 @@
+name: Bump nlm-ckn-ui ETL_VERSION
+
+# Closes the loop between an ETL release and the UI that serves its dataset.
+# Tracking issue: https://github.com/Springbok-LLC/nlm-ckn-ui/issues/167
+#
+# A release run is submitted to AWS Batch by trigger-release.sh, which returns
+# immediately after submission. The container running release.py reports the
+# outcome back as GitHub *deployment statuses* on this repo. This workflow
+# listens for those statuses and does one of two things:
+#
+#   success           -> open (or update) a PR on Springbok-LLC/nlm-ckn-ui that
+#                        writes the released run name into that repo's root
+#                        ETL_VERSION file.
+#   failure | error   -> open (or update) an issue *here* reporting the failed
+#                        release, with the status description and CloudWatch log
+#                        link, so a dead release is never silent.
+#
+# -- The version contract (why the value must be the ETL *run name*) ----------
+# The pipeline uploads the golden dump to
+#   s3://$S3_BUCKET/runs/{run_name}/06-golden-dump.tar.gz
+# and the UI's scripts/app/deploy-dataset.sh reads its root ETL_VERSION file and
+# rebuilds exactly that key. So ETL_VERSION must contain the run name verbatim
+# (e.g. "v1.6.0-rc.4"), one line, nothing else.
+#
+# The run name is read from the deployment's payload.run_name, which
+# trigger-release.sh sets from the resolved run name. It is deliberately NOT
+# derived from the deployment ref: ref equals the run name only because
+# on-release.yml happens to pass the release tag as --run-name. A manual
+# trigger-release.yml dispatch can set --run-name to something else, and pinning
+# the ref in that case would point the UI at an S3 prefix that does not exist.
+# If the payload field is missing (a deployment created by an older copy of
+# trigger-release.sh) this workflow FAILS LOUDLY rather than guessing.
+#
+# -- Known limitation 1: infra-level failures are a blind spot ----------------
+# Every deployment status this workflow reacts to is posted by release.py from
+# inside the Batch container. Anything that kills the container before Python
+# can report -- Batch job timeout, OOM kill, spot reclaim, image pull failure, a
+# crash before the entrypoint reaches Python -- produces NO deployment status,
+# and therefore NO issue from this workflow. Such a release fails completely
+# silently as far as GitHub is concerned. Closing that gap requires an
+# EventBridge rule on "Batch Job State Change" -> FAILED, which belongs in the
+# nlm-ckn-iac repo. Tracked as a known gap; intentionally NOT implemented here.
+#
+# -- Known limitation 2: this only fires because PATs create the events -------
+# GitHub Actions suppresses events generated with the default Actions token, to
+# stop workflows triggering themselves. This workflow runs only because BOTH
+# halves of the chain are authenticated with PATs:
+#   * the deployment is created by trigger-release.sh using DEPLOYMENTS_TOKEN
+#     (passed in as GITHUB_DEPLOY_TOKEN by on-release.yml), and
+#   * the statuses are posted by release.py in the container using the PAT
+#     injected from Secrets Manager.
+# Swapping either one to the Actions-provided token silently disables this
+# workflow: no event, no run, no error anywhere. That is by far the most likely
+# way for this automation to break invisibly -- check it first if releases stop
+# bumping the UI.
+
+on:
+  deployment_status:
+  # Manual escape hatch: exercise the success path (or re-pin a version) without
+  # waiting for a real release. dry_run stops short of pushing/opening the PR.
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'ETL run name to pin in nlm-ckn-ui/ETL_VERSION (e.g. v1.6.0-rc.4)'
+        required: true
+        type: string
+      dry_run:
+        description: 'Resolve and diff only - do not push a branch or open a PR'
+        required: false
+        type: boolean
+        default: false
+
+# Serialize: release.py can post several statuses in one run, and a re-dispatch
+# can overlap a real release. Two runs must not race on the bump branch, the PR,
+# or the failure issue. Never cancel - a dropped run means a missed bump/report.
+concurrency:
+  group: bump-ui-etl-version
+  cancel-in-progress: false
+
+# Deliberately minimal. All cross-repo work (pushing the branch and opening the
+# PR on nlm-ckn-ui) is done with a PAT, which carries its own permissions and
+# ignores these entirely. Nothing here reads this repo's contents either, but
+# contents: read is the smallest sane default. The failure job widens this
+# locally to issues: write - see its own permissions block.
+permissions:
+  contents: read
+
+jobs:
+  # -- Success path: pin the released run name in nlm-ckn-ui -------------------
+  bump:
+    name: Bump ETL_VERSION in nlm-ckn-ui
+    # Only Springbok-LLC (the NIH-NLM mirror must never open PRs on our UI
+    # repo), only production deployments, and only the terminal success status -
+    # in_progress / pending / queued / inactive are ignored.
+    if: >-
+      github.repository_owner == 'Springbok-LLC' &&
+      (
+        github.event_name == 'workflow_dispatch' ||
+        (
+          github.event_name == 'deployment_status' &&
+          github.event.deployment.environment == 'production' &&
+          github.event.deployment_status.state == 'success'
+        )
+      )
+    runs-on: ubuntu-latest
+    env:
+      SIBLING_REPO: Springbok-LLC/nlm-ckn-ui
+      SIBLING_PATH: ETL_VERSION
+      BUMP_BRANCH: bump/etl-version
+      # Empty for deployment_status events; 'true'/'false' on workflow_dispatch.
+      DRY_RUN: ${{ inputs.dry_run }}
+      # PAT with contents:write + pull_requests:write on BOTH
+      # Springbok-LLC/nlm-ckn-etl and Springbok-LLC/nlm-ckn-ui. The default
+      # Actions token cannot push to another repo, so this secret is required.
+      # Shared with sync-collection-maps.yml.
+      GH_TOKEN: ${{ secrets.COLLECTION_MAPS_SYNC_TOKEN }}
+    steps:
+      # Both trigger paths funnel through this one step, so everything
+      # downstream sees a single validated value regardless of event type.
+      # Event- and input-controlled text is mapped to env, never interpolated
+      # into the script body (mirrors trigger-release.yml).
+      - name: Resolve and validate the ETL version
+        id: version
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          DISPATCH_VERSION: ${{ inputs.version }}
+          PAYLOAD_RUN_NAME: ${{ github.event.deployment.payload.run_name }}
+          DEPLOYMENT_REF: ${{ github.event.deployment.ref }}
+        run: |
+          set -euo pipefail
+          if [ "$EVENT_NAME" = "workflow_dispatch" ]; then
+            VERSION="$DISPATCH_VERSION"
+            SOURCE="workflow_dispatch input"
+          else
+            VERSION="$PAYLOAD_RUN_NAME"
+            SOURCE="deployment payload.run_name"
+          fi
+
+          # Fail loudly rather than falling back to the deployment ref. A
+          # missing payload means the deployment came from a trigger-release.sh
+          # that predates the payload.run_name change; pinning the ref instead
+          # could point the UI at a runs/ prefix that does not exist in S3.
+          if [ -z "$VERSION" ]; then
+            echo "::error::Could not determine the ETL version from $SOURCE." \
+                 "Deployment ref was '${DEPLOYMENT_REF:-<none>}'. If this deployment" \
+                 "was created by an older trigger-release.sh, re-run the release with" \
+                 "the current script (it sets the deployment payload run_name), or" \
+                 "dispatch this workflow manually with an explicit version input."
+            exit 1
+          fi
+
+          # Strict allowlist before this value reaches a file, a branch name, or
+          # any shell/API argument.
+          if ! printf '%s' "$VERSION" | grep -Eq '^[A-Za-z0-9._-]{1,100}$'; then
+            echo "::error::Refusing to use ETL version '$VERSION' from $SOURCE:" \
+                 "it must match ^[A-Za-z0-9._-]{1,100}\$."
+            exit 1
+          fi
+          case "$VERSION" in
+            *..*|-*|.*)
+              echo "::error::Refusing to use ETL version '$VERSION': a leading dot or dash, or '..', is not a valid run name."
+              exit 1
+              ;;
+          esac
+
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "::notice::Resolved ETL version '$VERSION' from $SOURCE."
+
+      - name: Checkout nlm-ckn-ui
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5  # v4
+        with:
+          repository: ${{ env.SIBLING_REPO }}
+          token: ${{ secrets.COLLECTION_MAPS_SYNC_TOKEN }}
+          path: sibling
+          fetch-depth: 0
+
+      - name: Write ETL_VERSION and detect drift
+        id: drift
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          set -euo pipefail
+          if [ ! -f "sibling/$SIBLING_PATH" ]; then
+            echo "::warning::$SIBLING_REPO has no $SIBLING_PATH at its root - this PR will create it."
+          fi
+          # One line, no trailing junk: deploy-dataset.sh interpolates this
+          # straight into the S3 key.
+          printf '%s\n' "$VERSION" > "sibling/$SIBLING_PATH"
+
+          cd sibling
+          # git status, not git diff: the file may be untracked (first bump),
+          # which git diff would report as no change.
+          if [ -z "$(git status --porcelain -- "$SIBLING_PATH")" ]; then
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::$SIBLING_REPO already pins ETL_VERSION=$VERSION - nothing to do."
+            # Already at the target version, so any bump PR still open from this
+            # branch is moot (e.g. it was merged by hand, or the same version was
+            # re-released). Close it so a stale PR doesn't linger. Skipped on a
+            # dry run, which must not mutate the sibling repo.
+            if [ "${DRY_RUN:-}" != "true" ]; then
+              OWNER="${SIBLING_REPO%%/*}"
+              STALE=$(gh api -X GET "repos/$SIBLING_REPO/pulls" \
+                -F head="$OWNER:$BUMP_BRANCH" -F base=main -F state=open \
+                --jq '.[0].number // empty')
+              if [ -n "$STALE" ]; then
+                gh api "repos/$SIBLING_REPO/issues/$STALE/comments" \
+                  -f body="ETL_VERSION on \`main\` already pins \`$VERSION\` - closing this stale bump PR automatically." >/dev/null 2>&1 || true
+                gh api -X PATCH "repos/$SIBLING_REPO/pulls/$STALE" -f state=closed >/dev/null
+                echo "::notice::Closed stale bump PR #$STALE on $SIBLING_REPO (already at $VERSION)."
+              fi
+            fi
+          else
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+            echo "::notice::ETL_VERSION on $SIBLING_REPO differs from $VERSION - opening/updating a bump PR."
+          fi
+
+      - name: Dry run - stop before pushing
+        if: steps.drift.outputs.changed == 'true' && env.DRY_RUN == 'true'
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          set -euo pipefail
+          echo "::notice::Dry run: would bump $SIBLING_REPO/$SIBLING_PATH to $VERSION on branch $BUMP_BRANCH."
+          cd sibling
+          git --no-pager diff -- "$SIBLING_PATH" || true
+
+      - name: Push branch and open or update PR
+        if: steps.drift.outputs.changed == 'true' && env.DRY_RUN != 'true'
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          set -euo pipefail
+          cd sibling
+
+          git config user.name  "nlm-ckn-sync-bot"
+          git config user.email "nlm-ckn-sync-bot@users.noreply.github.com"
+
+          # Recreate a single fixed branch at main HEAD each run so successive
+          # releases update one branch/PR rather than piling up new ones.
+          git checkout -B "$BUMP_BRANCH"
+          git add "$SIBLING_PATH"
+          git commit -m "Bump ETL_VERSION to $VERSION" \
+                     -m "Automated from a successful nlm-ckn-etl production release."
+          git push --force origin "$BUMP_BRANCH"
+
+          # Quoted heredoc: bash leaves the markdown backticks alone while
+          # Actions still substitutes its own expression tokens (the run URL
+          # below). Do NOT write a literal GitHub expression in this comment -
+          # Actions parses run: comments too. The version is substituted
+          # afterwards via the __VERSION__ placeholder; that is safe because it
+          # was validated against the allowlist above and so contains no slash,
+          # ampersand or newline for sed to trip over.
+          cat > "$RUNNER_TEMP/pr_body.md" <<'EOF'
+          ## 📦 New ETL dataset available - pin `ETL_VERSION` to `__VERSION__`
+
+          The **nlm-ckn-etl** production release `__VERSION__` finished successfully.
+          This PR points this repo at that dataset.
+
+          ### What this changes
+          `ETL_VERSION` (repo root) → `__VERSION__`
+
+          `scripts/app/deploy-dataset.sh` reads that file and pulls
+          `s3://<bucket>/runs/__VERSION__/06-golden-dump.tar.gz`, so this one line is
+          what decides which graph the deployed app serves.
+
+          ### What to do
+          - **Normal case:** review and merge, then deploy the dataset as usual.
+          - **Not ready to move the UI to this dataset?** Leave the PR open - nothing
+            changes until it merges.
+          - **Superseded?** A later successful release force-updates this same branch,
+            so this PR always reflects the most recent successful ETL run.
+
+          Triggered by: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+
+          _Opened automatically by `.github/workflows/bump-ui-etl-version.yml` in `nlm-ckn-etl`. Not auto-merged by design._
+          EOF
+          sed "s/__VERSION__/$VERSION/g" "$RUNNER_TEMP/pr_body.md" > "$RUNNER_TEMP/pr_body_final.md"
+
+          BODY="$(cat "$RUNNER_TEMP/pr_body_final.md")"
+          TITLE="📦 Bump ETL_VERSION to $VERSION"
+
+          # Use the API directly - gh pr list is unreliable for a head branch
+          # that was just force-pushed (mirrors sync-collection-maps.yml).
+          OWNER="${SIBLING_REPO%%/*}"
+          EXISTING=$(gh api -X GET "repos/$SIBLING_REPO/pulls" \
+            -F head="$OWNER:$BUMP_BRANCH" -F base=main -F state=open \
+            --jq '.[0].number // empty')
+
+          if [ -z "$EXISTING" ]; then
+            PR_NUM=$(gh api "repos/$SIBLING_REPO/pulls" \
+              -f title="$TITLE" \
+              -f head="$BUMP_BRANCH" \
+              -f base=main \
+              -f body="$BODY" \
+              --jq '.number')
+            echo "::notice::Opened bump PR #$PR_NUM on $SIBLING_REPO for $VERSION."
+          else
+            PR_NUM=$EXISTING
+            # Retitle as well as re-body: a PR left open on this branch names the
+            # previous version.
+            gh api -X PATCH "repos/$SIBLING_REPO/pulls/$PR_NUM" \
+              -f title="$TITLE" -f body="$BODY" >/dev/null
+            echo "::notice::Updated existing bump PR #$PR_NUM on $SIBLING_REPO to $VERSION."
+          fi
+
+          # Best-effort label so these PRs are filterable. Non-fatal: a missing
+          # label or a token without labels scope must not fail the bump.
+          gh api "repos/$SIBLING_REPO/issues/$PR_NUM/labels" \
+            -f "labels[]=automated-sync" >/dev/null 2>&1 || \
+            echo "::notice::Could not add 'automated-sync' label (non-fatal)."
+
+  # -- Failure path: report a dead release as an issue on this repo ------------
+  report-failure:
+    name: Report failed release
+    if: >-
+      github.repository_owner == 'Springbok-LLC' &&
+      github.event_name == 'deployment_status' &&
+      github.event.deployment.environment == 'production' &&
+      (
+        github.event.deployment_status.state == 'failure' ||
+        github.event.deployment_status.state == 'error'
+      )
+    runs-on: ubuntu-latest
+    # The issue is filed in THIS repo, so the Actions token is enough - no PAT
+    # needed here (and the sync PAT is scoped for contents + pull requests
+    # only). Overrides the top-level contents: read for this job alone.
+    permissions:
+      contents: read
+      issues: write
+    steps:
+      # Everything event-controlled (description, URLs, run name) is passed via
+      # env and read from os.environ / shell variables - never interpolated into
+      # the script text, which would be an expression-injection hole.
+      - name: Open or update the release-failure issue
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          THIS_REPO: ${{ github.repository }}
+          API_URL: ${{ github.api_url }}
+          DEPLOYMENTS_URL: ${{ github.server_url }}/${{ github.repository }}/deployments
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          STATE: ${{ github.event.deployment_status.state }}
+          DESCRIPTION: ${{ github.event.deployment_status.description }}
+          LOG_URL: ${{ github.event.deployment_status.log_url }}
+          TARGET_URL: ${{ github.event.deployment_status.target_url }}
+          DEPLOYMENT_ID: ${{ github.event.deployment.id }}
+          DEPLOYMENT_REF: ${{ github.event.deployment.ref }}
+          DEPLOYMENT_DESCRIPTION: ${{ github.event.deployment.description }}
+          PAYLOAD_RUN_NAME: ${{ github.event.deployment.payload.run_name }}
+        run: |
+          set -euo pipefail
+
+          # Unlike the bump path, a missing or odd run name must not stop the
+          # report - a failed release still needs to be visible. Fall back to
+          # the deployment id so the issue title stays stable and safe.
+          VERSION="$PAYLOAD_RUN_NAME"
+          if ! printf '%s' "$VERSION" | grep -Eq '^[A-Za-z0-9._-]{1,100}$'; then
+            echo "::warning::deployment payload run_name is missing or invalid - titling the issue by deployment id."
+            VERSION="deployment-$DEPLOYMENT_ID"
+          fi
+
+          # Stable title = idempotency key. release.py posts a failure status
+          # from each step's except block, so several events can arrive for one
+          # run; they all resolve to this title and become comments.
+          TITLE="🚨 ETL release failed - $VERSION"
+          export TITLE VERSION
+
+          # Body built in Python so untrusted status text is inserted as data
+          # (and fenced) rather than expanded by the shell.
+          python3 - "$RUNNER_TEMP/issue_body.md" <<'PYEOF'
+          import os, sys
+
+          e = os.environ
+          desc = (e.get("DESCRIPTION") or "").strip() or "(no description reported)"
+          log_url = e.get("LOG_URL") or ""
+          target_url = e.get("TARGET_URL") or ""
+          run_name = e.get("PAYLOAD_RUN_NAME") or ""
+          deployments_url = e["DEPLOYMENTS_URL"]
+
+          lines = [
+              "## 🚨 nlm-ckn-etl production release failed",
+              "",
+              "The `production` deployment for ETL run **`{}`** reported state "
+              "**`{}`**.".format(e["VERSION"], e["STATE"]),
+              "",
+              "`nlm-ckn-ui/ETL_VERSION` was **not** bumped - the UI still points at "
+              "the previously released dataset.",
+              "",
+              "### Status reported by `release.py`",
+              "```text",
+              desc,
+              "```",
+              "",
+              "### Where to look",
+          ]
+          if log_url:
+              lines.append("- **CloudWatch logs:** {}".format(log_url))
+          else:
+              lines.append("- **CloudWatch logs:** not reported on this status - "
+                           "check `/batch/nlm-ckn-release` in CloudWatch.")
+          if target_url:
+              lines.append("- **Target URL:** {}".format(target_url))
+          lines += [
+              # There is no per-id web page for a deployment, so link the
+              # environment's activity log (human) and the API object (machine).
+              "- **Deployment activity log:** {}/activity_log?environment=production"
+              .format(deployments_url),
+              "- **Deployment id:** `{}` (API: {}/repos/{}/deployments/{})".format(
+                  e["DEPLOYMENT_ID"], e["API_URL"], e["THIS_REPO"], e["DEPLOYMENT_ID"]),
+              "- **Deployment ref:** `{}`".format(e.get("DEPLOYMENT_REF") or "(none)"),
+              "- **Deployment description:** `{}`".format(
+                  (e.get("DEPLOYMENT_DESCRIPTION") or "(none)").strip()),
+              "- **Run name from deployment payload:** `{}`".format(
+                  run_name or "(missing - deployment predates payload.run_name)"),
+              "- **Workflow run that filed this:** {}".format(e["RUN_URL"]),
+              "",
+              "### Notes",
+              "- Several failure statuses can be posted for a single run; each one "
+              "appears as a comment here rather than as a new issue.",
+              "- Close this issue once the release has been re-run successfully - a "
+              "successful release does not close it automatically.",
+              "- Releases killed at the infrastructure level (Batch timeout, OOM, "
+              "spot reclaim, image pull failure) post **no** status at all and so "
+              "produce **no** issue: the absence of an issue is not proof of success.",
+              "",
+              "_Filed automatically by `.github/workflows/bump-ui-etl-version.yml`._",
+          ]
+          with open(sys.argv[1], "w", encoding="utf-8") as fh:
+              fh.write("\n".join(lines) + "\n")
+          PYEOF
+
+          BODY="$(cat "$RUNNER_TEMP/issue_body.md")"
+
+          # Match on exact title among open issues rather than using the search
+          # API, whose index lags far enough behind issue creation to duplicate.
+          EXISTING=$(gh api -X GET "repos/$THIS_REPO/issues" \
+            -F state=open -F per_page=100 \
+            --jq '[.[] | select(.pull_request == null) | select(.title == env.TITLE) | .number] | .[0] // empty')
+
+          if [ -n "$EXISTING" ]; then
+            ISSUE_NUM="$EXISTING"
+            gh api "repos/$THIS_REPO/issues/$ISSUE_NUM/comments" -f body="$BODY" >/dev/null
+            echo "::notice::Commented on existing release-failure issue #$ISSUE_NUM."
+          else
+            ISSUE_NUM=$(gh api "repos/$THIS_REPO/issues" \
+              -f title="$TITLE" -f body="$BODY" --jq '.number')
+            echo "::notice::Opened release-failure issue #$ISSUE_NUM."
+          fi
+
+          # Best-effort label. Non-fatal: a missing 'release-failure' label or a
+          # token without labels scope must not fail the report (mirrors
+          # sync-collection-maps.yml).
+          gh api "repos/$THIS_REPO/issues/$ISSUE_NUM/labels" \
+            -f "labels[]=release-failure" >/dev/null 2>&1 || \
+            echo "::notice::Could not add 'release-failure' label (non-fatal)."
+
+          echo "::warning::ETL release $VERSION reported '$STATE' - see issue #$ISSUE_NUM."
