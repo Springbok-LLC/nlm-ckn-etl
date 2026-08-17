@@ -31,6 +31,45 @@ name: Bump nlm-ckn-ui ETL_VERSION
 # If the payload field is missing (a deployment created by an older copy of
 # trigger-release.sh) this workflow FAILS LOUDLY rather than guessing.
 #
+# -- What the deployment object carries, and what is looked up ----------------
+# trigger-release.sh sets exactly three fields this workflow reads:
+#   ref          the value of GITHUB_REF_NAME at submission time. In practice
+#                always the ETL release tag, because on-release.yml is the only
+#                path that sets GITHUB_DEPLOY_TOKEN and it runs on
+#                release: [published]. Used only to *find* the release.
+#   description  the string "nlm-ckn <TAG>", naming the upstream nlm-ckn tag
+#                the dataset was built from. Parsed defensively below - it is
+#                free text on the API and must never be assumed well formed.
+#   payload      {"run_name": "<RUN>"} - the S3 prefix, see the contract above.
+#
+# The originating GitHub Release is deliberately NOT plumbed through the
+# payload. It is resolved at PR/issue time with
+# `gh api repos/{repo}/releases/tags/{ref}`, because that:
+#   * works for deployments created before this workflow existed,
+#   * reflects the release as it is *now* (renamed, notes edited, retargeted)
+#     rather than as it was at submission time, and
+#   * simply finds nothing when someone ran trigger-release.sh by hand with
+#     GITHUB_DEPLOY_TOKEN set and no release behind the ref - which would
+#     otherwise have to be handled as an error inside the release script.
+# Every use of the resolved release is optional: a missing release drops one
+# line from the PR/issue body and nothing else. It must never fail a bump or
+# suppress a failure report.
+#
+# -- Where the three markdown bodies come from --------------------------------
+# The PR body, the failure-issue body and the release annotation are rendered
+# by .github/scripts/render_bodies.py from .github/templates/*.md. The prose
+# lives in the templates; every conditional section is a single placeholder the
+# script fills in. Event-controlled text still reaches the script only through
+# env: entries read from os.environ, and is still escaped there - see the
+# script's header for why str.format cannot be turned into an injection.
+#
+# Consequence for this file: EVERY job that renders a body must check this repo
+# out, and must do so BEFORE any sibling checkout, because actions/checkout
+# cleans the workspace it lands in. The renderer is invoked by absolute path
+# ($GITHUB_WORKSPACE) since the bump job runs it with cwd inside sibling/.
+# Unit tests for the renderer live in python/tests/RenderBodiesTestCase.py and
+# run in the normal python-lint.yml pytest job.
+#
 # -- Known limitation 1: infra-level failures are a blind spot ----------------
 # Every deployment status this workflow reacts to is posted by release.py from
 # inside the Batch container. Anything that kills the container before Python
@@ -107,6 +146,9 @@ jobs:
       SIBLING_REPO: Springbok-LLC/nlm-ckn-ui
       SIBLING_PATH: ETL_VERSION
       BUMP_BRANCH: bump/etl-version
+      # This (ETL) repo - the release lookup below reads from here, everything
+      # else in this job writes to SIBLING_REPO.
+      THIS_REPO: ${{ github.repository }}
       # Empty for deployment_status events; 'true'/'false' on workflow_dispatch.
       DRY_RUN: ${{ inputs.dry_run }}
       # PAT with contents:write + pull_requests:write on BOTH
@@ -115,6 +157,17 @@ jobs:
       # Shared with sync-collection-maps.yml.
       GH_TOKEN: ${{ secrets.COLLECTION_MAPS_SYNC_TOKEN }}
     steps:
+      # This repo is checked out only for .github/scripts/render_bodies.py and
+      # .github/templates/*.md, which build the PR body. It MUST come before
+      # the sibling checkout: actions/checkout cleans the workspace it lands
+      # in, so a root checkout running second would delete sibling/.
+      # persist-credentials: false because nothing here pushes to this repo -
+      # the push below is to SIBLING_REPO, using the PAT in sibling/.git.
+      - name: Checkout this repo (body templates and renderer)
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5  # v4
+        with:
+          persist-credentials: false
+
       # Both trigger paths funnel through this one step, so everything
       # downstream sees a single validated value regardless of event type.
       # Event- and input-controlled text is mapped to env, never interpolated
@@ -165,6 +218,66 @@ jobs:
 
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
           echo "::notice::Resolved ETL version '$VERSION' from $SOURCE."
+
+      # Gives the reviewer on nlm-ckn-ui a one-click route back to the ETL
+      # release that produced this dataset. See the header for why the release
+      # is looked up here instead of being carried in the deployment payload.
+      #
+      # Strictly best effort. continue-on-error plus a bare `|| true` shape
+      # inside: a rate-limited API, a PAT without read access to this repo, or
+      # a ref with no release behind it must all degrade to "no release
+      # section in the PR body", never to a skipped bump.
+      - name: Resolve the originating GitHub Release (best effort)
+        id: release
+        continue-on-error: true
+        env:
+          # deployment.ref is empty on workflow_dispatch; the loop below then
+          # falls back to the version itself, which is the release tag on every
+          # release-driven run (on-release.yml passes the tag as --run-name).
+          DEPLOYMENT_REF: ${{ github.event.deployment.ref }}
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          # No -e: every failure here is expected and non-fatal.
+          set -uo pipefail
+
+          # Exported for the body-generating step later in this job, which
+          # treats the file's absence as "no release was found". RUNNER_TEMP is
+          # only readable at step runtime, hence GITHUB_ENV rather than a
+          # job-level env entry.
+          RELEASE_FILE="$RUNNER_TEMP/release.json"
+          echo "RELEASE_FILE=$RELEASE_FILE" >> "$GITHUB_ENV"
+          rm -f "$RELEASE_FILE"
+
+          CANDIDATES=("${DEPLOYMENT_REF:-}" "$VERSION")
+          # A run name is conventionally the tag with the leading 'v' stripped
+          # (see trigger-release.sh), so try re-adding it before giving up.
+          case "$VERSION" in v*) ;; *) CANDIDATES+=("v$VERSION") ;; esac
+
+          TRIED=""
+          for CAND in "${CANDIDATES[@]}"; do
+            [ -n "$CAND" ] || continue
+            # This value lands in an API path, so allowlist it exactly as the
+            # version is allowlisted. Slashes are permitted because git tags
+            # may legitimately contain them; '..' and a leading dot or dash are
+            # not, so no candidate can walk out of the releases/tags/ prefix.
+            printf '%s' "$CAND" | grep -Eq '^[A-Za-z0-9][A-Za-z0-9._/-]{0,254}$' || continue
+            case "$CAND" in *..*) continue ;; esac
+            case " $TRIED " in *" $CAND "*) continue ;; esac
+            TRIED="$TRIED $CAND"
+
+            if gh api "repos/$THIS_REPO/releases/tags/$CAND" > "$RELEASE_FILE" 2>/dev/null; then
+              echo "::notice::Matched ETL release tag '$CAND'."
+              break
+            fi
+            rm -f "$RELEASE_FILE"
+          done
+
+          if [ -s "$RELEASE_FILE" ]; then
+            echo "found=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "found=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::No published release matched${TRIED:+ any of:$TRIED} - the PR body will say so (non-fatal)."
+          fi
 
       - name: Checkout nlm-ckn-ui
         uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5  # v4
@@ -226,8 +339,19 @@ jobs:
 
       - name: Push branch and open or update PR
         if: steps.drift.outputs.changed == 'true' && env.DRY_RUN != 'true'
+        # Everything event-controlled reaches the body generator through env
+        # and is read from os.environ - never interpolated into the script
+        # text, which would be an expression-injection hole. Empty on a
+        # workflow_dispatch run, which the generator handles as "unknown".
         env:
           VERSION: ${{ steps.version.outputs.version }}
+          EVENT_NAME: ${{ github.event_name }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          DEPLOYMENTS_URL: ${{ github.server_url }}/${{ github.repository }}/deployments
+          DEPLOYMENT_ID: ${{ github.event.deployment.id }}
+          DEPLOYMENT_REF: ${{ github.event.deployment.ref }}
+          DEPLOYMENT_DESCRIPTION: ${{ github.event.deployment.description }}
+          LOG_URL: ${{ github.event.deployment_status.log_url }}
         run: |
           set -euo pipefail
           cd sibling
@@ -243,40 +367,21 @@ jobs:
                      -m "Automated from a successful nlm-ckn-etl production release."
           git push --force origin "$BUMP_BRANCH"
 
-          # Quoted heredoc: bash leaves the markdown backticks alone while
-          # Actions still substitutes its own expression tokens (the run URL
-          # below). Do NOT write a literal GitHub expression in this comment -
-          # Actions parses run: comments too. The version is substituted
-          # afterwards via the __VERSION__ placeholder; that is safe because it
-          # was validated against the allowlist above and so contains no slash,
-          # ampersand or newline for sed to trip over.
-          cat > "$RUNNER_TEMP/pr_body.md" <<'EOF'
-          ## 📦 New ETL dataset available - pin `ETL_VERSION` to `__VERSION__`
+          # Body rendered from .github/templates/bump-pr-body.md by
+          # .github/scripts/render_bodies.py, rather than a heredoc + sed on
+          # placeholders: most of the provenance in it is optional (there may
+          # be no release, no CloudWatch URL, no deployment at all on a manual
+          # dispatch), and sed cannot drop a line conditionally. It also keeps
+          # untrusted event text - the deployment description in particular -
+          # as *data* that the renderer reads from the environment and escapes
+          # on the way in, instead of text spliced into markdown.
+          #
+          # Absolute path: cwd is sibling/ at this point, so a relative path
+          # would resolve inside the sibling checkout.
+          python3 "$GITHUB_WORKSPACE/.github/scripts/render_bodies.py" \
+            bump-pr "$RUNNER_TEMP/pr_body.md"
 
-          The **nlm-ckn-etl** production release `__VERSION__` finished successfully.
-          This PR points this repo at that dataset.
-
-          ### What this changes
-          `ETL_VERSION` (repo root) → `__VERSION__`
-
-          `scripts/app/deploy-dataset.sh` reads that file and pulls
-          `s3://<bucket>/runs/__VERSION__/06-golden-dump.tar.gz`, so this one line is
-          what decides which graph the deployed app serves.
-
-          ### What to do
-          - **Normal case:** review and merge, then deploy the dataset as usual.
-          - **Not ready to move the UI to this dataset?** Leave the PR open - nothing
-            changes until it merges.
-          - **Superseded?** A later successful release force-updates this same branch,
-            so this PR always reflects the most recent successful ETL run.
-
-          Triggered by: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
-
-          _Opened automatically by `.github/workflows/bump-ui-etl-version.yml` in `nlm-ckn-etl`. Not auto-merged by design._
-          EOF
-          sed "s/__VERSION__/$VERSION/g" "$RUNNER_TEMP/pr_body.md" > "$RUNNER_TEMP/pr_body_final.md"
-
-          BODY="$(cat "$RUNNER_TEMP/pr_body_final.md")"
+          BODY="$(cat "$RUNNER_TEMP/pr_body.md")"
           TITLE="📦 Bump ETL_VERSION to $VERSION"
 
           # Use the API directly - gh pr list is unreliable for a head branch
@@ -327,14 +432,85 @@ jobs:
     permissions:
       contents: read
       issues: write
+    env:
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      THIS_REPO: ${{ github.repository }}
+    # Consumed by annotate-release, which is a separate job purely so that
+    # contents: write is not granted to the job that files the issue.
+    outputs:
+      release_id: ${{ steps.release.outputs.id }}
+      issue_url: ${{ steps.issue.outputs.url }}
     steps:
+      # Only for .github/scripts/render_bodies.py and .github/templates/*.md,
+      # which build the issue body. Nothing here writes to the repo, so no
+      # credentials are persisted.
+      - name: Checkout this repo (body templates and renderer)
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5  # v4
+        with:
+          persist-credentials: false
+
+      # Same best-effort lookup as the bump job, and for the same reason: a
+      # human reading the failure issue should be one click from the release
+      # that started the run. See the header for why this is a lookup rather
+      # than a deployment payload field. Non-fatal in every direction - a
+      # release that cannot be found must not stop a failure being reported.
+      - name: Resolve the originating GitHub Release (best effort)
+        id: release
+        continue-on-error: true
+        env:
+          DEPLOYMENT_REF: ${{ github.event.deployment.ref }}
+          PAYLOAD_RUN_NAME: ${{ github.event.deployment.payload.run_name }}
+        run: |
+          # No -e: every failure here is expected and non-fatal.
+          set -uo pipefail
+
+          # Exported for the body-generating step later in this job, which
+          # treats the file's absence as "no release was found". RUNNER_TEMP is
+          # only readable at step runtime, hence GITHUB_ENV rather than a
+          # job-level env entry.
+          RELEASE_FILE="$RUNNER_TEMP/release.json"
+          echo "RELEASE_FILE=$RELEASE_FILE" >> "$GITHUB_ENV"
+          rm -f "$RELEASE_FILE"
+
+          CANDIDATES=("${DEPLOYMENT_REF:-}" "${PAYLOAD_RUN_NAME:-}")
+          case "${PAYLOAD_RUN_NAME:-}" in
+            ""|v*) ;;
+            *) CANDIDATES+=("v${PAYLOAD_RUN_NAME}") ;;
+          esac
+
+          TRIED=""
+          for CAND in "${CANDIDATES[@]}"; do
+            [ -n "$CAND" ] || continue
+            # Allowlisted before it reaches an API path: slashes are allowed
+            # (git tags may contain them), '..' and a leading dot or dash are
+            # not, so no candidate can walk out of the releases/tags/ prefix.
+            printf '%s' "$CAND" | grep -Eq '^[A-Za-z0-9][A-Za-z0-9._/-]{0,254}$' || continue
+            case "$CAND" in *..*) continue ;; esac
+            case " $TRIED " in *" $CAND "*) continue ;; esac
+            TRIED="$TRIED $CAND"
+
+            if gh api "repos/$THIS_REPO/releases/tags/$CAND" > "$RELEASE_FILE" 2>/dev/null; then
+              echo "::notice::Matched ETL release tag '$CAND'."
+              break
+            fi
+            rm -f "$RELEASE_FILE"
+          done
+
+          if [ -s "$RELEASE_FILE" ]; then
+            # Emitted for annotate-release; an empty value keeps that job from
+            # running at all.
+            echo "id=$(jq -r '.id // empty' "$RELEASE_FILE")" >> "$GITHUB_OUTPUT"
+          else
+            echo "id=" >> "$GITHUB_OUTPUT"
+            echo "::notice::No published release matched${TRIED:+ any of:$TRIED} - the issue body will say so (non-fatal)."
+          fi
+
       # Everything event-controlled (description, URLs, run name) is passed via
       # env and read from os.environ / shell variables - never interpolated into
       # the script text, which would be an expression-injection hole.
       - name: Open or update the release-failure issue
+        id: issue
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          THIS_REPO: ${{ github.repository }}
           API_URL: ${{ github.api_url }}
           DEPLOYMENTS_URL: ${{ github.server_url }}/${{ github.repository }}/deployments
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
@@ -364,69 +540,11 @@ jobs:
           TITLE="🚨 ETL release failed - $VERSION"
           export TITLE VERSION
 
-          # Body built in Python so untrusted status text is inserted as data
-          # (and fenced) rather than expanded by the shell.
-          python3 - "$RUNNER_TEMP/issue_body.md" <<'PYEOF'
-          import os, sys
-
-          e = os.environ
-          desc = (e.get("DESCRIPTION") or "").strip() or "(no description reported)"
-          log_url = e.get("LOG_URL") or ""
-          target_url = e.get("TARGET_URL") or ""
-          run_name = e.get("PAYLOAD_RUN_NAME") or ""
-          deployments_url = e["DEPLOYMENTS_URL"]
-
-          lines = [
-              "## 🚨 nlm-ckn-etl production release failed",
-              "",
-              "The `production` deployment for ETL run **`{}`** reported state "
-              "**`{}`**.".format(e["VERSION"], e["STATE"]),
-              "",
-              "`nlm-ckn-ui/ETL_VERSION` was **not** bumped - the UI still points at "
-              "the previously released dataset.",
-              "",
-              "### Status reported by `release.py`",
-              "```text",
-              desc,
-              "```",
-              "",
-              "### Where to look",
-          ]
-          if log_url:
-              lines.append("- **CloudWatch logs:** {}".format(log_url))
-          else:
-              lines.append("- **CloudWatch logs:** not reported on this status - "
-                           "check `/batch/nlm-ckn-release` in CloudWatch.")
-          if target_url:
-              lines.append("- **Target URL:** {}".format(target_url))
-          lines += [
-              # There is no per-id web page for a deployment, so link the
-              # environment's activity log (human) and the API object (machine).
-              "- **Deployment activity log:** {}/activity_log?environment=production"
-              .format(deployments_url),
-              "- **Deployment id:** `{}` (API: {}/repos/{}/deployments/{})".format(
-                  e["DEPLOYMENT_ID"], e["API_URL"], e["THIS_REPO"], e["DEPLOYMENT_ID"]),
-              "- **Deployment ref:** `{}`".format(e.get("DEPLOYMENT_REF") or "(none)"),
-              "- **Deployment description:** `{}`".format(
-                  (e.get("DEPLOYMENT_DESCRIPTION") or "(none)").strip()),
-              "- **Run name from deployment payload:** `{}`".format(
-                  run_name or "(missing - deployment predates payload.run_name)"),
-              "- **Workflow run that filed this:** {}".format(e["RUN_URL"]),
-              "",
-              "### Notes",
-              "- Several failure statuses can be posted for a single run; each one "
-              "appears as a comment here rather than as a new issue.",
-              "- Close this issue once the release has been re-run successfully - a "
-              "successful release does not close it automatically.",
-              "- Releases killed at the infrastructure level (Batch timeout, OOM, "
-              "spot reclaim, image pull failure) post **no** status at all and so "
-              "produce **no** issue: the absence of an issue is not proof of success.",
-              "",
-              "_Filed automatically by `.github/workflows/bump-ui-etl-version.yml`._",
-          ]
-          with open(sys.argv[1], "w", encoding="utf-8") as fh:
-              fh.write("\n".join(lines) + "\n")
-          PYEOF
+          # Body rendered from .github/templates/release-failure-issue.md by
+          # .github/scripts/render_bodies.py so untrusted status text is
+          # inserted as data (and fenced) rather than expanded by the shell.
+          python3 "$GITHUB_WORKSPACE/.github/scripts/render_bodies.py" \
+            release-failure-issue "$RUNNER_TEMP/issue_body.md"
 
           BODY="$(cat "$RUNNER_TEMP/issue_body.md")"
 
@@ -453,4 +571,114 @@ jobs:
             -f "labels[]=release-failure" >/dev/null 2>&1 || \
             echo "::notice::Could not add 'release-failure' label (non-fatal)."
 
+          # Consumed by annotate-release. Built from the server URL rather than
+          # read back from the API so a comment-on-existing-issue run still
+          # yields the issue's own URL, not the comment anchor.
+          echo "url=$GITHUB_SERVER_URL/$THIS_REPO/issues/$ISSUE_NUM" >> "$GITHUB_OUTPUT"
+
           echo "::warning::ETL release $VERSION reported '$STATE' - see issue #$ISSUE_NUM."
+
+  # -- Optional: point the Release itself back at the failure issue ------------
+  # DEFAULT OFF. Enable by setting the repository variable
+  # ANNOTATE_RELEASE_ON_FAILURE to the string 'true'
+  # (Settings -> Secrets and variables -> Actions -> Variables).
+  #
+  # Why this job exists at all: GitHub gives a Release no inbound
+  # cross-references. Verified against the live API on this repo -
+  #   * GET /repos/{repo}/releases/{id} returns no timeline, comment, reaction
+  #     or mention field, and /releases/{id}/comments and /releases/{id}/timeline
+  #     are both 404;
+  #   * the autolink/cross-reference machinery that makes an issue link show up
+  #     on the referenced object covers issues, PRs and commits, not releases;
+  #   * the only comment-like surface a release has is a linked Discussion,
+  #     which exists only when the release was created with
+  #     discussion_category_name. Every release on this repo has
+  #     discussion_url: null and the repo has has_discussions: false, so that
+  #     route is not available here without a repo-settings change.
+  # That leaves exactly one mechanism: PATCH the release body.
+  #
+  # Why it is off by default: a release body is a public, human-authored
+  # artifact, and this rewrites it from CI. That is a real tradeoff, not an
+  # oversight - turn it on only if the team wants failure notes on releases.
+  # When it is off, nothing here runs and the failure issue is still filed.
+  #
+  # Safety properties when it IS on:
+  #   * idempotent - the note lives between HTML-comment markers and is
+  #     replaced wholesale, so the several failure statuses release.py can post
+  #     for one run cannot stack up notes;
+  #   * no-op when unchanged - the PATCH is skipped if the body already matches,
+  #     so repeated statuses do not churn the release's updated_at;
+  #   * best effort - continue-on-error, so a protected/immutable release or a
+  #     permissions problem cannot turn a reported failure into a red workflow;
+  #   * loop-safe - the edit is made with GITHUB_TOKEN, and events generated by
+  #     that token do not trigger workflows.
+  annotate-release:
+    name: Annotate the originating release (opt-in)
+    needs: report-failure
+    # Separate job purely so contents: write is granted here and not to the job
+    # that files the issue. When the flag is off the job never runs, so the
+    # permission is never issued.
+    if: >-
+      vars.ANNOTATE_RELEASE_ON_FAILURE == 'true' &&
+      needs.report-failure.outputs.release_id != ''
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    permissions:
+      contents: write   # required only to PATCH the release body
+    steps:
+      # Only for .github/scripts/render_bodies.py and
+      # .github/templates/release-annotation.md, which build the note. The
+      # release is edited through the API, not through this checkout, so no
+      # credentials are persisted here either.
+      - name: Checkout this repo (note template and renderer)
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5  # v4
+        with:
+          persist-credentials: false
+
+      - name: Append a failure note to the release body
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          THIS_REPO: ${{ github.repository }}
+          RELEASE_ID: ${{ needs.report-failure.outputs.release_id }}
+          ISSUE_URL: ${{ needs.report-failure.outputs.issue_url }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          # No -e: this whole job is decoration on top of an already-filed
+          # issue and must never be the thing that fails.
+          set -uo pipefail
+
+          # RELEASE_ID comes from .id on a release object we fetched, but it
+          # goes into an API path, so require digits before using it.
+          if ! printf '%s' "$RELEASE_ID" | grep -Eq '^[0-9]{1,20}$'; then
+            echo "::notice::Release id '$RELEASE_ID' is not numeric - skipping (non-fatal)."
+            exit 0
+          fi
+
+          if ! gh api "repos/$THIS_REPO/releases/$RELEASE_ID" > "$RUNNER_TEMP/release.json" 2>/dev/null; then
+            echo "::notice::Could not read release $RELEASE_ID - skipping (non-fatal)."
+            exit 0
+          fi
+
+          # Note rendered from .github/templates/release-annotation.md. The
+          # renderer replaces any previous block rather than appending, and
+          # exits 3 when the release already carries exactly this note.
+          python3 "$GITHUB_WORKSPACE/.github/scripts/render_bodies.py" \
+            release-annotation "$RUNNER_TEMP/release.json" "$RUNNER_TEMP/patch.json"
+          RC=$?
+
+          if [ "$RC" = "3" ]; then
+            echo "::notice::Release $RELEASE_ID already carries the current failure note - not patching."
+            exit 0
+          fi
+          if [ "$RC" != "0" ]; then
+            echo "::notice::Could not build the release note (exit $RC) - skipping (non-fatal)."
+            exit 0
+          fi
+
+          if gh api -X PATCH "repos/$THIS_REPO/releases/$RELEASE_ID" \
+               --input "$RUNNER_TEMP/patch.json" >/dev/null 2>&1; then
+            echo "::notice::Annotated release $RELEASE_ID with the failure note."
+          else
+            echo "::notice::Could not PATCH release $RELEASE_ID (immutable, protected, or insufficient scope) - skipping (non-fatal)."
+          fi
