@@ -1,0 +1,15 @@
+# actionlint configuration.
+#
+# The single entry below is a false positive, not a suppressed defect:
+# `concurrency.queue` is documented GitHub Actions syntax (shipped 2026-05-07,
+# "GitHub Actions concurrency groups now allow larger queues"), but actionlint's
+# latest release - v1.7.12, March 2026 - predates it and still rejects any key
+# other than `group` / `cancel-in-progress`.
+#
+# Scoped to the one file and the one message on purpose: every other rule, in
+# this workflow and all the others, still applies. Delete this file once
+# actionlint knows the key.
+paths:
+  .github/workflows/bump-ui-etl-version.yml:
+    ignore:
+      - 'unexpected key "queue" for "concurrency" section'

@@ -102,6 +102,11 @@ jobs:
         )
       )
     runs-on: ubuntu-latest
+    # deployments: read is for the freshness check below, which reads THIS
+    # repo's production deployments with the Actions token.
+    permissions:
+      contents: read
+      deployments: read
     env:
       SIBLING_REPO: Springbok-LLC/nlm-ckn-ui
       SIBLING_PATH: ETL_VERSION
@@ -114,6 +119,57 @@ jobs:
       # required. Shared with sync-collection-maps.yml.
       GH_TOKEN: ${{ secrets.COLLECTION_MAPS_SYNC_TOKEN }}
     steps:
+      # Releases can overlap - trigger-release.sh scopes each run's S3 config to
+      # runs/{run}/ precisely so they can - and nothing orders their success
+      # statuses: a long release can report success after a newer one already
+      # did. Taking that event at face value force-pushes the bump branch back
+      # to the older run name and retitles the open PR, so the UI would be
+      # pinned to a superseded dataset if anyone merged it. Skip an event that a
+      # NEWER production deployment has already succeeded for; an event that is
+      # itself the latest success (the normal case) proceeds untouched.
+      - name: Skip a superseded deployment
+        id: freshness
+        if: github.event_name == 'deployment_status'
+        env:
+          # Overrides the job-level PAT, which is scoped to nlm-ckn-ui and
+          # cannot read this repo's deployments.
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          DEPLOYMENT_ID: ${{ github.event.deployment.id }}
+          DEPLOYMENT_CREATED_AT: ${{ github.event.deployment.created_at }}
+        run: |
+          set -euo pipefail
+
+          # Production deployments strictly newer than this event's. created_at
+          # is ISO 8601 UTC, so a string compare is chronological; the id (which
+          # increases monotonically per repo) breaks ties within the same
+          # second. One page is enough - the API returns newest first, and any
+          # deployment newer than ours is therefore at the head.
+          NEWER=$(gh api -X GET "repos/$THIS_REPO/deployments" \
+            -F environment=production -F per_page=100 \
+            --jq '[ .[]
+                    | select(
+                        .created_at > env.DEPLOYMENT_CREATED_AT
+                        or (.created_at == env.DEPLOYMENT_CREATED_AT
+                            and .id > (env.DEPLOYMENT_ID | tonumber))
+                      )
+                    | .id ] | .[]')
+
+          # Only a newer deployment that actually SUCCEEDED supersedes this one.
+          # A newer release still running, or one that failed, must not stop a
+          # good older result from reaching the UI.
+          while read -r ID; do
+            [ -n "$ID" ] || continue
+            SUCCEEDED=$(gh api -X GET "repos/$THIS_REPO/deployments/$ID/statuses" \
+              -F per_page=100 --jq 'map(select(.state == "success")) | length')
+            if [ "$SUCCEEDED" -gt 0 ]; then
+              echo "stale=true" >> "$GITHUB_OUTPUT"
+              echo "::notice::Deployment $DEPLOYMENT_ID is superseded by newer successful production deployment $ID - not bumping ETL_VERSION."
+              exit 0
+            fi
+          done <<< "$NEWER"
+
+          echo "stale=false" >> "$GITHUB_OUTPUT"
+
       # Both trigger paths funnel through this one step, so everything
       # downstream sees a single validated value regardless of event type.
       - name: Resolve and validate the ETL version
@@ -166,7 +222,12 @@ jobs:
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
           echo "::notice::Resolved ETL version '$VERSION' from $SOURCE."
 
+      # Nothing below touches the sibling repo once the event is stale. The two
+      # gates here are enough: with the drift step skipped, its `changed` output
+      # is empty, so the dry-run and push steps below fall out on their own.
+      # (Empty on workflow_dispatch too, where the check does not run.)
       - name: Checkout nlm-ckn-ui
+        if: steps.freshness.outputs.stale != 'true'
         uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5  # v4
         with:
           repository: ${{ env.SIBLING_REPO }}
@@ -176,6 +237,7 @@ jobs:
 
       - name: Write ETL_VERSION and detect drift
         id: drift
+        if: steps.freshness.outputs.stale != 'true'
         env:
           VERSION: ${{ steps.version.outputs.version }}
         run: |
