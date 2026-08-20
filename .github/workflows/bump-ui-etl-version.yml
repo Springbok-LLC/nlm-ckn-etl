@@ -74,6 +74,10 @@ on:
 concurrency:
   group: bump-ui-etl-version
   cancel-in-progress: false
+  # Keep up to 100 runs pending and process them in order. The default (single)
+  # cancels the pending run whenever a new one arrives - which is exactly the
+  # burst release.py produces when it posts several statuses for one release.
+  queue: max
 
 # All cross-repo work is done with a PAT, which carries its own permissions and
 # ignores these entirely. The failure job widens this locally to issues: write.
@@ -143,8 +147,11 @@ jobs:
           fi
 
           # Strict allowlist before this value reaches a file, a branch name, or
-          # any shell/API argument.
-          if ! printf '%s' "$VERSION" | grep -Eq '^[A-Za-z0-9._-]{1,100}$'; then
+          # any shell/API argument. Matched with =~ against the whole string:
+          # grep would test line by line, so a value whose *first* line is clean
+          # ("1.6.0\nanything") would pass and carry the rest through.
+          VERSION_RE='^[A-Za-z0-9._-]{1,100}$'
+          if [[ ! $VERSION =~ $VERSION_RE ]]; then
             echo "::error::Refusing to use ETL version '$VERSION' from $SOURCE:" \
                  "it must match ^[A-Za-z0-9._-]{1,100}\$."
             exit 1
@@ -241,13 +248,15 @@ jobs:
           git push --force origin "$BUMP_BRANCH"
 
           # deployment.ref is the release tag; it is empty on a manual dispatch.
-          # It lands in a URL, so allowlist it first. Slashes are excluded, which
-          # is also why no '..' check is needed - without a slash it cannot walk
+          # It lands in a URL, so allowlist it first (=~ against the whole
+          # string, not grep's line at a time). Slashes are excluded, which is
+          # also why no '..' check is needed - without a slash it cannot walk
           # out of the releases/tag/ prefix. A tag that does not match simply
           # loses the link.
+          REF_RE='^[A-Za-z0-9][A-Za-z0-9._-]{0,99}$'
           if [ "$EVENT_NAME" = "workflow_dispatch" ]; then
             PROVENANCE="Raised by a manual dispatch of this workflow, not by a release. See [the run]($RUN_URL)."
-          elif printf '%s' "${DEPLOYMENT_REF:-}" | grep -Eq '^[A-Za-z0-9][A-Za-z0-9._-]{0,99}$'; then
+          elif [[ ${DEPLOYMENT_REF:-} =~ $REF_RE ]]; then
             PROVENANCE="From ETL release [$DEPLOYMENT_REF]($RELEASES_URL/$DEPLOYMENT_REF), via [this run]($RUN_URL)."
           else
             PROVENANCE="From a successful ETL production release, via [this run]($RUN_URL)."
@@ -343,7 +352,8 @@ jobs:
           # report - a failed release still needs to be visible. Fall back to
           # the deployment id so the issue title stays stable and safe.
           VERSION="$PAYLOAD_RUN_NAME"
-          if ! printf '%s' "$VERSION" | grep -Eq '^[A-Za-z0-9._-]{1,100}$'; then
+          VERSION_RE='^[A-Za-z0-9._-]{1,100}$'
+          if [[ ! $VERSION =~ $VERSION_RE ]]; then
             echo "::warning::deployment payload run_name is missing or invalid - titling the issue by deployment id."
             VERSION="deployment-$DEPLOYMENT_ID"
           fi
@@ -407,9 +417,15 @@ jobs:
 
           # Match on exact title among open issues rather than using the search
           # API, whose index lags far enough behind issue creation to duplicate.
-          EXISTING=$(gh api -X GET "repos/$THIS_REPO/issues" \
+          # --paginate walks past the first 100: an older failure issue buried
+          # on page 2 must still be found, or this opens a duplicate. gh applies
+          # --jq per page, so a match can be emitted on any of them - keep the
+          # first line. (Sliced with an expansion rather than piped to head:
+          # head exiting early would SIGPIPE gh and trip pipefail.)
+          MATCHES=$(gh api --paginate -X GET "repos/$THIS_REPO/issues" \
             -F state=open -F per_page=100 \
             --jq '[.[] | select(.pull_request == null) | select(.title == env.TITLE) | .number] | .[0] // empty')
+          EXISTING="${MATCHES%%$'\n'*}"
 
           if [ -n "$EXISTING" ]; then
             ISSUE_NUM="$EXISTING"
