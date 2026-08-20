@@ -117,10 +117,12 @@ class UberonHuBMAPAuditorTestCase(unittest.TestCase):
         self.assertEqual(row["object_label"], "kidney")
         self.assertEqual(row["uberon_parents"], "")
 
-    def test_find_new_part_of_edges_labels_unknown_subject_from_hubmap(self):
+    def test_find_new_part_of_edges_marks_label_taken_from_hubmap(self):
         edges = find_new_part_of_edges(self.uberon, self.hubmap)
         row = edges[edges["subject_term"] == "UBERON:9999999"].iloc[0]
-        self.assertEqual(row["subject_label"], "made up structure")
+        self.assertEqual(row["subject_label"], "made up structure [HuBMAP]")
+        # The object is labelled by UBERON, so it carries no marker
+        self.assertEqual(row["object_label"], "kidney")
 
     def test_find_unknown_terms(self):
         unknown = find_unknown_terms(self.uberon, self.hubmap, deprecated_terms=[])

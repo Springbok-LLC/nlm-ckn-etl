@@ -57,6 +57,10 @@ LABEL_PREDICATES = frozenset(
 # Values offered in the Decision column of each detail sheet
 DECISIONS = ["keep-HuBMAP", "keep-UBERON", "defer"]
 
+# Marks a displayed label UBERON does not assert, and which therefore comes
+# from HuBMAP itself
+HUBMAP_LABEL_MARKER = "[HuBMAP]"
+
 # Sheet names, in workbook order
 SUMMARY_SHEET = "Summary"
 LABEL_CONFLICTS_SHEET = "Label conflicts"
@@ -236,11 +240,16 @@ def _uberon_label(uberon, term):
 
 
 def _display_label(uberon, hubmap, term):
-    """Return the UBERON label of a term, falling back to the HuBMAP label."""
+    """Return the UBERON label of a term, falling back to the HuBMAP label.
+
+    A label taken from HuBMAP is marked with :data:`HUBMAP_LABEL_MARKER`, so a
+    reviewer is never shown a HuBMAP label as though the ontology asserted it.
+    """
     label = _uberon_label(uberon, term)
     if label:
         return label
-    return _join(hubmap["labels"].get(term, {}).keys())
+    label = _join(hubmap["labels"].get(term, {}).keys())
+    return f"{label} {HUBMAP_LABEL_MARKER}" if label else ""
 
 
 def find_label_conflicts(uberon, hubmap):
@@ -310,7 +319,8 @@ def find_new_part_of_edges(uberon, hubmap):
 
     The parents UBERON does assert for the subject term are carried along, so
     a reviewer can see whether the HuBMAP edge complements or contradicts the
-    ontology.
+    ontology.  Labels are the UBERON ones; a label UBERON does not assert falls
+    back to the HuBMAP label, marked with :data:`HUBMAP_LABEL_MARKER`.
 
     Parameters
     ----------
