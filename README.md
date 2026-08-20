@@ -395,3 +395,26 @@ $ poetry run src/flows/pipeline.py \
 
 Each phase is skipped automatically when its output already exists; the
 uppercase variants (`-O` / `-R` / `-A`) force the phase to re-run regardless.
+
+### Reviewing UBERON and HuBMAP inconsistencies
+
+HuBMAP tuples are loaded after the UBERON ontology triples, and vertex
+attributes are retained from the last non-None value, so a HuBMAP label
+overrides the UBERON label and HuBMAP parents add `part_of` edges the ontology
+does not assert. Phase 2 writes a review workbook recording those differences
+to `data/audit-<run-name>/uberon-hubmap-review.xlsx`, with one sheet per check
+— label conflicts, HuBMAP-only `part_of` edges, and unknown or deprecated
+terms — and a `Decision` column on each row for selecting the HuBMAP tuples to
+retain. The audit is report-only; pass `--no-audit` to skip it.
+
+To produce the workbook manually, write the UBERON tuples from
+`data/obo/uberon*.owl`, then compare them with the run's HuBMAP tuples (which
+`TupleWriterPipeline.py` writes into `data/tuples-<run-name>/`):
+```
+$ java -Xmx32g -cp target/nlm-ckn-etl-1.0.jar gov.nih.nlm.OntologyTupleWriter \
+    --output data/audit-2026-04/uberon-tuples.json
+$ cd python
+$ poetry run python src/UberonHuBMAPAuditor.py --run-name 2026-04
+```
+Pass `--write-uberon-tuples` to have the auditor run the tuple writer itself
+when the UBERON tuples are missing.

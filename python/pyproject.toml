@@ -16,6 +16,7 @@ gget = ">=0.29"
 kgx = {url = "https://github.com/rogermyung/kgx/releases/download/v0.0.0/kgx-0.0.0.post1931.dev0+004034c-py3-none-any.whl"}
 lxml = ">=5.0"
 ontogpt = ">=0.3"
+openpyxl = ">=3.1"
 plotly = ">=5.22"
 boto3 = ">=1.34"
 botocore = {version = ">=1.34", extras = ["crt"]}

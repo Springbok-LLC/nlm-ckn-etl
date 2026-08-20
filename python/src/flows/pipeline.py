@@ -911,6 +911,68 @@ def validate_tuple_files(run_name: str = "") -> None:
     logger.info(f"Tuple files: {len(json_files)} JSON file(s) in {tuples_dir.name}/")
 
 
+@task(name="audit-uberon-hubmap", log_prints=True)
+def audit_uberon_hubmap(
+    arango_db_password: str,
+    java_opts: str = DEFAULT_JAVA_OPTS,
+    run_name: str = "",
+) -> None:
+    """Write the UBERON/HuBMAP review workbook into ``data/audit-<name>/``.
+
+    Writes the UBERON tuples with ``gov.nih.nlm.OntologyTupleWriter``, then
+    compares them with the run's HuBMAP tuples using ``UberonHuBMAPAuditor.py``.
+
+    Report only: the workbook records label conflicts, HuBMAP-only ``part_of``
+    edges, and unknown or deprecated terms for manual review and selection.
+    Nothing loaded into the graph changes, so a failure here is logged and the
+    pipeline continues.
+
+    Parameters
+    ----------
+    run_name:
+        Run name (selects ``data/tuples-<name>/`` and ``data/audit-<name>/``).
+        Defaults to ``$CKN_RUN`` or ``'full'``.
+    """
+    logger = get_run_logger()
+    run_name = run_name or os.getenv("CKN_RUN", "full")
+
+    # Phase 2 can run from a restored baseline dump, without the OWL files the
+    # tuple writer parses ever having been downloaded locally
+    obo_dir = REPO_ROOT / "data" / "obo"
+    if not list(obo_dir.glob("uberon*.owl")):
+        logger.warning(
+            f"No uberon*.owl in {obo_dir.name}/ — skipping the UBERON/HuBMAP audit"
+        )
+        return
+
+    audit_dir = REPO_ROOT / "data" / f"audit-{run_name}"
+    uberon_tuples = audit_dir / "uberon-tuples.json"
+    try:
+        logger.info(
+            f"Writing UBERON tuples (gov.nih.nlm.OntologyTupleWriter, {java_opts})"
+        )
+        subprocess.run(
+            _java_cmd("gov.nih.nlm.OntologyTupleWriter", arango_db_password, java_opts)
+            + ["--output", str(uberon_tuples)],
+            check=True,
+            cwd=REPO_ROOT,
+            env={**os.environ, "CKN_RUN": run_name},
+        )
+        _run_python_script(
+            "UberonHuBMAPAuditor.py",
+            arango_db_password,
+            extra_env={"CKN_RUN": run_name},
+            extra_args=["--run-name", run_name],
+        )
+    except subprocess.CalledProcessError as e:
+        logger.warning(f"UBERON/HuBMAP audit failed ({e}) — continuing")
+        return
+    logger.info(
+        f"UBERON/HuBMAP review workbook: "
+        f"data/audit-{run_name}/uberon-hubmap-review.xlsx"
+    )
+
+
 @task(name="sync-baseline-dump-to-s3", log_prints=True)
 def sync_baseline_dump_to_s3(baseline_dump_dir: Path, jar_key: str) -> None:
     """Push the Phase 1 baseline dump to ``baselines/{jar_key}/`` in S3.
@@ -1263,6 +1325,7 @@ def nlm_ckn_etl(
     force_results: bool = False,
     run_archive: bool = False,
     force_archive: bool = False,
+    run_audit: bool = True,
     java_opts: str = DEFAULT_JAVA_OPTS,
     run_name: str = "",
 ) -> None:
@@ -1306,6 +1369,9 @@ def nlm_ckn_etl(
         unless the golden dump already exists.
     force_archive:
         Run Phase 3 even if its golden dump already exists, overwriting it.
+    run_audit:
+        Write the UBERON/HuBMAP review workbook during Phase 2 (default True).
+        Report only — it never changes what is loaded into the graph.
     java_opts:
         JVM flags passed to every Java invocation (default: ``DEFAULT_JAVA_OPTS``,
         currently ``-Xmx32g``).  Increase further if you get OOM-killed (exit 137).
@@ -1506,6 +1572,11 @@ def nlm_ckn_etl(
         sync_tuples_to_s3(run_name=run_name)  # persist tuple output
         validate_tuple_files(run_name=run_name)
 
+        # Flag UBERON/HuBMAP inconsistencies for manual review.  Report only —
+        # what gets loaded below is unaffected.
+        if run_audit:
+            audit_uberon_hubmap(arango_db_password, java_opts, run_name=run_name)
+
         # Load result tuples into the ontology graph, then create its analyzers
         # and views now that Cell-KN-Ontologies is fully populated.  The induced
         # subgraph is built in Phase 3 from this state.
@@ -1641,6 +1712,14 @@ if __name__ == "__main__":
         help="Phase 3 (forced): run Phase 3 even if its golden dump exists.",
     )
     parser.add_argument(
+        "--no-audit",
+        action="store_true",
+        help=(
+            "Skip the UBERON/HuBMAP review workbook written during Phase 2. "
+            "The audit is report-only and never changes what is loaded."
+        ),
+    )
+    parser.add_argument(
         "--java-opts",
         default=DEFAULT_JAVA_OPTS,
         help=(
@@ -1665,6 +1744,7 @@ if __name__ == "__main__":
         force_results=args.force_results,
         run_archive=args.run_archive,
         force_archive=args.force_archive,
+        run_audit=not args.no_audit,
         java_opts=args.java_opts,
         run_name=args.run_name,
     )
