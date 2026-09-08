@@ -157,7 +157,7 @@ def create_tuples(
     - CellSetHasCharacterizingMarkerSetBiomarkerCombination
     - CellSetSelectivelyExpressesGene (for each binary gene)
     - GenePartOfBinaryGeneSet (for each binary gene)
-    - GenePartOfBiomarkerCombination (for each marker)
+    - GenePartOfBiomarkerCombination (for each marker gene)
 
     Parameters
     ----------
@@ -273,7 +273,7 @@ def create_tuples(
         if cluster_size < MIN_CLUSTER_SIZE:
             continue
 
-        markers = resolve_gene_names(
+        marker_genes = resolve_gene_names(
             parse_string_list(str(row["NSForest_markers"])), ensembl_id_to_names
         )
         binary_genes = resolve_gene_names(
@@ -281,7 +281,7 @@ def create_tuples(
         )
 
         bmc = BiomarkerCombination(
-            markers=",".join(markers),
+            markers=",".join(marker_genes),
             f_beta_score=float(row["f_score"]) if pd.notna(row["f_score"]) else None,
         )
         bgs = BinaryGeneSet(
@@ -344,7 +344,7 @@ def create_tuples(
             ),
             cell_count=as_int(row, "clusterSize"),
             cluster_cell_count=as_int(row, "clusterSize"),
-            biomarker_combination=",".join(markers),
+            biomarker_combination=",".join(marker_genes),
             binary_gene_set=",".join(binary_genes),
             expressed_genes=",".join(binary_genes),
             silhouette_score=as_float(row, "median"),
@@ -394,12 +394,23 @@ def create_tuples(
             )
         )
 
-        # Gene part_of BinaryGeneSet (for each binary gene).  The cell set
-        # has the binary gene set as a whole (edge above); the
-        # selectively_expresses edges belong on the marker genes, not the
-        # binary genes, and are emitted with the marker loop below.
+        # CellSet selectively_expresses Gene, and Gene part_of BinaryGeneSet
+        # (for each binary gene).  The cell set has the binary gene set as a
+        # whole (edge above), and selectively expresses each of its binary
+        # genes.  The binary genes always include the marker genes, so the
+        # marker genes keep their selectively_expresses edges too.
         for gene_symbol in binary_genes:
             gene = Gene(gene_symbol=gene_symbol)
+            assoc = ASSOCIATION_CLASSES["CellSetSelectivelyExpressesGene"](
+                subject=cell_set,
+                predicate="nlm-ckn:selectively_expresses",
+                object=gene,
+            )
+            tuples.extend(
+                association_to_tuples(
+                    assoc, ctx, source="NS-Forest", annotated_terms=annotated
+                )
+            )
             assoc = ASSOCIATION_CLASSES["GenePartOfBinaryGeneSet"](
                 subject=gene,
                 predicate="nlm-ckn:part_of",
@@ -466,24 +477,12 @@ def create_tuples(
                 )
             )
 
-        # CellSet selectively_expresses Gene, and Gene part_of
-        # BiomarkerCombination (for each marker).  The marker genes are the
-        # genes the cell set selectively expresses (schema: a marker gene "is
-        # selectively expressed" and "can be used as a marker for the cell
-        # type"), distinct from the binary gene set the cell set merely
-        # expresses.
-        for gene_symbol in markers:
+        # Gene part_of BiomarkerCombination (for each marker gene).  The
+        # marker genes are the subset of the binary genes NSForest chose as
+        # the cell set's characterizing marker set; their
+        # selectively_expresses edges are emitted with the binary genes above.
+        for gene_symbol in marker_genes:
             gene = Gene(gene_symbol=gene_symbol)
-            assoc = ASSOCIATION_CLASSES["CellSetSelectivelyExpressesGene"](
-                subject=cell_set,
-                predicate="nlm-ckn:selectively_expresses",
-                object=gene,
-            )
-            tuples.extend(
-                association_to_tuples(
-                    assoc, ctx, source="NS-Forest", annotated_terms=annotated
-                )
-            )
             assoc = ASSOCIATION_CLASSES["GenePartOfBiomarkerCombination"](
                 subject=gene,
                 predicate="nlm-ckn:part_of",
