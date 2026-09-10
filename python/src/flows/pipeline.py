@@ -647,12 +647,21 @@ def export_kgx(kgx_dir: Path, arango_db_password: str) -> None:
 
     Provenance follows Biolink: nodes get ``provided_by`` and edges get
     ``aggregator_knowledge_source`` set to ``infores:nlm-ckn``, and each
-    edge's ``primary_knowledge_source`` and ``knowledge_source`` are its
-    ``Source`` translated by ``InfoResUtilities.source_to_infores`` (e.g.
-    ``MONDO`` → ``infores:mondo``), keeping the ``Source`` name verbatim
-    where there is no CURIE.  The ``Source`` column itself is unchanged.
-    Without this KGX defaults provenance to the ArangoDB URI (an ephemeral
-    ``localhost`` port) on export, and to the input filename on load.
+    edge's ``Source`` is translated by ``InfoResUtilities.source_to_infores``
+    (e.g. ``MONDO`` → ``infores:mondo``).  The first CURIE becomes both
+    ``primary_knowledge_source`` (single-valued in Biolink) and
+    ``knowledge_source``; any others go to ``supporting_data_source``.
+    Names with no CURIE (e.g. ``CELLxGENE``) are left out of these slots, and
+    an edge with no CURIE at all gets ``knowledge_source`` set to
+    ``infores:nlm-ckn`` and no ``primary_knowledge_source``: NLM-CKN
+    aggregated the edge but did not necessarily assert it.  The ``Source``
+    column itself is unchanged.
+
+    Every provenance slot is set on purpose.  Given no provenance settings,
+    KGX fills them with the ArangoDB URI (an ephemeral ``localhost`` port) on
+    export; given a TSV edge with no ``knowledge_source``, KGX loaders
+    (``neo4j-upload``, ``arangodb-upload``, ``transform``) fill it with the
+    input filename.
 
     ``kgx_dir`` is cleared first so a re-run does not blend two exports.
 
@@ -695,21 +704,24 @@ def export_kgx(kgx_dir: Path, arango_db_password: str) -> None:
         # The whole graph is in memory at this point; set each edge's Biolink
         # slots from its Source, and register the columns so the TSV sink,
         # which fixes its columns up front, writes them.  knowledge_source is
-        # deprecated but must be written: KGX loaders (neo4j-upload,
-        # arangodb-upload, transform) fill a missing one with the input
-        # filename.
+        # written on every edge so KGX loaders never fill in the filename.
         store = transformer.store
         for *_, data in store.graph.edges(keys=True, data=True):
-            source = data.get("Source")
-            if not source:
-                continue
             # OntologyGraphBuilder promotes Source to a list when several
             # ontologies assert the same edge.
+            source = data.get("Source") or []
             names = source if isinstance(source, list) else [source]
-            ids = list(dict.fromkeys(source_to_infores(n) or n for n in names))
-            data["primary_knowledge_source"] = ids[0] if len(ids) == 1 else ids
-            data["knowledge_source"] = data["primary_knowledge_source"]
-        store.edge_properties.update({"primary_knowledge_source", "knowledge_source"})
+            ids = list(dict.fromkeys(filter(None, map(source_to_infores, names))))
+            if not ids:
+                data["knowledge_source"] = NLM_CKN_INFORES
+                continue
+            data["primary_knowledge_source"] = ids[0]
+            data["knowledge_source"] = ids[0]
+            if len(ids) > 1:
+                data["supporting_data_source"] = ids[1:]
+        store.edge_properties.update(
+            {"primary_knowledge_source", "knowledge_source", "supporting_data_source"}
+        )
         transformer.save(
             {"filename": str(kgx_dir / db), "format": "tsv", "compression": None}
         )
@@ -1482,10 +1494,34 @@ def nlm_ckn_etl(
     else:
         logger.info("Local mode: S3_BUCKET not set")
 
+    # Golden dump: written near the end of Phase 3; uploaded to production S3.
+    golden_dump_dir = REPO_ROOT / "data" / f"arangodump-golden-{run_name}"
+    # KGX export: TSV node/edge pairs of the golden state, written in Phase 3
+    # (or standalone under force_kgx) and uploaded as 07-kgx.tar.gz.
+    kgx_dir = REPO_ROOT / "data" / f"kgx-{run_name}"
+
+    # Phase 3 is skipped when its golden dump already exists and force_archive
+    # is not set.  Decided before the JAR is resolved: the golden dump is not
+    # keyed by JAR, so a skipped Phase 3 needs no JAR.
+    run_phase3 = run_archive or force_archive
+    if run_phase3 and golden_dump_dir.is_dir() and not force_archive:
+        logger.info(
+            f"Golden dump already exists at {golden_dump_dir.name}/ "
+            f"(run={run_name}); use force_archive=True to rebuild"
+        )
+        run_phase3 = False
+
+    # Phase 3 exports KGX itself; force_kgx only needs its own restore-and-export
+    # path when Phase 3 is skipped.
+    kgx_only = force_kgx and not run_phase3
+
     # Resolve the JAR and derive its content key upfront.  The key is used to
     # locate the matching baseline dump in S3 — ensuring the dump and the JAR
-    # that produced it are always stored and retrieved together.
-    jar_key = ensure_jar()
+    # that produced it are always stored and retrieved together.  Not resolved
+    # when no phase runs (e.g. the standalone KGX export), so that path needs
+    # neither Maven nor a JAR download.
+    needs_jar = run_ontology or force_ontology or run_results or force_results or run_phase3
+    jar_key = ensure_jar() if needs_jar else ""
 
     # Baseline dump: keyed by JAR content hash so the dump and the JAR that
     # produced it are always associated.  Written at the end of Phase 1;
@@ -1495,11 +1531,6 @@ def nlm_ckn_etl(
     # Written at the end of Phase 2; restored at the start of Phase 3 when
     # archiving standalone so each phase has its own restorable save point.
     results_dump_dir = REPO_ROOT / "data" / f"arangodump-results-{jar_key}-{run_name}"
-    # Golden dump: written near the end of Phase 3; uploaded to production S3.
-    golden_dump_dir = REPO_ROOT / "data" / f"arangodump-golden-{run_name}"
-    # KGX export: TSV node/edge pairs of the golden state, written in Phase 3
-    # (or standalone under force_kgx) and uploaded as 07-kgx.tar.gz.
-    kgx_dir = REPO_ROOT / "data" / f"kgx-{run_name}"
 
     # ── Phase 1: Upstream Build ────────────────────────────────────────────
     phase1_started_arangodb = False
@@ -1556,10 +1587,11 @@ def nlm_ckn_etl(
                 f"(jar_key={jar_key})"
             )
 
-    # Decide which phases actually run.  A phase is skipped when its dump
-    # already exists and the matching force flag is not set, so the ArangoDB
-    # start/wipe below and the phase body both no-op when there is nothing to
-    # rebuild (this is what makes --force-results / --force-archive meaningful).
+    # Decide whether Phase 2 actually runs (Phase 3 was decided above).  A phase
+    # is skipped when its dump already exists and the matching force flag is
+    # not set, so the ArangoDB start/wipe below and the phase body both no-op
+    # when there is nothing to rebuild (this is what makes --force-results /
+    # --force-archive meaningful).
     run_phase2 = run_results or force_results
     if run_phase2 and results_dump_dir.is_dir() and not force_results:
         logger.info(
@@ -1567,18 +1599,6 @@ def nlm_ckn_etl(
             f"(jar_key={jar_key}, run={run_name}); use force_results=True to rebuild"
         )
         run_phase2 = False
-
-    run_phase3 = run_archive or force_archive
-    if run_phase3 and golden_dump_dir.is_dir() and not force_archive:
-        logger.info(
-            f"Golden dump already exists at {golden_dump_dir.name}/ "
-            f"(run={run_name}); use force_archive=True to rebuild"
-        )
-        run_phase3 = False
-
-    # Phase 3 exports KGX itself; force_kgx only needs its own restore-and-export
-    # path when Phase 3 is skipped.
-    kgx_only = force_kgx and not run_phase3
 
     # ── Ensure ArangoDB is running for Phase 2/3 when Phase 1 didn't start it ──
     # Covers --run-results and/or --run-archive, and --run-ontology when the

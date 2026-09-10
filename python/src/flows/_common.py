@@ -22,6 +22,7 @@ import json
 import logging
 import os
 import secrets
+import shutil
 import socket
 import subprocess
 import sys
@@ -279,17 +280,26 @@ def _s3_download_tar(s3_path: str, local_dir: Path) -> None:
     The top-level directory inside the archive is stripped so that files land
     directly in ``local_dir`` (mirrors the extraction pattern used in
     ``dump_arangodb``).  No-op when ``S3_BUCKET`` is empty.
+
+    Extraction goes to a sibling ``<local_dir>.partial/`` that is renamed to
+    ``local_dir`` only once it holds at least one file, so a failed or
+    interrupted download never leaves a ``local_dir`` that callers' "already
+    present" checks would mistake for a complete dump.  ``local_dir`` must not
+    already exist.
     """
     if not S3_BUCKET:
         return
     local_dir = Path(local_dir)
-    local_dir.mkdir(parents=True, exist_ok=True)
+    staging_dir = local_dir.with_name(f"{local_dir.name}.partial")
+    if staging_dir.exists():
+        shutil.rmtree(staging_dir)
+    staging_dir.mkdir(parents=True)
     bucket, key = _parse_s3_url(s3_path)
     with tempfile.NamedTemporaryFile(suffix=".tar.gz", delete=False) as tmp:
         tmp_path = Path(tmp.name)
     try:
         boto3.client("s3").download_file(bucket, key, str(tmp_path))
-        base_dir = local_dir.resolve()
+        base_dir = staging_dir.resolve()
         with tarfile.open(tmp_path, "r:gz") as tar:
             for member in tar.getmembers():
                 parts = Path(member.name).parts
@@ -298,12 +308,16 @@ def _s3_download_tar(s3_path: str, local_dir: Path) -> None:
                 if member.issym() or member.islnk():
                     continue
                 member.name = str(Path(*parts[1:]))
-                resolved = (local_dir / member.name).resolve()
+                resolved = (staging_dir / member.name).resolve()
                 if not str(resolved).startswith(str(base_dir) + os.sep):
                     continue
-                tar.extract(member, local_dir)
+                tar.extract(member, staging_dir)
+        if not any(p.is_file() for p in staging_dir.rglob("*")):
+            raise RuntimeError(f"{s3_path} contained no files to extract")
+        staging_dir.rename(local_dir)
     finally:
         tmp_path.unlink(missing_ok=True)
+        shutil.rmtree(staging_dir, ignore_errors=True)
 
 
 def _s3_copy_prefix(bucket: str, src_prefix: str, dst_prefix: str) -> int:

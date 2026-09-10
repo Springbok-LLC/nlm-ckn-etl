@@ -161,9 +161,15 @@ Running `download-arangodb.sh` is not the only way to get the TSV files:
 each release publishes a prebuilt KGX TSV pair for both
 `Cell-KN-Ontologies` and `Cell-KN-Phenotypes` at
 `s3://${S3_BUCKET}/runs/{run}/07-kgx.tar.gz` (see
-`python/src/flows/README.md`). It is a graph interchange artifact, not a
-replacement for the golden dump: it carries no indexes, analyzers, views,
-or named-graph definitions.
+`python/src/flows/README.md`). Extract it into `arangodb-download/`, where
+`upload-neo4j.sh` looks for the `Cell-KN-Phenotypes` pair:
+```
+$ aws s3 cp "s3://${S3_BUCKET}/runs/<run>/07-kgx.tar.gz" .
+$ mkdir -p arangodb-download
+$ tar -xzf 07-kgx.tar.gz --strip-components=1 -C arangodb-download
+```
+It is a graph interchange artifact, not a replacement for the golden dump:
+it carries no indexes, analyzers, views, or named-graph definitions.
 
 ### Apache Jena (TDB2)
 

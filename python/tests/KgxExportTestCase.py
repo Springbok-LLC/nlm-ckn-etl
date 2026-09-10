@@ -3,8 +3,8 @@
 Covers:
 - export_kgx: one KGX transform per database, against the live (non-default)
   port, with all_collections and the upload-neo4j.sh basenames; NLM-CKN
-  provenance, and each edge's Source, as an infores CURIE, in
-  primary_knowledge_source and knowledge_source
+  provenance, and each edge's Source, as infores CURIEs, in
+  primary_knowledge_source, knowledge_source and supporting_data_source
 - sync_kgx_to_s3 / sync_golden_dump_from_s3: exact S3 keys, local-mode no-ops
 - nlm_ckn_etl flag matrix: --force-kgx alone, --run-archive alone, both,
   and no flags at all
@@ -111,31 +111,41 @@ class ExportKgxTestCase(unittest.TestCase):
             self.assertNotIn("knowledge_source", config)
 
     def test_knowledge_sources_translated_from_source(self):
-        """Each edge's Source, as an infores CURIE, lands in primary_ and knowledge_source.
+        """Each edge's Source, as infores CURIEs, lands in the Biolink provenance slots.
 
-        Sources with no CURIE keep their name; a promoted list maps element-wise
-        and dedupes.  knowledge_source must be written too: KGX loaders fill a
-        missing one with the input filename.
+        The first CURIE is the scalar primary_knowledge_source (and
+        knowledge_source); a promoted list maps element-wise, dedupes, and puts
+        the rest in supporting_data_source.  Names with no CURIE are dropped,
+        and an edge left with none (or with no Source) gets knowledge_source
+        infores:nlm-ckn and no primary.  knowledge_source is on every edge:
+        KGX loaders fill a missing one with the input filename.
         """
         edges = [
             ("CS:1", "GS:A", "e1", {"Source": "NS-Forest"}),
             ("GS:A", "PR:1", "e2", {"Source": "Open Targets and Gene"}),
-            ("CS:1", "CL:1", "e3", {"Source": "CELLxGENE"}),
-            ("CL:1", "CL:2", "e4", {"Source": ["CL", "UBERON", "cl"]}),
+            ("CL:1", "CL:2", "e3", {"Source": ["CL", "CELLxGENE", "UBERON", "cl"]}),
+            ("CS:1", "CL:1", "e4", {"Source": "CELLxGENE"}),
             ("CL:1", "CL:3", "e5", {}),
         ]
+        slots = ("primary_knowledge_source", "knowledge_source", "supporting_data_source")
         expected = [
-            "infores:nlm-ckn",
-            "infores:open-targets",
-            "CELLxGENE",
-            ["infores:cl", "infores:uberon"],
+            {slots[0]: "infores:nlm-ckn", slots[1]: "infores:nlm-ckn"},
+            {slots[0]: "infores:open-targets", slots[1]: "infores:open-targets"},
+            {
+                slots[0]: "infores:cl",
+                slots[1]: "infores:cl",
+                slots[2]: ["infores:uberon"],
+            },
+            {slots[1]: "infores:nlm-ckn"},
+            {slots[1]: "infores:nlm-ckn"},
         ]
         transformers = self._call(edges=edges)
         for t in transformers:
             written = [d for *_, d in t.store.graph.edges.return_value]
-            for slot in ("primary_knowledge_source", "knowledge_source"):
-                self.assertEqual([d[slot] for d in written[:4]], expected)
-                self.assertNotIn(slot, written[4])
+            self.assertEqual(
+                [{s: d[s] for s in slots if s in d} for d in written], expected
+            )
+            for slot in slots:
                 self.assertIn(slot, t.store.edge_properties)
             # The Source column itself is left as-is.
             self.assertEqual(written[0]["Source"], "NS-Forest")
@@ -202,14 +212,22 @@ class SyncGoldenDumpFromS3TestCase(unittest.TestCase):
         self.addCleanup(tmp.cleanup)
         self.golden_dump_dir = Path(tmp.name) / "arangodump-golden-1.2.3"
 
-    def _call(self, bucket):
+    @staticmethod
+    def _write_archive(b, k, dest):
+        """Stand in for the download with a one-file dump archive."""
+        payload = Path(dest).with_suffix(".json")
+        payload.write_text("{}\n")
+        with tarfile.open(dest, "w:gz") as tar:
+            tar.add(payload, arcname="arangodump-golden-1.2.3/dump.json")
+        payload.unlink()
+
+    def _call(self, bucket, download=None):
         with patch("pipeline.get_run_logger", return_value=_noop_logger()), \
              patch("pipeline.S3_BUCKET", bucket), \
              patch("_common.S3_BUCKET", bucket), \
              patch("_common.boto3") as mock_boto3:
-            # Stand in for the download with an empty archive to extract.
             mock_boto3.client.return_value.download_file.side_effect = (
-                lambda b, k, dest: tarfile.open(dest, "w:gz").close()
+                download or self._write_archive
             )
             sync_golden_dump_from_s3.fn(self.golden_dump_dir, "1.2.3")
         return mock_boto3.client.return_value
@@ -220,6 +238,18 @@ class SyncGoldenDumpFromS3TestCase(unittest.TestCase):
         mock_s3.download_file.assert_called_once()
         bucket, key, _ = mock_s3.download_file.call_args.args
         self.assertEqual((bucket, key), ("my-bucket", "runs/1.2.3/06-golden-dump.tar.gz"))
+        self.assertTrue((self.golden_dump_dir / "dump.json").is_file())
+
+    def test_failed_download_leaves_no_dump_dir(self):
+        """An interrupted or empty download leaves nothing a re-run would trust."""
+
+        def fail(b, k, dest):
+            raise OSError("connection reset")
+
+        for download in (fail, lambda b, k, dest: tarfile.open(dest, "w:gz").close()):
+            with self.assertRaises((OSError, RuntimeError)):
+                self._call("my-bucket", download=download)
+            self.assertEqual(list(self.golden_dump_dir.parent.iterdir()), [])
 
     def test_noop_when_present_locally(self):
         """Does not re-download a golden dump already on disk."""
@@ -333,6 +363,8 @@ class FlowKgxMatrixTestCase(unittest.TestCase):
         mocks = self._run(force_kgx=True)
 
         self._assert_no_phase_work()
+        # Standalone export reads only the golden dump: no Maven, no JAR download.
+        mocks["ensure_jar"].assert_not_called()
         mocks["start_arangodb"].assert_called_once()
         mocks["restore_arangodb"].assert_called_once_with(self.golden_dump_dir, "secret")
         mocks["export_kgx"].assert_called_once_with(self.kgx_dir, "secret")
@@ -367,6 +399,7 @@ class FlowKgxMatrixTestCase(unittest.TestCase):
         self.golden_dump_dir.mkdir(parents=True)
         mocks = self._run(run_archive=True, force_kgx=True)
         self._assert_no_phase_work()
+        mocks["ensure_jar"].assert_not_called()
         mocks["export_kgx"].assert_called_once_with(self.kgx_dir, "secret")
 
     def test_run_archive_exports_inside_phase3(self):
@@ -374,6 +407,8 @@ class FlowKgxMatrixTestCase(unittest.TestCase):
         self.results_dump_dir.mkdir(parents=True)
         mocks = self._run(run_archive=True)
 
+        # Phase 3 restores the JAR-keyed results dump, so it resolves the JAR.
+        mocks["ensure_jar"].assert_called_once()
         mocks["export_kgx"].assert_called_once_with(self.kgx_dir, "secret")
         mocks["sync_kgx_to_s3"].assert_called_once_with(self.kgx_dir, run_name=self.RUN)
         mocks["sync_golden_dump_from_s3"].assert_not_called()
