@@ -633,10 +633,6 @@ def export_graphs_and_analyzers(
 # a metamodel whose content is the collection structure, which KGX discards.
 KGX_DATABASES = ["Cell-KN-Ontologies", "Cell-KN-Phenotypes"]
 
-# Biolink provenance for the KGX export: NLM-CKN as the resource that provided
-# every node and aggregated every edge.  Not a registered infores CURIE.
-KGX_PROVENANCE = "infores:nlm-ckn"
-
 
 @task(name="export-kgx", log_prints=True)
 def export_kgx(kgx_dir: Path, arango_db_password: str) -> None:
@@ -650,9 +646,11 @@ def export_kgx(kgx_dir: Path, arango_db_password: str) -> None:
     views, or named-graph definitions.  Those live in the golden dump.
 
     Provenance follows Biolink: nodes get ``provided_by`` and edges get
-    ``aggregator_knowledge_source`` set to ``KGX_PROVENANCE``, and each edge's
-    ``primary_knowledge_source`` and ``knowledge_source`` are copied verbatim
-    from its ``Source`` property (e.g. ``NS-Forest``, ``Open Targets``).
+    ``aggregator_knowledge_source`` set to ``infores:nlm-ckn``, and each
+    edge's ``primary_knowledge_source`` and ``knowledge_source`` are its
+    ``Source`` translated by ``InfoResUtilities.source_to_infores`` (e.g.
+    ``MONDO`` → ``infores:mondo``), keeping the ``Source`` name verbatim
+    where there is no CURIE.  The ``Source`` column itself is unchanged.
     Without this KGX defaults provenance to the ArangoDB URI (an ephemeral
     ``localhost`` port) on export, and to the input filename on load.
 
@@ -669,6 +667,8 @@ def export_kgx(kgx_dir: Path, arango_db_password: str) -> None:
     # arango_download: it offers no provenance settings and no hook between
     # load and save, which the primary_knowledge_source copy needs.
     from kgx.transformer import Transformer
+
+    from InfoResUtilities import NLM_CKN_INFORES, source_to_infores
 
     logger = get_run_logger()
     kgx_dir = Path(kgx_dir)
@@ -688,21 +688,27 @@ def export_kgx(kgx_dir: Path, arango_db_password: str) -> None:
                 "password": arango_db_password,
                 "format": "arangodb",
                 "all_collections": True,
-                "provided_by": KGX_PROVENANCE,
-                "aggregator_knowledge_source": KGX_PROVENANCE,
+                "provided_by": NLM_CKN_INFORES,
+                "aggregator_knowledge_source": NLM_CKN_INFORES,
             }
         )
-        # The whole graph is in memory at this point; copy each edge's Source
-        # into the Biolink slots, and register the columns so the TSV sink,
+        # The whole graph is in memory at this point; set each edge's Biolink
+        # slots from its Source, and register the columns so the TSV sink,
         # which fixes its columns up front, writes them.  knowledge_source is
         # deprecated but must be written: KGX loaders (neo4j-upload,
         # arangodb-upload, transform) fill a missing one with the input
         # filename.
         store = transformer.store
         for *_, data in store.graph.edges(keys=True, data=True):
-            if data.get("Source"):
-                data["primary_knowledge_source"] = data["Source"]
-                data["knowledge_source"] = data["Source"]
+            source = data.get("Source")
+            if not source:
+                continue
+            # OntologyGraphBuilder promotes Source to a list when several
+            # ontologies assert the same edge.
+            names = source if isinstance(source, list) else [source]
+            ids = list(dict.fromkeys(source_to_infores(n) or n for n in names))
+            data["primary_knowledge_source"] = ids[0] if len(ids) == 1 else ids
+            data["knowledge_source"] = data["primary_knowledge_source"]
         store.edge_properties.update({"primary_knowledge_source", "knowledge_source"})
         transformer.save(
             {"filename": str(kgx_dir / db), "format": "tsv", "compression": None}

@@ -3,8 +3,8 @@
 Covers:
 - export_kgx: one KGX transform per database, against the live (non-default)
   port, with all_collections and the upload-neo4j.sh basenames; NLM-CKN
-  provenance, and each edge's Source copied into primary_knowledge_source
-  and knowledge_source
+  provenance, and each edge's Source, as an infores CURIE, in
+  primary_knowledge_source and knowledge_source
 - sync_kgx_to_s3 / sync_golden_dump_from_s3: exact S3 keys, local-mode no-ops
 - nlm_ckn_etl flag matrix: --force-kgx alone, --run-archive alone, both,
   and no flags at all
@@ -107,28 +107,38 @@ class ExportKgxTestCase(unittest.TestCase):
         for config in self._source_configs(self._call()):
             self.assertEqual(config["provided_by"], "infores:nlm-ckn")
             self.assertEqual(config["aggregator_knowledge_source"], "infores:nlm-ckn")
-            # No static knowledge_source: it is copied per edge from Source.
+            # No static knowledge_source: it is set per edge from Source.
             self.assertNotIn("knowledge_source", config)
 
-    def test_knowledge_sources_copied_from_source(self):
-        """Each edge's Source lands verbatim in primary_ and knowledge_source, as TSV columns.
+    def test_knowledge_sources_translated_from_source(self):
+        """Each edge's Source, as an infores CURIE, lands in primary_ and knowledge_source.
 
-        knowledge_source must be written too: KGX loaders fill a missing one
-        with the input filename.
+        Sources with no CURIE keep their name; a promoted list maps element-wise
+        and dedupes.  knowledge_source must be written too: KGX loaders fill a
+        missing one with the input filename.
         """
         edges = [
             ("CS:1", "GS:A", "e1", {"Source": "NS-Forest"}),
-            ("GS:A", "MONDO:1", "e2", {"Source": "Open Targets and Gene"}),
-            ("CL:1", "CL:2", "e3", {}),
+            ("GS:A", "PR:1", "e2", {"Source": "Open Targets and Gene"}),
+            ("CS:1", "CL:1", "e3", {"Source": "CELLxGENE"}),
+            ("CL:1", "CL:2", "e4", {"Source": ["CL", "UBERON", "cl"]}),
+            ("CL:1", "CL:3", "e5", {}),
+        ]
+        expected = [
+            "infores:nlm-ckn",
+            "infores:open-targets",
+            "CELLxGENE",
+            ["infores:cl", "infores:uberon"],
         ]
         transformers = self._call(edges=edges)
         for t in transformers:
             written = [d for *_, d in t.store.graph.edges.return_value]
             for slot in ("primary_knowledge_source", "knowledge_source"):
-                self.assertEqual(written[0][slot], "NS-Forest")
-                self.assertEqual(written[1][slot], "Open Targets and Gene")
-                self.assertNotIn(slot, written[2])
+                self.assertEqual([d[slot] for d in written[:4]], expected)
+                self.assertNotIn(slot, written[4])
                 self.assertIn(slot, t.store.edge_properties)
+            # The Source column itself is left as-is.
+            self.assertEqual(written[0]["Source"], "NS-Forest")
             # The copy must happen before the TSV is written.
             self.assertLess(
                 [c[0] for c in t.method_calls].index("store.graph.edges"),
