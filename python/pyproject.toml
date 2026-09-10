@@ -13,7 +13,7 @@ ckn-schema = {url = "https://github.com/Springbok-LLC/nlm-ckn-schema/releases/do
 cellxgene-census = ">=1.14"
 docker = ">=7.0"
 gget = ">=0.29"
-kgx = {url = "https://github.com/rogermyung/kgx/releases/download/v0.0.0/kgx-0.0.0.post1931.dev0+004034c-py3-none-any.whl"}
+kgx = {url = "https://github.com/rogermyung/kgx/releases/download/v0.0.0/kgx-0.0.0.post1932.dev0+1a709dd-py3-none-any.whl"}
 lxml = ">=5.0"
 ontogpt = ">=0.3"
 plotly = ">=5.22"
