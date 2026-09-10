@@ -39,7 +39,7 @@ public class ArangoDbUtilities {
      */
     public ArangoDbUtilities() {
         Map<String, String> env = System.getenv();
-        arangoDB = new ArangoDB.Builder().host(env.get("ARANGO_DB_HOST"), Integer.parseInt(env.get("ARANGO_DB_PORT"))).user(env.get("ARANGO_DB_USER")).password(env.get("ARANGO_DB_PASSWORD")).build();
+        arangoDB = new ArangoDB.Builder().host(env.get("ARANGO_DB_HOST"), Integer.parseInt(env.get("ARANGO_DB_PORT"))).useSsl(useSsl(env)).user(env.get("ARANGO_DB_USER")).password(env.get("ARANGO_DB_PASSWORD")).build();
     }
 
     /**
@@ -48,7 +48,19 @@ public class ArangoDbUtilities {
      * @param env Environment map
      */
     public ArangoDbUtilities(Map<String, String> env) {
-        arangoDB = new ArangoDB.Builder().host(env.get("ARANGO_DB_HOST"), Integer.parseInt(env.get("ARANGO_DB_PORT"))).user(env.get("ARANGO_DB_USER")).password(env.get("ARANGO_DB_PASSWORD")).build();
+        arangoDB = new ArangoDB.Builder().host(env.get("ARANGO_DB_HOST"), Integer.parseInt(env.get("ARANGO_DB_PORT"))).useSsl(useSsl(env)).user(env.get("ARANGO_DB_USER")).password(env.get("ARANGO_DB_PASSWORD")).build();
+    }
+
+    /**
+     * Whether to connect over TLS. The pipeline always sets ARANGO_DB_SCHEME
+     * (see python/src/flows/_common.py); http is the standalone default for
+     * the local container.
+     *
+     * @param env Environment map
+     * @return True if ARANGO_DB_SCHEME is https
+     */
+    public static boolean useSsl(Map<String, String> env) {
+        return "https".equalsIgnoreCase(env.getOrDefault("ARANGO_DB_SCHEME", "http"));
     }
 
     /**

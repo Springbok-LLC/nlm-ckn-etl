@@ -50,11 +50,36 @@ CLASSPATH = "target/nlm-ckn-etl-1.0.jar"
 # Default Java heap.  Raise with --java-opts if OOM-killed (exit 137).
 DEFAULT_JAVA_OPTS = "-Xmx32g"
 
+
+def _is_loopback(host: str) -> bool:
+    """Return whether ``host`` names this machine."""
+    return host in ("localhost", "127.0.0.1", "::1", "")
+
+
+def _resolve_arango_db_scheme(host: str, override: str) -> str:
+    """Return the URL scheme for ArangoDB at ``host``.
+
+    ``override`` (``ARANGO_DB_SCHEME``) wins when set.  Otherwise loopback is
+    ``http`` — the local Docker container serves plain HTTP — and any other
+    host is ``https``, so root credentials never cross the network in clear
+    unless someone deliberately sets ``ARANGO_DB_SCHEME=http``.
+    """
+    scheme = override.strip().lower()
+    if not scheme:
+        return "http" if _is_loopback(host) else "https"
+    if scheme not in ("http", "https"):
+        raise ValueError(f"ARANGO_DB_SCHEME must be http or https, not {override!r}")
+    return scheme
+
+
 ARANGO_DB_HOST = os.getenv("ARANGO_DB_HOST", "localhost")
 # Loopback is local: the start/dump/restore tasks manage a local Docker
 # container and must run for 127.0.0.1 and ::1, not just the literal "localhost".
-ARANGO_DB_IS_LOCAL = ARANGO_DB_HOST in ("localhost", "127.0.0.1", "::1", "")
+ARANGO_DB_IS_LOCAL = _is_loopback(ARANGO_DB_HOST)
 ARANGO_DB_PORT = int(os.getenv("ARANGO_DB_PORT", "8529"))
+ARANGO_DB_SCHEME = _resolve_arango_db_scheme(
+    ARANGO_DB_HOST, os.getenv("ARANGO_DB_SCHEME", "")
+)
 ARANGO_DB_HOME = os.getenv("ARANGO_DB_HOME", str(REPO_ROOT / "data" / "arangodb"))
 
 # Host-side path for the ArangoDB data directory, used as the Docker volume
@@ -177,15 +202,31 @@ def _get_arangodb_id() -> str | None:
         return None
 
 
+def arango_db_url(port: int | None = None) -> str:
+    """Return the ArangoDB base URL, e.g. ``https://10.0.1.5:8529``.
+
+    Every HTTP connection the flows make goes through here (or through
+    ``_arango_env`` for subprocesses), so the scheme cannot drift between
+    calls.  The port is read at call time because ``_set_arango_port``
+    rebinds it after a dynamic container start; pass ``port`` to probe a
+    container before that happens.
+    """
+    host = f"[{ARANGO_DB_HOST}]" if ":" in ARANGO_DB_HOST else ARANGO_DB_HOST
+    return f"{ARANGO_DB_SCHEME}://{host}:{port or ARANGO_DB_PORT}"
+
+
 def _arango_env(arango_db_password: str) -> dict[str, str]:
     """Return environment variables for ArangoDB connectivity.
 
     Injected into every Python script and Java program subprocess so they
     can reach the ArangoDB instance regardless of where it runs.
+    ``ARANGO_DB_SCHEME`` is always the resolved value, so a subprocess never
+    falls back to its own default.
     """
     return {
         "ARANGO_DB_HOST": ARANGO_DB_HOST,
         "ARANGO_DB_PORT": str(ARANGO_DB_PORT),
+        "ARANGO_DB_SCHEME": ARANGO_DB_SCHEME,
         "ARANGO_DB_USER": "root",
         "ARANGO_DB_PASSWORD": arango_db_password,
     }

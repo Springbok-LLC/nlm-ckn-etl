@@ -8,13 +8,17 @@ from arango import ArangoClient
 def _client():
     """Build an ArangoDB client from the environment at call time.
 
-    Connection settings are read from ``ARANGO_DB_HOST``/``ARANGO_DB_PORT``
-    on each call rather than at import, so callers that assign the port
-    dynamically (e.g. the Prefect pipeline) connect to the live endpoint.
+    Connection settings are read from ``ARANGO_DB_SCHEME``/``ARANGO_DB_HOST``/
+    ``ARANGO_DB_PORT`` on each call rather than at import, so callers that
+    assign the port dynamically (e.g. the Prefect pipeline) connect to the
+    live endpoint.  The pipeline always sets the scheme (see
+    ``flows/_common.py``); ``http`` is the standalone default for the local
+    container.
     """
+    scheme = os.getenv("ARANGO_DB_SCHEME", "http")
     host = os.getenv("ARANGO_DB_HOST", "localhost")
     port = os.getenv("ARANGO_DB_PORT", "8529")
-    return ArangoClient(hosts=f"http://{host}:{port}")
+    return ArangoClient(hosts=f"{scheme}://{host}:{port}")
 
 
 def _sys_db():
