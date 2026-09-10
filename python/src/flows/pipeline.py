@@ -30,11 +30,13 @@ the results dump, and Phase 3 the golden dump:
 **Phase 3 — Production Handoff** (``--run-archive``):
   Restore the results dump (when Phase 2 did not just run) → build the induced
   phenotype subgraph → create phenotype analyzers and views → ``arangodump``
-  the golden state to ``data/arangodump-golden-<name>/``, then sync all
-  production artifacts (dump, OBO files, external cache snapshot, build-info)
-  to ``s3://${S3_BUCKET}/runs/<name>/`` (stages 02–06 + build-info.txt).
-  Skipped when the golden dump already exists unless ``--force-archive`` is
-  passed.
+  the golden state to ``data/arangodump-golden-<name>/`` → export both
+  databases to KGX TSV in ``data/kgx-<name>/``, then sync all production
+  artifacts (dump, KGX export, OBO files, external cache snapshot,
+  build-info) to ``s3://${S3_BUCKET}/runs/<name>/`` (stages 02–07 +
+  build-info.txt).  Skipped when the golden dump already exists unless
+  ``--force-archive`` is passed; ``--force-kgx`` then restores the golden
+  dump and runs just the KGX export and upload.
 
 Prerequisites
 -------------
@@ -57,7 +59,7 @@ S3 mode
 Set ``S3_BUCKET`` to pull inputs from S3 before processing and push
 production artifacts to S3 after the archive phase::
 
-    S3_BUCKET=cell-kn-arangodb-data-952291113202 python src/flows/pipeline.py --run-results
+    S3_BUCKET=nlm-ckn-arangodb-data-952291113202 python src/flows/pipeline.py --run-results
 
 JAR
 ---
@@ -627,6 +629,87 @@ def export_graphs_and_analyzers(
             logger.warning(f"Could not export analyzers for {db}: {exc}")
 
 
+# Databases exported to KGX TSV.  Cell-KN-Schema is deliberately excluded: it is
+# a metamodel whose content is the collection structure, which KGX discards.
+KGX_DATABASES = ["Cell-KN-Ontologies", "Cell-KN-Phenotypes"]
+
+# Biolink provenance for the KGX export: NLM-CKN as the resource that provided
+# every node and aggregated every edge.  Not a registered infores CURIE.
+KGX_PROVENANCE = "infores:nlm-ckn"
+
+
+@task(name="export-kgx", log_prints=True)
+def export_kgx(kgx_dir: Path, arango_db_password: str) -> None:
+    """Export each database in ``KGX_DATABASES`` to a KGX TSV node/edge pair.
+
+    Writes ``<db>_nodes.tsv`` and ``<db>_edges.tsv`` per database into
+    ``kgx_dir`` — the names ``src/main/shell/upload-neo4j.sh`` expects.  The
+    TSV pair is engine-agnostic (it loads into Neo4j, ArangoDB, and Jena), but
+    it is a graph interchange artifact, not a restore path: KGX folds
+    collections into the ``category`` column and carries no indexes, analyzers,
+    views, or named-graph definitions.  Those live in the golden dump.
+
+    Provenance follows Biolink: nodes get ``provided_by`` and edges get
+    ``aggregator_knowledge_source`` set to ``KGX_PROVENANCE``, and each edge's
+    ``primary_knowledge_source`` and ``knowledge_source`` are copied verbatim
+    from its ``Source`` property (e.g. ``NS-Forest``, ``Open Targets``).
+    Without this KGX defaults provenance to the ArangoDB URI (an ephemeral
+    ``localhost`` port) on export, and to the input filename on load.
+
+    ``kgx_dir`` is cleared first so a re-run does not blend two exports.
+
+    Parameters
+    ----------
+    kgx_dir:
+        Destination directory for the TSV files.
+    arango_db_password:
+        ArangoDB root password.
+    """
+    # Drive the Transformer directly rather than via kgx.cli.cli_utils'
+    # arango_download: it offers no provenance settings and no hook between
+    # load and save, which the primary_knowledge_source copy needs.
+    from kgx.transformer import Transformer
+
+    logger = get_run_logger()
+    kgx_dir = Path(kgx_dir)
+    if kgx_dir.is_dir():
+        shutil.rmtree(kgx_dir)
+    kgx_dir.mkdir(parents=True)
+
+    uri = f"http://{ARANGO_DB_HOST}:{ARANGO_DB_PORT}"
+    for db in KGX_DATABASES:
+        logger.info(f"Exporting {db} to KGX TSV → {kgx_dir.relative_to(REPO_ROOT)}/")
+        transformer = Transformer(stream=False)
+        transformer.transform(
+            {
+                "uri": uri,
+                "database": db,
+                "username": "root",
+                "password": arango_db_password,
+                "format": "arangodb",
+                "all_collections": True,
+                "provided_by": KGX_PROVENANCE,
+                "aggregator_knowledge_source": KGX_PROVENANCE,
+            }
+        )
+        # The whole graph is in memory at this point; copy each edge's Source
+        # into the Biolink slots, and register the columns so the TSV sink,
+        # which fixes its columns up front, writes them.  knowledge_source is
+        # deprecated but must be written: KGX loaders (neo4j-upload,
+        # arangodb-upload, transform) fill a missing one with the input
+        # filename.
+        store = transformer.store
+        for *_, data in store.graph.edges(keys=True, data=True):
+            if data.get("Source"):
+                data["primary_knowledge_source"] = data["Source"]
+                data["knowledge_source"] = data["Source"]
+        store.edge_properties.update({"primary_knowledge_source", "knowledge_source"})
+        transformer.save(
+            {"filename": str(kgx_dir / db), "format": "tsv", "compression": None}
+        )
+    logger.info(f"KGX export complete: {len(list(kgx_dir.glob('*.tsv')))} TSV file(s)")
+
+
 @task(name="import-graphs-from-sidecar", log_prints=True)
 def import_graphs_from_sidecar(dump_dir: Path, arango_db_password: str) -> None:
     """Recreate named graphs from ``ckn-graphs.ndjson`` sidecars after a restore.
@@ -1003,6 +1086,50 @@ def sync_results_dump_from_s3(
     logger.info("Results dump restored from S3")
 
 
+@task(name="sync-golden-dump-from-s3", log_prints=True)
+def sync_golden_dump_from_s3(golden_dump_dir: Path, run_name: str) -> None:
+    """Restore the Phase 3 golden dump from S3 if it is not present locally.
+
+    Used by the standalone KGX export (``force_kgx`` with Phase 3 skipped),
+    which needs the golden state but may run on a host that never built it.
+    No-op when ``S3_BUCKET`` is empty or when the dump already exists locally.
+    """
+    logger = get_run_logger()
+    if not S3_BUCKET:
+        logger.info("S3_BUCKET not set — skipping golden dump restore (local mode)")
+        return
+    if Path(golden_dump_dir).is_dir():
+        logger.info(
+            f"Golden dump already present locally: {Path(golden_dump_dir).name}/"
+        )
+        return
+    s3_src = f"s3://{S3_BUCKET}/runs/{run_name}/06-golden-dump.tar.gz"
+    logger.info(
+        f"Downloading and extracting golden dump from {s3_src} (run={run_name})"
+    )
+    _s3_download_tar(s3_src, Path(golden_dump_dir))
+    logger.info("Golden dump restored from S3")
+
+
+@task(name="sync-kgx-to-s3", log_prints=True)
+def sync_kgx_to_s3(kgx_dir: Path, run_name: str = "") -> None:
+    """Push the KGX TSV export to ``runs/{run_name}/07-kgx.tar.gz`` in S3.
+
+    A separate task rather than part of ``promote_to_production`` because the
+    standalone KGX export (``force_kgx`` with Phase 3 skipped) must upload
+    too.  No-op when ``S3_BUCKET`` is empty.
+    """
+    logger = get_run_logger()
+    if not S3_BUCKET:
+        logger.info("S3_BUCKET not set — skipping KGX upload (local mode)")
+        return
+    run_name = run_name or os.getenv("CKN_RUN", "full")
+    s3_dest = f"s3://{S3_BUCKET}/runs/{run_name}/07-kgx.tar.gz"
+    logger.info(f"Compressing and uploading KGX export → {s3_dest}")
+    _s3_upload_tar(kgx_dir, s3_dest)
+    logger.info(f"KGX export uploaded to S3 (run={run_name})")
+
+
 @task(name="build-results-graph", log_prints=True)
 def build_results_graph(
     arango_db_password: str,
@@ -1263,6 +1390,7 @@ def nlm_ckn_etl(
     force_results: bool = False,
     run_archive: bool = False,
     force_archive: bool = False,
+    force_kgx: bool = False,
     java_opts: str = DEFAULT_JAVA_OPTS,
     run_name: str = "",
 ) -> None:
@@ -1283,11 +1411,12 @@ def nlm_ckn_etl(
     **Phase 3 — Production Handoff** (``run_archive``):
       Restore the results dump (when Phase 2 did not just run) → build the
       induced phenotype subgraph → create phenotype analyzers/views →
-      ``arangodump`` the golden state → sync all artifacts into
-      ``s3://${S3_BUCKET}/runs/<name>/`` (stages 02–06 + build-info.txt).
-      Skipped when the golden dump already exists unless ``force_archive=True``.
+      ``arangodump`` the golden state → export both databases to KGX TSV →
+      sync all artifacts into ``s3://${S3_BUCKET}/runs/<name>/`` (stages
+      02–07 + build-info.txt).  Skipped when the golden dump already exists
+      unless ``force_archive=True``.
 
-    At least one stage flag must be ``True``.
+    At least one stage flag (or ``force_kgx``) must be ``True``.
 
     Parameters
     ----------
@@ -1306,6 +1435,11 @@ def nlm_ckn_etl(
         unless the golden dump already exists.
     force_archive:
         Run Phase 3 even if its golden dump already exists, overwriting it.
+    force_kgx:
+        Export both databases to KGX TSV and upload ``07-kgx.tar.gz`` even
+        when Phase 3 is skipped.  In that case the golden dump is restored
+        (pulled from S3 if missing locally) and exported on its own; when
+        Phase 3 runs, the export already happens as part of it.
     java_opts:
         JVM flags passed to every Java invocation (default: ``DEFAULT_JAVA_OPTS``,
         currently ``-Xmx32g``).  Increase further if you get OOM-killed (exit 137).
@@ -1323,12 +1457,13 @@ def nlm_ckn_etl(
             force_results,
             run_archive,
             force_archive,
+            force_kgx,
         ]
     ):
         logger.warning(
             "No stage flags set — nothing to do.  Pass at least one of: "
             "run_ontology, force_ontology, run_results, force_results, "
-            "run_archive, force_archive."
+            "run_archive, force_archive, force_kgx."
         )
         return
 
@@ -1356,6 +1491,9 @@ def nlm_ckn_etl(
     results_dump_dir = REPO_ROOT / "data" / f"arangodump-results-{jar_key}-{run_name}"
     # Golden dump: written near the end of Phase 3; uploaded to production S3.
     golden_dump_dir = REPO_ROOT / "data" / f"arangodump-golden-{run_name}"
+    # KGX export: TSV node/edge pairs of the golden state, written in Phase 3
+    # (or standalone under force_kgx) and uploaded as 07-kgx.tar.gz.
+    kgx_dir = REPO_ROOT / "data" / f"kgx-{run_name}"
 
     # ── Phase 1: Upstream Build ────────────────────────────────────────────
     phase1_started_arangodb = False
@@ -1432,15 +1570,20 @@ def nlm_ckn_etl(
         )
         run_phase3 = False
 
+    # Phase 3 exports KGX itself; force_kgx only needs its own restore-and-export
+    # path when Phase 3 is skipped.
+    kgx_only = force_kgx and not run_phase3
+
     # ── Ensure ArangoDB is running for Phase 2/3 when Phase 1 didn't start it ──
     # Covers --run-results and/or --run-archive, and --run-ontology when the
     # baseline already existed and Phase 1 was a no-op.  Archive is included
     # because Phase 3 now restores the results dump into a fresh instance, so
     # archive-only no longer depends on Phase 2 having populated a live database.
+    # The standalone KGX export likewise restores the golden dump into it.
     if (
         ARANGO_DB_IS_LOCAL
         and not phase1_started_arangodb
-        and (run_phase2 or run_phase3)
+        and (run_phase2 or run_phase3 or kgx_only)
     ):
         # Stop and remove any running container BEFORE wiping.  Otherwise the
         # rmtree pulls the bind-mounted data dir out from under a live
@@ -1569,6 +1712,10 @@ def nlm_ckn_etl(
         dump_arangodb(golden_dump_dir, arango_db_password, label="golden")
         export_graphs_and_analyzers(golden_dump_dir, arango_db_password)
 
+        # Export the same golden state as engine-agnostic KGX TSV.
+        export_kgx(kgx_dir, arango_db_password)
+        sync_kgx_to_s3(kgx_dir, run_name=run_name)
+
         # Promote all production artifacts to a versioned S3 path.
         # The baseline dump is NOT re-uploaded here — it lives permanently at
         # s3://bucket/baselines/<jar_key>/ from the end of Phase 1.
@@ -1577,6 +1724,24 @@ def nlm_ckn_etl(
         )
 
         logger.info("Phase 3 complete")
+
+    # ── Standalone KGX export (force_kgx with Phase 3 skipped) ─────────────
+    if kgx_only:
+        logger.info("=== KGX export (golden dump) ===")
+        require_arangodb()
+        sync_golden_dump_from_s3(golden_dump_dir, run_name)
+        if not golden_dump_dir.is_dir():
+            raise RuntimeError(
+                f"Golden dump not found for run={run_name}: {golden_dump_dir.name}/\n"
+                "Run Phase 3 first (--run-archive) to build the golden dump, "
+                "then re-run with --force-kgx."
+            )
+        # A plain restore is enough: arango_download reads collections
+        # directly and needs neither named graphs nor analyzers/views.
+        restore_arangodb(golden_dump_dir, arango_db_password)
+        export_kgx(kgx_dir, arango_db_password)
+        sync_kgx_to_s3(kgx_dir, run_name=run_name)
+        logger.info(f"KGX export complete — {kgx_dir.name}/")
 
 
 # ── CLI entry point ────────────────────────────────────────────────────────
@@ -1641,6 +1806,15 @@ if __name__ == "__main__":
         help="Phase 3 (forced): run Phase 3 even if its golden dump exists.",
     )
     parser.add_argument(
+        "-K",
+        "--force-kgx",
+        action="store_true",
+        help=(
+            "Export both databases to KGX TSV and upload 07-kgx.tar.gz, even if "
+            "the golden dump already exists (restores it if Phase 3 is skipped)."
+        ),
+    )
+    parser.add_argument(
         "--java-opts",
         default=DEFAULT_JAVA_OPTS,
         help=(
@@ -1665,6 +1839,7 @@ if __name__ == "__main__":
         force_results=args.force_results,
         run_archive=args.run_archive,
         force_archive=args.force_archive,
+        force_kgx=args.force_kgx,
         java_opts=args.java_opts,
         run_name=args.run_name,
     )

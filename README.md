@@ -157,6 +157,13 @@ loaded into Neo4j via:
 ```
 $ ./upload-neo4j.sh
 ```
+Running `download-arangodb.sh` is not the only way to get the TSV files:
+each release publishes a prebuilt KGX TSV pair for both
+`Cell-KN-Ontologies` and `Cell-KN-Phenotypes` at
+`s3://${S3_BUCKET}/runs/{run}/07-kgx.tar.gz` (see
+`python/src/flows/README.md`). It is a graph interchange artifact, not a
+replacement for the golden dump: it carries no indexes, analyzers, views,
+or named-graph definitions.
 
 ### Apache Jena (TDB2)
 
