@@ -53,7 +53,7 @@ DEFAULT_JAVA_OPTS = "-Xmx32g"
 
 def _is_loopback(host: str) -> bool:
     """Return whether ``host`` names this machine."""
-    return host in ("localhost", "127.0.0.1", "::1", "")
+    return host in ("localhost", "127.0.0.1", "::1")
 
 
 def _resolve_arango_db_scheme(host: str, override: str) -> str:
@@ -62,17 +62,24 @@ def _resolve_arango_db_scheme(host: str, override: str) -> str:
     ``override`` (``ARANGO_DB_SCHEME``) wins when set.  Otherwise loopback is
     ``http`` — the local Docker container serves plain HTTP — and any other
     host is ``https``, so root credentials never cross the network in clear
-    unless someone deliberately sets ``ARANGO_DB_SCHEME=http``.
+    unless someone deliberately sets ``ARANGO_DB_SCHEME=http``.  ``https`` is
+    rejected for loopback because that container has no TLS listener.
     """
     scheme = override.strip().lower()
     if not scheme:
         return "http" if _is_loopback(host) else "https"
     if scheme not in ("http", "https"):
         raise ValueError(f"ARANGO_DB_SCHEME must be http or https, not {override!r}")
+    if scheme == "https" and _is_loopback(host):
+        raise ValueError(
+            f"ARANGO_DB_SCHEME=https is not supported for {host!r}: "
+            "the pipeline-managed local ArangoDB container serves plain HTTP"
+        )
     return scheme
 
 
-ARANGO_DB_HOST = os.getenv("ARANGO_DB_HOST", "localhost")
+# An empty ARANGO_DB_HOST means the default, never a URL like ``http://:8529``.
+ARANGO_DB_HOST = os.getenv("ARANGO_DB_HOST", "").strip() or "localhost"
 # Loopback is local: the start/dump/restore tasks manage a local Docker
 # container and must run for 127.0.0.1 and ::1, not just the literal "localhost".
 ARANGO_DB_IS_LOCAL = _is_loopback(ARANGO_DB_HOST)
