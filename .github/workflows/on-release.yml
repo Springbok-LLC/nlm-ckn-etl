@@ -16,6 +16,11 @@ name: On Release — Trigger ETL
 #   AWS_RELEASE_ROLE_ARN  — IAM role ARN to assume (batch:SubmitJob + s3:PutObject)
 #   AWS_REGION            — AWS region (e.g. us-east-1)
 #   S3_BUCKET             — S3 bucket for release artifacts
+#   DEPLOYMENTS_TOKEN     — PAT (Deployments read/write) that creates the GitHub
+#                           deployment. trigger-release.sh also verifies the PAT
+#                           the Batch job posts statuses with, which it reads from
+#                           Secrets Manager, so AWS_RELEASE_ROLE_ARN needs
+#                           secretsmanager:GetSecretValue on that secret.
 
 on:
   release:
@@ -69,6 +74,13 @@ jobs:
           GITHUB_DEPLOY_TOKEN: ${{ secrets.DEPLOYMENTS_TOKEN }}
           PIPELINE_IMAGE:      ${{ needs.build.outputs.pipeline_image }}
           S3_BUCKET:           ${{ secrets.S3_BUCKET }}
+        # trigger-release.sh skips the GitHub deployment when no token is set,
+        # and without one nothing downstream (UI bump, Neo4j image) ever runs.
+        # It checks both PATs itself before submitting.
         run: |
+          if [ -z "${GITHUB_DEPLOY_TOKEN}" ]; then
+            echo "::error::DEPLOYMENTS_TOKEN secret is not set: this release would never report its outcome. Nothing has been submitted."
+            exit 1
+          fi
           bash src/main/shell/trigger-release.sh \
             --run-name "${ETL_RELEASE_TAG}"

@@ -115,6 +115,83 @@ done
 # the tag, unless --run-name was given explicitly.
 RUN="${RUN_NAME:-${TAG#v}}"
 
+# ── GitHub PAT preflight ──────────────────────────────────────────────────────
+# Everything downstream of a release (bump-ui-etl-version.yml,
+# build-neo4j-image.yml, the failure issue) is driven by the deployment created
+# below and the statuses release.py posts to it. GitHub fires workflows for those
+# only because both are made with PATs, and a dead PAT used to fail silently: the
+# release ran for hours, logged 401s as warnings, and nothing downstream ever
+# ran. So when a deployment is requested, both PATs are checked here, before
+# anything is staged or submitted, and a bad one stops the release.
+_fail() {
+  if [[ "${GITHUB_ACTIONS:-}" == "true" ]]; then echo "::error::$*"; else echo "ERROR: $*" >&2; fi
+  exit 1
+}
+
+_warn() {
+  if [[ "${GITHUB_ACTIONS:-}" == "true" ]]; then echo "::warning::$*"; else echo "WARNING: $*" >&2; fi
+}
+
+# Fails unless GitHub accepts the token for this repo's deployments and it has
+# more than 2 days left (the Batch job may run up to 24 h after queueing); warns
+# at 14 days. Expiry comes from GitHub's github-authentication-token-expiration
+# response header, which is absent for tokens that never expire.
+_check_github_token() {  # <label> <token> <where to rotate it>
+  local label="$1" token="$2" rotate="$3" headers code expiry days
+  headers=$(mktemp "${TMPDIR:-/tmp}/trigger-headers-XXXXXX")
+  code=$(curl -sS -o /dev/null -D "${headers}" -w '%{http_code}' \
+    -H "Authorization: Bearer ${token}" \
+    -H "Accept: application/vnd.github+json" \
+    -H "X-GitHub-Api-Version: 2022-11-28" \
+    "https://api.github.com/repos/${GITHUB_REPOSITORY}/deployments?per_page=1") || code="000"
+  expiry=$(grep -i '^github-authentication-token-expiration:' "${headers}" | cut -d: -f2- | tr -d '\r' | sed 's/^ *//') || true
+  rm -f "${headers}"
+  case "${code}" in
+    200) ;;
+    401) _fail "GitHub rejected ${label} (HTTP 401 Bad credentials): the PAT has expired or been revoked. Rotate it (${rotate}) and re-run. Nothing has been submitted." ;;
+    403|404) _fail "${label} cannot read ${GITHUB_REPOSITORY} deployments (HTTP ${code}): the PAT needs Deployments read/write on that repo (${rotate}). Nothing has been submitted." ;;
+    *) _fail "Could not verify ${label} against the GitHub API (HTTP ${code}). Nothing has been submitted; re-run once GitHub is reachable." ;;
+  esac
+  [[ -z "${expiry}" ]] && { echo "[trigger-release] ${label}: OK (no expiry)"; return; }
+  days=$(EXPIRY="${expiry}" python3 -c '
+import os
+from datetime import datetime, timezone
+s = os.environ["EXPIRY"].replace(" UTC", " +0000")
+exp = datetime.strptime(s, "%Y-%m-%d %H:%M:%S %z")
+print(int((exp - datetime.now(timezone.utc)).total_seconds() // 86400))
+' 2>/dev/null) || { _warn "${label}: could not parse its expiry '${expiry}'"; return; }
+  if (( days < 2 )); then
+    _fail "${label} expires ${expiry}, less than 2 days away, and a release can run for 24 h in Batch. Rotate it now (${rotate}) and re-run. Nothing has been submitted."
+  elif (( days < 14 )); then
+    _warn "${label} expires ${expiry} (in ${days} days). Rotate it (${rotate}) before it silently stops releases from reaching the UI and Neo4j."
+  fi
+  echo "[trigger-release] ${label}: OK (expires ${expiry})"
+}
+
+if [[ -n "${GITHUB_DEPLOY_TOKEN:-}" ]]; then
+  : "${GITHUB_REPOSITORY:?GITHUB_REPOSITORY must be set to create a GitHub deployment}"
+  : "${GITHUB_REF_NAME:?GITHUB_REF_NAME (the release tag) must be set to create a GitHub deployment}"
+  _check_github_token "DEPLOYMENTS_TOKEN" "${GITHUB_DEPLOY_TOKEN}" \
+    "GitHub repo secret DEPLOYMENTS_TOKEN"
+
+  # The token release.py posts statuses with is whatever the job definition
+  # injects as GITHUB_TOKEN, so check exactly that secret.
+  GH_TOKEN_SECRET=$(aws batch describe-job-definitions \
+    --job-definition-name "${JOB_DEFINITION}" --status ACTIVE \
+    --query "jobDefinitions[0].containerProperties.secrets[?name=='GITHUB_TOKEN'].valueFrom | [0]" \
+    --output text)
+  if [[ -z "${GH_TOKEN_SECRET}" || "${GH_TOKEN_SECRET}" == "None" ]]; then
+    _fail "Job definition ${JOB_DEFINITION} injects no GITHUB_TOKEN (the batch stack's GithubTokenSecretArn is empty), so the release could never report its outcome. Nothing has been submitted."
+  fi
+  BATCH_GITHUB_TOKEN=$(aws secretsmanager get-secret-value --secret-id "${GH_TOKEN_SECRET}" \
+    --query SecretString --output text) \
+    || _fail "Cannot read ${GH_TOKEN_SECRET} to verify the Batch GitHub token: the caller needs secretsmanager:GetSecretValue on it (for on-release.yml, the ReleaseRole in nlm-ckn-iac etl/cloudformation/github-oidc.yaml). Nothing has been submitted."
+  [[ "${GITHUB_ACTIONS:-}" == "true" ]] && echo "::add-mask::${BATCH_GITHUB_TOKEN}"
+  _check_github_token "the Batch GITHUB_TOKEN (${GH_TOKEN_SECRET##*:secret:})" "${BATCH_GITHUB_TOKEN}" \
+    "Secrets Manager ${GH_TOKEN_SECRET}"
+  unset BATCH_GITHUB_TOKEN
+fi
+
 # ── Stage tarball to S3 if needed ────────────────────────────────────────────
 # HTTPS URLs are downloaded here (where GITHUB_TOKEN is available) and uploaded
 # to S3 so the Batch container never needs to reach GitHub directly.
@@ -232,7 +309,7 @@ PYEOF
     -H "Accept: application/vnd.github+json" \
     -H "X-GitHub-Api-Version: 2022-11-28" \
     "https://api.github.com/repos/${GITHUB_REPOSITORY}/deployments" \
-    -d "${DEPLOY_BODY}")
+    -d "${DEPLOY_BODY}") || true
   GITHUB_DEPLOYMENT_ID=$(python3 -c \
     "import sys,json; print(json.load(sys.stdin).get('id',''))" \
     <<< "${DEPLOY_RESPONSE}" 2>/dev/null) || true
@@ -246,7 +323,9 @@ PYEOF
       -d '{"state":"in_progress","description":"Batch job submitted"}' \
       > /dev/null 2>&1 || true
   else
-    echo "[trigger-release] Warning: could not create GitHub deployment (check GITHUB_TOKEN scope)" >&2
+    # Without a deployment nothing downstream of the release can run; stop here
+    # rather than submit a job that can never report back.
+    _fail "Could not create the GitHub deployment with DEPLOYMENTS_TOKEN (it needs Deployments read/write on ${GITHUB_REPOSITORY}). GitHub said: $(head -c 300 <<< "${DEPLOY_RESPONSE}" | tr '\n' ' '). The release.json upload above is harmless; no job has been submitted."
   fi
 fi
 

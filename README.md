@@ -171,6 +171,61 @@ $ tar -xzf 07-kgx.tar.gz --strip-components=1 -C arangodb-download
 It is a graph interchange artifact, not a replacement for the golden dump:
 it carries no indexes, analyzers, views, or named-graph definitions.
 
+Note that `upload-neo4j.sh` loads only `Cell-KN-Phenotypes`, while the
+read-only dataset image below loads `Cell-KN-Ontologies`.
+
+#### Read-only dataset image
+
+A run's KGX export can also be baked into a read-only Neo4j image,
+`nlm-ckn-etl-neo4j:<run>` in ECR, which the Neo4j ECS service in
+[nlm-ckn-iac](https://github.com/Springbok-LLC/nlm-ckn-iac)
+(`environment/services/neo4j`) serves on a VPC-internal Bolt endpoint with no
+authentication. The **Build Neo4j Dataset Image** workflow
+(`.github/workflows/build-neo4j-image.yml`) builds one automatically when a
+release reports success; to build one by hand (e.g. for a release tagged before
+that trigger existed), run it from `main` with the run name (e.g.
+`v1.7.0-rc.2`). The repository's tags are immutable, so a run that already has
+an image is skipped; a regenerated export needs a new run name.
+
+- The image loads **`Cell-KN-Ontologies` only**. Neo4j Community allows one
+  user database, and `Cell-KN-Phenotypes` is a strict subset of it (every
+  node id and every subject/predicate/object triple).
+- The store is built with `neo4j-admin database import full` (about 3 s for
+  v1.7.0-rc.2, vs. 95 s for `kgx neo4j-upload`) from CSV written by
+  [`KgxToNeo4jImport.py`](python/src/KgxToNeo4jImport.py). The graph model
+  matches `kgx neo4j-upload`: every node is labelled `biolink:NamedThing`
+  plus its `category` values (here collection names such as `CL` or `MONDO`),
+  there is a uniqueness constraint on `biolink:NamedThing.id`, and every other
+  column is a string property.
+- Relationship types are collection pairs such as `CHEMBL-MONDO`, which need
+  backticks in Cypher; the semantic predicate is in the `Label` property.
+  Property names containing spaces (e.g. `OBO foundry unique label`) need
+  backticks too:
+  ```
+  MATCH (d)-[r:`CHEMBL-MONDO`]->(m:MONDO)
+  WHERE r.Label = 'IS_SUBSTANCE_THAT_TREATS'
+  RETURN d.id, m.id, m.label LIMIT 10
+  ```
+- Server behaviour (no auth, read-only, memory limits, the LOAD CSV
+  blocklist) comes from the ECS task definition, not the image. The image
+  only puts the store at `/dataset` (not the `/data` volume) and points
+  `NEO4J_server_directories_data` at it.
+
+To build and run the image locally from an extracted `07-kgx.tar.gz` (see
+the [`Dockerfile`](src/main/docker/neo4j/Dockerfile); the workflow builds
+`linux/arm64` to match the ECS service, but any `--platform` works locally):
+```
+$ mkdir -p data/kgx-<run>
+$ tar -xzf 07-kgx.tar.gz --strip-components=1 -C data/kgx-<run>
+$ docker buildx build --platform linux/arm64 --load \
+    -f src/main/docker/neo4j/Dockerfile --build-context kgx=data/kgx-<run> \
+    -t nlm-ckn-etl-neo4j:<run> python/src
+$ docker run --rm -p 7474:7474 -p 7687:7687 \
+    -e NEO4J_AUTH=none \
+    -e NEO4J_server_databases_default__to__read__only=true \
+    nlm-ckn-etl-neo4j:<run>
+```
+
 ### Apache Jena (TDB2)
 
 An Apache Jena Fuseki docker image (with a TDB2 backend) can be downloaded

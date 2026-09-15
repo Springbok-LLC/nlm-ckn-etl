@@ -420,8 +420,9 @@ def post_github_deployment_status(*, state: str, description: str) -> None:
     """POST a deployment status to the GitHub Deployments API.
 
     Reads ``GITHUB_TOKEN``, ``GITHUB_REPOSITORY``, and ``GITHUB_DEPLOYMENT_ID``
-    from the environment.  Silently no-ops if any are absent or the request
-    fails, so a notification error never masks the real pipeline outcome.
+    from the environment.  Never raises, so a notification error never masks
+    the real pipeline outcome: it no-ops if any are absent, and logs a failed
+    request (an ERROR, with the recovery command, when the token is rejected).
 
     Parameters
     ----------
@@ -469,10 +470,26 @@ def post_github_deployment_status(*, state: str, description: str) -> None:
         resp = urllib.request.urlopen(req, timeout=10)
         _log.info("GitHub deployment status posted: HTTP %s", resp.status)
     except urllib.error.HTTPError as exc:
-        _log.warning(
-            "GitHub deployment status update failed: HTTP %s — %s",
-            exc.code, exc.read().decode(),
-        )
+        body = exc.read().decode()
+        if exc.code in (401, 403):
+            # trigger-release.sh verifies this token before submitting, so this
+            # means it was revoked (or its access changed) mid-run. Say exactly
+            # what was lost and how to get it back: everything downstream of the
+            # release is driven by these statuses.
+            _log.error(
+                "GitHub rejected GITHUB_TOKEN (HTTP %s — %s): the PAT has been revoked "
+                "or lost access. The '%s' status was NOT posted, so nothing that "
+                "listens for it will run (bump-ui-etl-version.yml, "
+                "build-neo4j-image.yml, the release-failure issue). After rotating "
+                "the token's Secrets Manager secret, re-post it with a PAT (a status "
+                "posted with the Actions token triggers nothing): gh api "
+                "repos/%s/deployments/%s/statuses -f state=%s -f environment=production",
+                exc.code, body.strip(), state, repo, deployment_id, state,
+            )
+        else:
+            _log.warning(
+                "GitHub deployment status update failed: HTTP %s — %s", exc.code, body,
+            )
     except Exception as exc:
         _log.warning("GitHub deployment status update failed: %s", exc)
 

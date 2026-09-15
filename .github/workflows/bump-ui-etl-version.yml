@@ -50,7 +50,11 @@ name: Bump nlm-ckn-ui ETL_VERSION
 # is created by trigger-release.sh with DEPLOYMENTS_TOKEN, and the statuses are
 # posted by release.py with the PAT from Secrets Manager. Swapping either to the
 # Actions token silently disables this workflow -- check it first if releases
-# stop bumping the UI.
+# stop bumping the UI. An expired or revoked PAT did the same (v1.7.0-rc.2's
+# statuses all got 401s), so trigger-release.sh now checks both PATs before a
+# release starts, and release.py logs a rejected token as an ERROR with the
+# command to re-post the lost status. build-neo4j-image.yml depends on the same
+# chain.
 
 on:
   deployment_status:

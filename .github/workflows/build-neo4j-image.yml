@@ -1,0 +1,197 @@
+name: Build Neo4j Dataset Image
+
+# Bakes one ETL run's KGX export (s3://$S3_BUCKET/runs/<run>/07-kgx.tar.gz)
+# into a read-only Neo4j image (src/main/docker/neo4j/Dockerfile) and pushes
+# it to the nlm-ckn-etl-neo4j ECR repo as <repo>:<run>. The ECS service in
+# nlm-ckn-iac (environment/services/neo4j) pins that tag as DatasetVersion.
+#
+# The repo's tags are IMMUTABLE, so a run whose tag already exists is skipped
+# (successfully). A regenerated export must be published under a new run name.
+#
+# Triggers:
+#   deployment_status — automatic: when a release reports success (release.py
+#                       posts it, see trigger-release.sh), builds the run named
+#                       in the deployment's payload.run_name. The run executes
+#                       this file as of the release tag, so releases tagged
+#                       before this trigger existed never fire it.
+#   workflow_dispatch — manual, from main: first build, or a release whose
+#                       success status never arrived.
+#   workflow_call     — from another workflow running at main or a tag.
+# The role trusts only this file at refs/heads/main or refs/tags/*, so any
+# other branch fails at "Configure AWS credentials". A caller must grant
+# id-token: write.
+#
+# deployment_status events fire only because PATs create the deployment and its
+# statuses (see "Known limitation 2" in bump-ui-etl-version.yml). If either PAT
+# is dead, this workflow simply never runs, so trigger-release.sh checks both
+# before a release starts.
+#
+# Required GitHub secrets:
+#   AWS_NEO4J_BUILD_ROLE_ARN — Neo4jBuildRoleArn output of nlm-ckn-etl-github-oidc
+#                              (push to the neo4j repo, read runs/*/07-kgx.tar.gz)
+#   S3_BUCKET                — ETL data bucket (SSM /nlm-ckn/shared/arangodb-bucket-name)
+#   ECR_STACK_NAME           — optional; CloudFormation ECR stack (default: nlm-ckn-etl-ecr)
+
+on:
+  deployment_status:
+  workflow_dispatch:
+    inputs:
+      run:
+        description: 'ETL run name: reads runs/<run>/07-kgx.tar.gz and tags the image <run> (e.g. v1.7.0-rc.2)'
+        required: true
+        type: string
+  workflow_call:
+    inputs:
+      run:
+        description: 'ETL run name: reads runs/<run>/07-kgx.tar.gz and tags the image <run>'
+        required: true
+        type: string
+    outputs:
+      image:
+        description: "Full ECR URI of the dataset image (pushed now, or already present)"
+        value: ${{ jobs.build-and-push.outputs.image }}
+    secrets:
+      AWS_NEO4J_BUILD_ROLE_ARN:
+        required: true
+      S3_BUCKET:
+        required: true
+      ECR_STACK_NAME:
+        required: false
+
+permissions:
+  contents: read
+
+jobs:
+  build-and-push:
+    name: Build and push ${{ inputs.run || github.event.deployment.payload.run_name }}
+    # Releases only report to Springbok-LLC (the role trusts nothing else), and
+    # only a production deployment's terminal success status means the run's
+    # 07-kgx.tar.gz exists; in_progress/failure/error/inactive are ignored.
+    if: >-
+      github.repository_owner == 'Springbok-LLC' &&
+      (
+        github.event_name != 'deployment_status' ||
+        (
+          github.event.deployment.environment == 'production' &&
+          github.event.deployment_status.state == 'success'
+        )
+      )
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      id-token: write   # required for OIDC role assumption
+      contents: read
+    outputs:
+      image: ${{ steps.ecr.outputs.image }}
+    env:
+      RUN: ${{ inputs.run || github.event.deployment.payload.run_name }}
+
+    steps:
+      # Same pattern as DatasetVersion in neo4j.yaml: a valid ECR tag that is
+      # also safe as an S3 key segment. A missing payload.run_name means the
+      # deployment came from an old trigger-release.sh; never guess from the ref.
+      - name: Validate run name
+        run: |
+          if [ -z "$RUN" ]; then
+            echo "::error::No run name: dispatch with the run input, or check the deployment's payload.run_name."
+            exit 1
+          fi
+          if [[ ! "$RUN" =~ ^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$ ]]; then
+            echo "::error::run must match ^[A-Za-z0-9][A-Za-z0-9._-]{0,127}\$ (it is also the image tag)"
+            exit 1
+          fi
+
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5  # v4
+        with:
+          persist-credentials: false
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@7474bc4690e29a8392af63c5b98e7449536d5c3a  # v4
+        with:
+          role-to-assume: ${{ secrets.AWS_NEO4J_BUILD_ROLE_ARN }}
+          aws-region: us-east-1
+
+      - name: Resolve ECR repository URI from CloudFormation
+        id: ecr
+        env:
+          ECR_STACK: ${{ secrets.ECR_STACK_NAME }}
+        run: |
+          STACK="${ECR_STACK:-nlm-ckn-etl-ecr}"
+
+          URI=$(aws cloudformation describe-stacks \
+            --stack-name "${STACK}" \
+            --query "Stacks[0].Outputs[?OutputKey=='Neo4jRepositoryUri'].OutputValue" \
+            --output text)
+
+          if [ -z "$URI" ]; then
+            echo "ERROR: CloudFormation stack '${STACK}' missing output: Neo4jRepositoryUri" >&2
+            exit 1
+          fi
+
+          {
+            echo "registry=${URI%%/*}"
+            echo "repository=${URI#*/}"
+            echo "image=${URI}:${RUN}"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Check whether the tag already exists
+        id: existing
+        env:
+          REPOSITORY: ${{ steps.ecr.outputs.repository }}
+          IMAGE: ${{ steps.ecr.outputs.image }}
+        run: |
+          ERR="${RUNNER_TEMP}/describe-images.err"
+          if DIGEST=$(aws ecr describe-images \
+                --repository-name "${REPOSITORY}" \
+                --image-ids imageTag="${RUN}" \
+                --query 'imageDetails[0].imageDigest' \
+                --output text 2>"${ERR}"); then
+            echo "::notice::${IMAGE} already exists (${DIGEST}); tags are immutable, nothing to build."
+            echo "exists=true" >> "$GITHUB_OUTPUT"
+          elif grep -q ImageNotFoundException "${ERR}"; then
+            echo "exists=false" >> "$GITHUB_OUTPUT"
+          else
+            cat "${ERR}" >&2
+            exit 1
+          fi
+
+      - name: Download the KGX export
+        if: steps.existing.outputs.exists == 'false'
+        env:
+          S3_BUCKET: ${{ secrets.S3_BUCKET }}
+        run: |
+          : "${S3_BUCKET:?S3_BUCKET secret is not set}"
+          aws s3 cp --only-show-errors \
+            "s3://${S3_BUCKET}/runs/${RUN}/07-kgx.tar.gz" "${RUNNER_TEMP}/07-kgx.tar.gz"
+          mkdir "${RUNNER_TEMP}/kgx"
+          tar -xzf "${RUNNER_TEMP}/07-kgx.tar.gz" --strip-components=1 -C "${RUNNER_TEMP}/kgx"
+          ls -l "${RUNNER_TEMP}/kgx"
+
+      - name: Log in to ECR
+        if: steps.existing.outputs.exists == 'false'
+        env:
+          REGISTRY: ${{ steps.ecr.outputs.registry }}
+          AWS_REGION: us-east-1
+        run: |
+          aws ecr get-login-password --region "${AWS_REGION}" \
+            | docker login --username AWS --password-stdin "${REGISTRY}"
+
+      - name: Set up Docker Buildx
+        if: steps.existing.outputs.exists == 'false'
+        uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f  # v3
+
+      # The import runs on the amd64 runner ($BUILDPLATFORM stages); the arm64
+      # stage only copies the store in, so no QEMU is needed. provenance=false
+      # pushes a plain image manifest rather than an index with an attestation.
+      # No layer cache: every run's dataset layer is new.
+      - name: Build and push
+        if: steps.existing.outputs.exists == 'false'
+        uses: docker/build-push-action@ca052bb54ab0790a636c9b5f226502c73d547a25  # v5
+        with:
+          context: python/src
+          file: src/main/docker/neo4j/Dockerfile
+          build-contexts: kgx=${{ runner.temp }}/kgx
+          platforms: linux/arm64
+          provenance: false
+          push: true
+          tags: ${{ steps.ecr.outputs.image }}
