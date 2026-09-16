@@ -35,11 +35,16 @@ public class ArangoDbUtilities {
     public final ArangoDB arangoDB;
 
     /**
+     * Hosts naming this machine, where ArangoDB serves plain HTTP by default
+     */
+    private static final Set<String> LOOPBACK_HOSTS = Set.of("localhost", "127.0.0.1", "::1");
+
+    /**
      * Build the ArangoDB instance specified in the system environment.
      */
     public ArangoDbUtilities() {
         Map<String, String> env = System.getenv();
-        arangoDB = new ArangoDB.Builder().host(env.get("ARANGO_DB_HOST"), Integer.parseInt(env.get("ARANGO_DB_PORT"))).user(env.get("ARANGO_DB_USER")).password(env.get("ARANGO_DB_PASSWORD")).build();
+        arangoDB = new ArangoDB.Builder().host(env.get("ARANGO_DB_HOST"), Integer.parseInt(env.get("ARANGO_DB_PORT"))).useSsl(useSsl(env)).user(env.get("ARANGO_DB_USER")).password(env.get("ARANGO_DB_PASSWORD")).build();
     }
 
     /**
@@ -48,7 +53,25 @@ public class ArangoDbUtilities {
      * @param env Environment map
      */
     public ArangoDbUtilities(Map<String, String> env) {
-        arangoDB = new ArangoDB.Builder().host(env.get("ARANGO_DB_HOST"), Integer.parseInt(env.get("ARANGO_DB_PORT"))).user(env.get("ARANGO_DB_USER")).password(env.get("ARANGO_DB_PASSWORD")).build();
+        arangoDB = new ArangoDB.Builder().host(env.get("ARANGO_DB_HOST"), Integer.parseInt(env.get("ARANGO_DB_PORT"))).useSsl(useSsl(env)).user(env.get("ARANGO_DB_USER")).password(env.get("ARANGO_DB_PASSWORD")).build();
+    }
+
+    /**
+     * Whether to connect over TLS. An explicit ARANGO_DB_SCHEME wins (the
+     * pipeline always sets it; see python/src/flows/_common.py). Otherwise
+     * http for a loopback or unset ARANGO_DB_HOST, where the local container
+     * serves plain HTTP, and https for any other host.
+     *
+     * @param env Environment map
+     * @return True if the resolved scheme is https
+     */
+    public static boolean useSsl(Map<String, String> env) {
+        String scheme = env.get("ARANGO_DB_SCHEME");
+        if (scheme != null && !scheme.isBlank()) {
+            return "https".equalsIgnoreCase(scheme.strip());
+        }
+        String host = env.get("ARANGO_DB_HOST");
+        return !(host == null || host.isBlank() || LOOPBACK_HOSTS.contains(host.strip()));
     }
 
     /**

@@ -5,6 +5,8 @@ import networkx as nx
 import nx_arangodb as nxadb
 from arango import ArangoClient
 
+from ArangoDbUtilities import arango_scheme, arango_url
+
 
 MAX_DEPTH = 10
 
@@ -394,6 +396,7 @@ def build_induced_subgraph(
 if __name__ == "__main__":
     ARANGO_DB_HOST = os.getenv("ARANGO_DB_HOST", "")
     ARANGO_DB_PORT = os.getenv("ARANGO_DB_PORT", "")
+    ARANGO_DB_SCHEME = arango_scheme(ARANGO_DB_HOST)
     ARANGO_DB_USER = os.getenv("ARANGO_DB_USER", "")
     ARANGO_DB_PASSWORD = os.getenv("ARANGO_DB_PASSWORD", "")
     ARANGO_ONTOLOGY_DB_NAME = os.getenv("ARANGO_ONTOLOGY_DB_NAME", "")
@@ -401,7 +404,9 @@ if __name__ == "__main__":
     ARANGO_ONTOLOGY_GRAPH_NAME = os.getenv("ARANGO_ONTOLOGY_GRAPH_NAME", "")
     ARANGO_PHENOTYPE_GRAPH_NAME = os.getenv("ARANGO_PHENOTYPE_GRAPH_NAME", "")
 
-    client = ArangoClient(hosts=f"http://{ARANGO_DB_HOST}:{ARANGO_DB_PORT}")
+    client = ArangoClient(
+        hosts=arango_url(ARANGO_DB_SCHEME, ARANGO_DB_HOST, ARANGO_DB_PORT)
+    )
 
     sys_db = client.db("_system", username=ARANGO_DB_USER, password=ARANGO_DB_PASSWORD)
 

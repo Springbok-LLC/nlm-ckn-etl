@@ -50,7 +50,7 @@ class ExportKgxTestCase(unittest.TestCase):
         self.repo_root = Path(tmp.name)
         self.kgx_dir = self.repo_root / "data" / "kgx-1.2.3"
 
-    def _call(self, port=54321, edges=None):
+    def _call(self, port=54321, edges=None, host="127.0.0.1", scheme="http"):
         """Run export_kgx against a mocked Transformer; return one mock per database.
 
         ``edges`` is the ``(u, v, key, data)`` list each database's in-memory
@@ -69,8 +69,9 @@ class ExportKgxTestCase(unittest.TestCase):
 
         with patch("pipeline.get_run_logger", return_value=_noop_logger()), \
              patch("pipeline.REPO_ROOT", self.repo_root), \
-             patch("pipeline.ARANGO_DB_HOST", "127.0.0.1"), \
-             patch("pipeline.ARANGO_DB_PORT", port), \
+             patch("_common.ARANGO_DB_HOST", host), \
+             patch("_common.ARANGO_DB_PORT", port), \
+             patch("_common.ARANGO_DB_SCHEME", scheme), \
              patch("kgx.transformer.Transformer", side_effect=make_transformer):
             export_kgx.fn(self.kgx_dir, "secret")
         return transformers
@@ -90,6 +91,12 @@ class ExportKgxTestCase(unittest.TestCase):
             self.assertEqual(config["format"], "arangodb")
             self.assertEqual((config["username"], config["password"]), ("root", "secret"))
             self.assertIs(config["all_collections"], True)
+
+    def test_reads_remote_host_over_https(self):
+        """A remote host is read with the scheme _common resolved for it."""
+        transformers = self._call(host="10.0.1.5", scheme="https")
+        for config in self._source_configs(transformers):
+            self.assertEqual(config["uri"], "https://10.0.1.5:54321")
 
     def test_writes_upload_neo4j_basenames(self):
         """Saves TSV to <kgx_dir>/<db>, which the sink suffixes with _nodes/_edges."""
