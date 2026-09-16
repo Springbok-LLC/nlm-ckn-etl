@@ -1,12 +1,15 @@
 name: Build Neo4j Dataset Image
 
-# Bakes one ETL run's KGX export (s3://$S3_BUCKET/runs/<run>/07-kgx.tar.gz)
-# into a read-only Neo4j image (src/main/docker/neo4j/Dockerfile) and pushes
-# it to the nlm-ckn-etl-neo4j ECR repo as <repo>:<run>. The ECS service in
-# nlm-ckn-iac (environment/services/neo4j) pins that tag as DatasetVersion.
+# Bakes the Cell-KN-Ontologies database of one ETL run's golden ArangoDB dump
+# (s3://$S3_BUCKET/runs/<run>/06-golden-dump.tar.gz) into a read-only Neo4j
+# image (src/main/docker/neo4j/Dockerfile) and pushes it to the
+# nlm-ckn-etl-neo4j ECR repo as <repo>:<run>. The ECS service in nlm-ckn-iac
+# (environment/services/neo4j) pins that tag as DatasetVersion. Building from
+# the dump, not the KGX export, keeps Neo4j identical to an ArangoDB restored
+# from the same dump.
 #
 # The repo's tags are IMMUTABLE, so a run whose tag already exists is skipped
-# (successfully). A regenerated export must be published under a new run name.
+# (successfully). A regenerated dump must be published under a new run name.
 #
 # Triggers:
 #   deployment_status — automatic: when a release reports success (release.py
@@ -28,7 +31,7 @@ name: Build Neo4j Dataset Image
 #
 # Required GitHub secrets:
 #   AWS_NEO4J_BUILD_ROLE_ARN — Neo4jBuildRoleArn output of nlm-ckn-etl-github-oidc
-#                              (push to the neo4j repo, read runs/*/07-kgx.tar.gz)
+#                              (push to the neo4j repo, read runs/*/06-golden-dump.tar.gz)
 #   S3_BUCKET                — ETL data bucket (SSM /nlm-ckn/shared/arangodb-bucket-name)
 #   ECR_STACK_NAME           — optional; CloudFormation ECR stack (default: nlm-ckn-etl-ecr)
 
@@ -37,13 +40,13 @@ on:
   workflow_dispatch:
     inputs:
       run:
-        description: 'ETL run name: reads runs/<run>/07-kgx.tar.gz and tags the image <run> (e.g. v1.7.0-rc.2)'
+        description: 'ETL run name: reads runs/<run>/06-golden-dump.tar.gz and tags the image <run> (e.g. v1.7.0-rc.2)'
         required: true
         type: string
   workflow_call:
     inputs:
       run:
-        description: 'ETL run name: reads runs/<run>/07-kgx.tar.gz and tags the image <run>'
+        description: 'ETL run name: reads runs/<run>/06-golden-dump.tar.gz and tags the image <run>'
         required: true
         type: string
     outputs:
@@ -66,7 +69,7 @@ jobs:
     name: Build and push ${{ inputs.run || github.event.deployment.payload.run_name }}
     # Releases only report to Springbok-LLC (the role trusts nothing else), and
     # only a production deployment's terminal success status means the run's
-    # 07-kgx.tar.gz exists; in_progress/failure/error/inactive are ignored.
+    # 06-golden-dump.tar.gz exists; in_progress/failure/error/inactive are ignored.
     if: >-
       github.repository_owner == 'Springbok-LLC' &&
       (
@@ -155,17 +158,21 @@ jobs:
             exit 1
           fi
 
-      - name: Download the KGX export
+      # Only Cell-KN-Ontologies is imported (see the Dockerfile). The tarball's
+      # top directory is arangodump-golden-<run>/ (pipeline.py), so a run whose
+      # layout differs fails here rather than building from the wrong files.
+      - name: Download the golden dump
         if: steps.existing.outputs.exists == 'false'
         env:
           S3_BUCKET: ${{ secrets.S3_BUCKET }}
         run: |
           : "${S3_BUCKET:?S3_BUCKET secret is not set}"
           aws s3 cp --only-show-errors \
-            "s3://${S3_BUCKET}/runs/${RUN}/07-kgx.tar.gz" "${RUNNER_TEMP}/07-kgx.tar.gz"
-          mkdir "${RUNNER_TEMP}/kgx"
-          tar -xzf "${RUNNER_TEMP}/07-kgx.tar.gz" --strip-components=1 -C "${RUNNER_TEMP}/kgx"
-          ls -l "${RUNNER_TEMP}/kgx"
+            "s3://${S3_BUCKET}/runs/${RUN}/06-golden-dump.tar.gz" "${RUNNER_TEMP}/06-golden-dump.tar.gz"
+          mkdir "${RUNNER_TEMP}/dump"
+          tar -xzf "${RUNNER_TEMP}/06-golden-dump.tar.gz" --strip-components=2 -C "${RUNNER_TEMP}/dump" \
+            "arangodump-golden-${RUN}/Cell-KN-Ontologies"
+          du -sh "${RUNNER_TEMP}/dump"
 
       - name: Log in to ECR
         if: steps.existing.outputs.exists == 'false'
@@ -180,17 +187,18 @@ jobs:
         if: steps.existing.outputs.exists == 'false'
         uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f  # v3
 
-      # The import runs on the amd64 runner ($BUILDPLATFORM stages); the arm64
-      # stage only copies the store in, so no QEMU is needed. provenance=false
-      # pushes a plain image manifest rather than an index with an attestation.
-      # No layer cache: every run's dataset layer is new.
+      # The conversion and import run on the amd64 runner ($BUILDPLATFORM
+      # stages); the arm64 stage only copies the store in, so no QEMU is
+      # needed. provenance=false pushes a plain image manifest rather than an
+      # index with an attestation. No layer cache: every run's dataset layer
+      # is new.
       - name: Build and push
         if: steps.existing.outputs.exists == 'false'
         uses: docker/build-push-action@ca052bb54ab0790a636c9b5f226502c73d547a25  # v5
         with:
           context: python/src
           file: src/main/docker/neo4j/Dockerfile
-          build-contexts: kgx=${{ runner.temp }}/kgx
+          build-contexts: dump=${{ runner.temp }}/dump
           platforms: linux/arm64
           provenance: false
           push: true

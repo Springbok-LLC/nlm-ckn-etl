@@ -176,27 +176,45 @@ read-only dataset image below loads `Cell-KN-Ontologies`.
 
 #### Read-only dataset image
 
-A run's KGX export can also be baked into a read-only Neo4j image,
+A run's golden ArangoDB dump is also baked into a read-only Neo4j image,
 `nlm-ckn-etl-neo4j:<run>` in ECR, which the Neo4j ECS service in
 [nlm-ckn-iac](https://github.com/Springbok-LLC/nlm-ckn-iac)
 (`environment/services/neo4j`) serves on a VPC-internal Bolt endpoint with no
 authentication. The **Build Neo4j Dataset Image** workflow
-(`.github/workflows/build-neo4j-image.yml`) builds one automatically when a
-release reports success; to build one by hand (e.g. for a release tagged before
-that trigger existed), run it from `main` with the run name (e.g.
-`v1.7.0-rc.2`). The repository's tags are immutable, so a run that already has
-an image is skipped; a regenerated export needs a new run name.
+(`.github/workflows/build-neo4j-image.yml`) builds one from
+`runs/{run}/06-golden-dump.tar.gz` automatically when a release reports
+success; to build one by hand (e.g. for a release tagged before that trigger
+existed), run it from `main` with the run name (e.g. `v1.7.0-rc.2`). The
+repository's tags are immutable, so a run that already has an image is
+skipped; a regenerated dump needs a new run name.
 
 - The image loads **`Cell-KN-Ontologies` only**. Neo4j Community allows one
   user database, and `Cell-KN-Phenotypes` is a strict subset of it (every
   node id and every subject/predicate/object triple).
-- The store is built with `neo4j-admin database import full` (about 3 s for
-  v1.7.0-rc.2, vs. 95 s for `kgx neo4j-upload`) from CSV written by
-  [`KgxToNeo4jImport.py`](python/src/KgxToNeo4jImport.py). The graph model
-  matches `kgx neo4j-upload`: every node is labelled `biolink:NamedThing`
-  plus its `category` values (here collection names such as `CL` or `MONDO`),
-  there is a uniqueness constraint on `biolink:NamedThing.id`, and every other
-  column is a string property.
+- It is built from the dump, not the KGX export, so it holds exactly what an
+  ArangoDB restored from the same dump holds: one relationship per edge
+  document (KGX keeps one edge per subject, collection and object, dropping
+  parallel edges that differ only by `Label`), node ids from `_id` (KGX
+  prefers the `id` annotation, which can be stale), and lists kept as lists
+  (KGX joins them with `|`).
+- The store is built with `neo4j-admin database import full` (about 10 s
+  for v1.7.0-rc.2) from CSV written by
+  [`ArangoDumpToNeo4jImport.py`](python/src/ArangoDumpToNeo4jImport.py), and
+  the build fails if the store's node or relationship count differs from
+  the dump's. The graph model:
+  - A node's `id` is its `_id` with `/` replaced by `:` (`HP/0012871` is
+    `HP:0012871`), with a uniqueness constraint on `biolink:NamedThing.id`.
+    Its own `id` attribute, copied from `oboInOwl:id`, is kept as
+    `oboInOwl_id`.
+  - Every node is labelled with its collection (e.g. `CL` or `MONDO`) and
+    `biolink:NamedThing`, and has `category` (the same two values) and
+    `provided_by` (`infores:nlm-ckn`).
+  - Every other field is a property, a `string[]` if it is a list in any
+    document of its collection and a string otherwise. Field names with `:`
+    use `_` instead.
+  - Relationships carry their edge document's fields, `id` (the edge's
+    `_id`), and the Biolink provenance slots the KGX export derives from
+    `Source`.
 - Relationship types are collection pairs such as `CHEMBL-MONDO`, which need
   backticks in Cypher; the semantic predicate is in the `Label` property.
   Property names containing spaces (e.g. `OBO foundry unique label`) need
@@ -211,14 +229,18 @@ an image is skipped; a regenerated export needs a new run name.
   only puts the store at `/dataset` (not the `/data` volume) and points
   `NEO4J_server_directories_data` at it.
 
-To build and run the image locally from an extracted `07-kgx.tar.gz` (see
-the [`Dockerfile`](src/main/docker/neo4j/Dockerfile); the workflow builds
-`linux/arm64` to match the ECS service, but any `--platform` works locally):
+To build and run the image locally (see the
+[`Dockerfile`](src/main/docker/neo4j/Dockerfile); the workflow builds
+`linux/arm64` to match the ECS service, but any `--platform` works locally),
+point the `dump` build context at the run's `Cell-KN-Ontologies` dump
+directory. A local pipeline run leaves it in `data/arangodump-golden-<run>/`;
+otherwise extract it from the run's `06-golden-dump.tar.gz`:
 ```
-$ mkdir -p data/kgx-<run>
-$ tar -xzf 07-kgx.tar.gz --strip-components=1 -C data/kgx-<run>
-$ docker buildx build --platform linux/arm64 --load \
-    -f src/main/docker/neo4j/Dockerfile --build-context kgx=data/kgx-<run> \
+$ aws s3 cp "s3://${S3_BUCKET}/runs/<run>/06-golden-dump.tar.gz" .
+$ tar -xzf 06-golden-dump.tar.gz -C data arangodump-golden-<run>/Cell-KN-Ontologies
+$ docker buildx build --platform linux/arm64 --provenance=false --load \
+    -f src/main/docker/neo4j/Dockerfile \
+    --build-context dump=data/arangodump-golden-<run>/Cell-KN-Ontologies \
     -t nlm-ckn-etl-neo4j:<run> python/src
 $ docker run --rm -p 7474:7474 -p 7687:7687 \
     -e NEO4J_AUTH=none \

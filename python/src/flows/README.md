@@ -172,8 +172,8 @@ s3://{S3_BUCKET}/
 | `runs/{run}/02-external.tar.gz` | `pipeline.py` Phase 3 | audit / manual restore |
 | `runs/{run}/03-obo.tar.gz` | `pipeline.py` Phase 3 | audit / manual restore |
 | `runs/{run}/05-tuples.tar.gz` | `pipeline.py` Phase 2 | audit / manual restore |
-| `runs/{run}/06-golden-dump.tar.gz` | `pipeline.py` Phase 3 | production ArangoDB restore, `pipeline.py` `--force-kgx` |
-| `runs/{run}/07-kgx.tar.gz` | `pipeline.py` Phase 3 (or `--force-kgx`) | `nlm-ckn-ui` / manual Neo4j+Jena+ArangoDB load, `build-neo4j-image.yml` (Neo4j dataset image) |
+| `runs/{run}/06-golden-dump.tar.gz` | `pipeline.py` Phase 3 | production ArangoDB restore, `pipeline.py` `--force-kgx`, `build-neo4j-image.yml` (Neo4j dataset image) |
+| `runs/{run}/07-kgx.tar.gz` | `pipeline.py` Phase 3 (or `--force-kgx`) | `nlm-ckn-ui` / manual Neo4j+Jena+ArangoDB load |
 | `runs/{run}/build-info.txt` | `pipeline.py` Phase 3 | audit |
 
 ---
