@@ -4768,13 +4768,13 @@ prefixmaps = ">=0.2.0,<0.3.0"
 
 [[package]]
 name = "kgx"
-version = "0.0.0.post1932.dev0+1a709dd"
+version = "0.0.1"
 description = "A Python library and set of command line utilities for exchanging Knowledge Graphs (KGs) that conform to or are aligned to the Biolink Model."
 optional = false
 python-versions = "<4,>=3.10"
 groups = ["main"]
 files = [
-    {file = "kgx-0.0.0.post1932.dev0+1a709dd-py3-none-any.whl", hash = "sha256:9fb0da0508e113cd1ef38863899d34b40b4e47141779cbb8445da4751eae9265"},
+    {file = "kgx-0.0.1-py3-none-any.whl", hash = "sha256:e1a4e46ab6faf4a27a177c99ffc6608d33b38d28f73a32b207029a2179b44b9b"},
 ]
 
 [package.dependencies]
@@ -4813,7 +4813,7 @@ validators = ">=0.20.0,<1.0.0"
 
 [package.source]
 type = "url"
-url = "https://github.com/rogermyung/kgx/releases/download/v0.0.0/kgx-0.0.0.post1932.dev0+1a709dd-py3-none-any.whl"
+url = "https://github.com/rogermyung/kgx/releases/download/v0.0.1/kgx-0.0.1-py3-none-any.whl"
 
 [[package]]
 name = "kiwisolver"
@@ -12259,4 +12259,4 @@ type = ["pytest-mypy (>=1.0.1) ; platform_python_implementation != \"PyPy\""]
 [metadata]
 lock-version = "2.1"
 python-versions = ">=3.10,<3.13"
-content-hash = "d001c00c2c89b8bcfe8c811908755f53d1286ab50c6a21b592351eec46e8fc14"
+content-hash = "6e4cdb76beb09343d0420087c1c187eca81c5f179735b836eed599b30cb14557"
