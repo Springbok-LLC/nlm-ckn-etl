@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 set -euo pipefail
+: "${NEO4J_PASSWORD:?NEO4J_PASSWORD must be set (see .env.example)}"
 : "${ARANGO_PHENOTYPE_DB_NAME:?ARANGO_PHENOTYPE_DB_NAME must be set (see .env.example)}"
 kgx neo4j-upload \
     -l bolt://localhost:7687 \

@@ -59,6 +59,7 @@ data/arangodb/
 
 data/external*/
 data/jena/
+data/kgx-*/
 data/neo4j/
 data/obo/
 data/results*/
