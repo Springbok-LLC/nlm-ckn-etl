@@ -11,7 +11,7 @@
 # external/ always sees a complete, validated snapshot.
 #
 # Required environment variables:
-#   S3_BUCKET    — S3 bucket name (e.g. cell-kn-arangodb-data-952291113202)
+#   S3_BUCKET    — S3 bucket name (e.g. nlm-ckn-arangodb-data-952291113202)
 #   NCBI_EMAIL   — NCBI E-Utilities email address
 #   NCBI_API_KEY — NCBI E-Utilities API key
 set -euo pipefail

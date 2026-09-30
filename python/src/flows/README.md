@@ -149,6 +149,7 @@ s3://{S3_BUCKET}/
         ├── 03-obo.tar.gz            # OWL ontology files
         ├── 05-tuples.tar.gz         # Tuple JSON files
         ├── 06-golden-dump.tar.gz    # Final ArangoDB dump (production artifact)
+        ├── 07-kgx.tar.gz            # KGX TSV node/edge pairs of both databases
         ├── build-info.txt           # Version metadata (date, commit, fetch info)
         ├── {tarball}                # Release tarball staged by trigger-release.sh
         ├── release.json             # Release config staged by trigger-release.sh
@@ -171,7 +172,8 @@ s3://{S3_BUCKET}/
 | `runs/{run}/02-external.tar.gz` | `pipeline.py` Phase 3 | audit / manual restore |
 | `runs/{run}/03-obo.tar.gz` | `pipeline.py` Phase 3 | audit / manual restore |
 | `runs/{run}/05-tuples.tar.gz` | `pipeline.py` Phase 2 | audit / manual restore |
-| `runs/{run}/06-golden-dump.tar.gz` | `pipeline.py` Phase 3 | production ArangoDB restore |
+| `runs/{run}/06-golden-dump.tar.gz` | `pipeline.py` Phase 3 | production ArangoDB restore, `pipeline.py` `--force-kgx` |
+| `runs/{run}/07-kgx.tar.gz` | `pipeline.py` Phase 3 (or `--force-kgx`) | `nlm-ckn-ui` / manual Neo4j+Jena+ArangoDB load |
 | `runs/{run}/build-info.txt` | `pipeline.py` Phase 3 | audit |
 
 ---

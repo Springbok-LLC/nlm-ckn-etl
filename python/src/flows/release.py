@@ -468,6 +468,7 @@ def nlm_ckn_release(
             force_results=True,
             run_archive=True,
             force_archive=True,
+            force_kgx=True,
             java_opts=java_opts,
             run_name=run_name,
         )
