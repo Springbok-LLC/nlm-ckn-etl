@@ -5,16 +5,42 @@ import random
 
 from arango import ArangoClient
 
+
+def is_loopback_host(host):
+    """Return whether ``host`` names this machine."""
+    return host in ("localhost", "127.0.0.1", "::1")
+
+
+def arango_scheme(host):
+    """Return ``ARANGO_DB_SCHEME`` if set, else ``http`` only for loopback.
+
+    The local container serves plain HTTP; any other host defaults to
+    ``https`` so root credentials never cross the network in clear.
+    """
+    return os.getenv("ARANGO_DB_SCHEME") or (
+        "http" if is_loopback_host(host) else "https"
+    )
+
+
+def arango_url(scheme, host, port):
+    """Return the ArangoDB base URL, bracketing an IPv6 literal ``host``."""
+    if ":" in host:
+        host = f"[{host}]"
+    return f"{scheme}://{host}:{port}"
+
+
 def _client():
     """Build an ArangoDB client from the environment at call time.
 
-    Connection settings are read from ``ARANGO_DB_HOST``/``ARANGO_DB_PORT``
-    on each call rather than at import, so callers that assign the port
-    dynamically (e.g. the Prefect pipeline) connect to the live endpoint.
+    Connection settings are read from ``ARANGO_DB_SCHEME``/``ARANGO_DB_HOST``/
+    ``ARANGO_DB_PORT`` on each call rather than at import, so callers that
+    assign the port dynamically (e.g. the Prefect pipeline) connect to the
+    live endpoint.  The pipeline always sets the scheme (see
+    ``flows/_common.py``); see ``arango_scheme`` for the standalone default.
     """
     host = os.getenv("ARANGO_DB_HOST", "localhost")
     port = os.getenv("ARANGO_DB_PORT", "8529")
-    return ArangoClient(hosts=f"http://{host}:{port}")
+    return ArangoClient(hosts=arango_url(arango_scheme(host), host, port))
 
 
 def _sys_db():
