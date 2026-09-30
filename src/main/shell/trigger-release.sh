@@ -227,12 +227,17 @@ print(json.dumps({
 }))
 PYEOF
   )
-  DEPLOY_RESPONSE=$(curl -s -X POST \
+  # Capture the HTTP status alongside the body (trailing line, split back off
+  # below) so an auth failure can be diagnosed and reported precisely instead
+  # of just "id was missing".
+  DEPLOY_RAW=$(curl -s -w $'\n%{http_code}' -X POST \
     -H "Authorization: Bearer ${GITHUB_DEPLOY_TOKEN}" \
     -H "Accept: application/vnd.github+json" \
     -H "X-GitHub-Api-Version: 2022-11-28" \
     "https://api.github.com/repos/${GITHUB_REPOSITORY}/deployments" \
     -d "${DEPLOY_BODY}")
+  DEPLOY_HTTP="${DEPLOY_RAW##*$'\n'}"
+  DEPLOY_RESPONSE="${DEPLOY_RAW%$'\n'*}"
   GITHUB_DEPLOYMENT_ID=$(python3 -c \
     "import sys,json; print(json.load(sys.stdin).get('id',''))" \
     <<< "${DEPLOY_RESPONSE}" 2>/dev/null) || true
@@ -246,7 +251,17 @@ PYEOF
       -d '{"state":"in_progress","description":"Batch job submitted"}' \
       > /dev/null 2>&1 || true
   else
-    echo "[trigger-release] Warning: could not create GitHub deployment (check GITHUB_TOKEN scope)" >&2
+    # NOT fatal: the release itself does not depend on deployment tracking, so
+    # this must not block the Batch job submission below. But it must not be a
+    # quiet stderr line either -- it disables the entire downstream chain
+    # (bump-ui-etl-version.yml, and release.py's own failure-issue filing) with
+    # no other signal. ::error:: makes it a red, top-of-run annotation in
+    # Actions even though the step (and release) still succeeds.
+    if [[ "${DEPLOY_HTTP}" == "401" || "${DEPLOY_HTTP}" == "403" ]]; then
+      echo "::error::trigger-release: DEPLOYMENTS_TOKEN was rejected (HTTP ${DEPLOY_HTTP}) creating the GitHub deployment -- the PAT is likely expired or revoked. Proceeding with the release WITHOUT deployment tracking: bump-ui-etl-version.yml will not fire for this run, and a failed release will not open an issue. Rotate DEPLOYMENTS_TOKEN and re-run trigger-release.sh (or re-dispatch) once fixed."
+    else
+      echo "::error::trigger-release: could not create a GitHub deployment (HTTP ${DEPLOY_HTTP}): ${DEPLOY_RESPONSE}. Proceeding with the release WITHOUT deployment tracking: bump-ui-etl-version.yml will not fire for this run, and a failed release will not open an issue."
+    fi
   fi
 fi
 

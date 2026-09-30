@@ -57,11 +57,12 @@ jobs:
               f"?environment=production&ref={ref}&per_page=100"
           )
           if not raw:
-              print("ERROR: failed to list deployments (check DEPLOYMENTS_TOKEN permissions)", file=sys.stderr)
+              print("::error::Failed to list deployments -- DEPLOYMENTS_TOKEN is likely invalid, expired, or missing deployments:write scope.", file=sys.stderr)
               sys.exit(1)
           deploys = json.loads(raw)
 
           deleted = 0
+          failed = 0
           for d in deploys:
               dep_id = d["id"]
 
@@ -78,6 +79,7 @@ jobs:
                   )
                   if result is None:
                       print(f"  Deployment {dep_id}: could not mark inactive, skipping delete", file=sys.stderr)
+                      failed += 1
                       continue
                   print(f"  Deployment {dep_id}: marked inactive (was {latest})")
 
@@ -90,6 +92,14 @@ jobs:
                   deleted += 1
               else:
                   print(f"  Deployment {dep_id}: delete failed", file=sys.stderr)
+                  failed += 1
 
           print(f"Done. Deleted {deleted} deployment(s).")
+          # Per-deployment failures above were previously swallowed: the loop
+          # always reached this point and exited 0. A run that fails partway
+          # through -- e.g. DEPLOYMENTS_TOKEN expiring mid-run -- must show up
+          # as a failed job, not a quiet stderr line.
+          if failed:
+              print(f"::error::{failed} deployment operation(s) failed -- see stderr above. Check that DEPLOYMENTS_TOKEN is still valid.")
+              sys.exit(1)
           PYEOF
