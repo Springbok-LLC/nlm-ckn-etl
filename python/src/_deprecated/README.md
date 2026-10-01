@@ -46,6 +46,7 @@ which reports a fuller run of the same comparison.
 |---|---|
 | `HuBMAPTupleWriter.py` | September 2026 |
 | `UberonHuBMAPAuditor.py` | September 2026 (never ran in production) |
+| `InducedGraphBuilder.py` | September 2026 (never ran in production) |
 
 `HuBMAPTupleWriter` asserted `AnatomicalStructure part_of AnatomicalStructure`
 edges over UBERON terms, read from the HuBMAP CCF ASCT+B tables. It was the
@@ -75,12 +76,33 @@ place (`DataFetcher.HuBMAPFetcher`, `release.json` → `hubmap_urls.txt`), so th
 input data is still downloaded. The auditor additionally needs `openpyxl`,
 which is not a declared dependency.
 
+`InducedGraphBuilder.py` is a Python implementation of the same BFS-plus-
+hierarchy-walk induced subgraph build that `gov.nih.nlm.InducedSubgraphBuilder`
+and `InducedSubgraphFinder` (Java) perform: multi-source BFS from `CS` out to
+`MAX_DEPTH`, skipping `IGNORED_COLLECTIONS`, then backfilling ontology
+hierarchy ancestors per `HIERARCHY_CONFIG`. It was never wired into
+`flows/pipeline.py` — the Java version is, and is what every release has
+actually run. Its own config had drifted out of sync with the Java version's
+(for example it still listed GO as a "walk" hierarchy strategy after GO was
+excluded from the induced graph entirely in the Java version;
+Springbok-LLC/nlm-ckn-etl#119) with nothing to catch the drift, since nothing
+ran it.
+
+**To revive it:** move the module back to `src/`, reconcile its
+`IGNORED_COLLECTIONS`/`HIERARCHY_CONFIG` against the current
+`InducedSubgraphFinder.java`, and wire a call into `flows/pipeline.py`'s
+Phase 3 in place of (or alongside, for comparison) the Java
+`InducedSubgraphBuilder` invocation. It depends on `networkx`, `nx_arangodb`,
+and `python-arango`, and reads via `nx_arangodb`/`ArangoClient` rather than
+the JGraphT-based loader the Java version uses.
+
 **To run the archived tests**, point `pytest` at them explicitly — the default
 run skips this directory:
 
 ```
 poetry run pytest tests/_deprecated/HuBMAPTupleWriterTestCase.py \
-                  tests/_deprecated/UberonHuBMAPAuditorTestCase.py
+                  tests/_deprecated/UberonHuBMAPAuditorTestCase.py \
+                  tests/_deprecated/InducedGraphBuilderTestCase.py
 ```
 
 ## Comparison: Old vs New (2026-04-03)

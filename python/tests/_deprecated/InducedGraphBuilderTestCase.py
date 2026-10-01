@@ -2,7 +2,13 @@ from pathlib import Path
 import sys
 import unittest
 
-sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
+# The module itself was retired to src/_deprecated/ and is self-contained (no
+# imports from live src/). src/ is still needed on the path: the session-wide
+# conftest fixture that mocks BioMart resolves LoaderUtilities regardless of
+# which test file is running.
+_PYTHON_ROOT = Path(__file__).parent.parent.parent
+sys.path.insert(0, str(_PYTHON_ROOT / "src"))
+sys.path.insert(0, str(_PYTHON_ROOT / "src" / "_deprecated"))
 
 import networkx as nx
 
