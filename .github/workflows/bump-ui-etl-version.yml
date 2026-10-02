@@ -103,10 +103,15 @@ jobs:
       )
     runs-on: ubuntu-latest
     # deployments: read is for the freshness check below, which reads THIS
-    # repo's production deployments with the Actions token.
+    # repo's production deployments with the Actions token. issues: write is
+    # for the failure-report step at the end of this job, which (like
+    # report-failure below) needs its own grant -- job permissions aren't
+    # shared across jobs, so report-failure's issues: write does not cover
+    # this job's Actions token.
     permissions:
       contents: read
       deployments: read
+      issues: write
     env:
       SIBLING_REPO: Springbok-LLC/nlm-ckn-ui
       SIBLING_PATH: ETL_VERSION
@@ -375,6 +380,48 @@ jobs:
           gh api "repos/$SIBLING_REPO/issues/$PR_NUM/labels" \
             -f "labels[]=automated-sync" >/dev/null 2>&1 || \
             echo "::notice::Could not add 'automated-sync' label (non-fatal)."
+
+      # This job's own failure (as opposed to a release failure reported by
+      # release.py, handled by report-failure below) is otherwise invisible:
+      # the trigger is a deployment_status event with no human actor to email,
+      # so a red job here can go unnoticed indefinitely -- e.g. this is exactly
+      # how a COLLECTION_MAPS_SYNC_TOKEN expiry would go silent. Uses the
+      # Actions token, not the PAT, since a PAT failure is what this reports.
+      - name: Report a failure of this job
+        if: failure()
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          THIS_REPO: ${{ github.repository }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          set -euo pipefail
+          TITLE="🚨 bump-ui-etl-version.yml: bump job is failing"
+          export TITLE
+
+          # Unquoted heredoc so $RUN_URL expands; literal backticks are escaped.
+          cat > "$RUNNER_TEMP/issue_body.md" <<EOF
+          The \`bump\` job in \`bump-ui-etl-version.yml\` failed. See [this run]($RUN_URL).
+
+          This job pins nlm-ckn-ui's \`ETL_VERSION\` after a successful production release. The most common cause is \`COLLECTION_MAPS_SYNC_TOKEN\` (the PAT used for cross-repo checkout/push/PR, shared with sync-collection-maps.yml) being expired, revoked, or missing \`contents:write\` + \`pull_requests:write\` on \`Springbok-LLC/nlm-ckn-ui\` — check that first.
+
+          Until this is fixed, successful ETL releases will **not** be reflected in nlm-ckn-ui, with no other signal that this happened.
+
+          _Filed automatically by \`bump-ui-etl-version.yml\` because this job failed._
+          EOF
+          BODY="$(cat "$RUNNER_TEMP/issue_body.md")"
+
+          MATCHES=$(gh api --paginate -X GET "repos/$THIS_REPO/issues" \
+            -F state=open -F per_page=100 \
+            --jq '[.[] | select(.pull_request == null) | select(.title == env.TITLE) | .number] | .[0] // empty')
+          EXISTING="${MATCHES%%$'\n'*}"
+
+          if [ -n "$EXISTING" ]; then
+            gh api "repos/$THIS_REPO/issues/$EXISTING/comments" -f body="$BODY" >/dev/null
+            echo "::notice::Commented on existing job-failure issue #$EXISTING."
+          else
+            ISSUE_NUM=$(gh api "repos/$THIS_REPO/issues" -f title="$TITLE" -f body="$BODY" --jq '.number')
+            echo "::notice::Opened job-failure issue #$ISSUE_NUM."
+          fi
 
   # -- Failure path: report a dead release as an issue on this repo ------------
   report-failure:
