@@ -103,10 +103,15 @@ jobs:
       )
     runs-on: ubuntu-latest
     # deployments: read is for the freshness check below, which reads THIS
-    # repo's production deployments with the Actions token.
+    # repo's production deployments with the Actions token. issues: write is
+    # for the failure-report step at the end of this job, which (like
+    # report-failure below) needs its own grant -- job permissions aren't
+    # shared across jobs, so report-failure's issues: write does not cover
+    # this job's Actions token.
     permissions:
       contents: read
       deployments: read
+      issues: write
     env:
       SIBLING_REPO: Springbok-LLC/nlm-ckn-ui
       SIBLING_PATH: ETL_VERSION
