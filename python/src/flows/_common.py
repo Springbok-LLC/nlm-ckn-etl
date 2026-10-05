@@ -78,7 +78,9 @@ def _resolve_arango_db_scheme(host: str, override: str) -> str:
 
 
 # An empty ARANGO_DB_HOST means the default, never a URL like ``http://:8529``.
-ARANGO_DB_HOST = os.getenv("ARANGO_DB_HOST", "").strip() or "localhost"
+# Hostnames are case-insensitive, so lowercase once here and ``LOCALHOST`` is
+# classified as loopback below.
+ARANGO_DB_HOST = os.getenv("ARANGO_DB_HOST", "").strip().lower() or "localhost"
 # Loopback is local: the start/dump/restore tasks manage a local Docker
 # container and must run for 127.0.0.1 and ::1, not just the literal "localhost".
 ARANGO_DB_IS_LOCAL = _is_loopback(ARANGO_DB_HOST)

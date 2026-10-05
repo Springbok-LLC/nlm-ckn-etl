@@ -7,8 +7,8 @@ from arango import ArangoClient
 
 
 def is_loopback_host(host):
-    """Return whether ``host`` names this machine."""
-    return host in ("localhost", "127.0.0.1", "::1")
+    """Return whether ``host`` names this machine, ignoring case."""
+    return host.lower() in ("localhost", "127.0.0.1", "::1")
 
 
 def arango_scheme(host):

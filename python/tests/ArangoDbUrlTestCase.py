@@ -53,7 +53,7 @@ class ArangoDbSchemeTestCase(unittest.TestCase):
 
     def test_loopback_hosts_default_to_http(self):
         """The local Docker container serves plain HTTP."""
-        for host in ("localhost", "127.0.0.1", "::1"):
+        for host in ("localhost", "LocalHost", "127.0.0.1", "::1"):
             with self.subTest(host=host):
                 self.assertEqual(_load_common(ARANGO_DB_HOST=host).ARANGO_DB_SCHEME, "http")
         self.assertEqual(_load_common().arango_db_url(), "http://localhost:8529")
@@ -109,6 +109,7 @@ class ArangoUrlTestCase(unittest.TestCase):
         cases = [
             ({}, "http://localhost:8529"),
             ({"ARANGO_DB_HOST": "127.0.0.1"}, "http://127.0.0.1:8529"),
+            ({"ARANGO_DB_HOST": "LOCALHOST"}, "http://LOCALHOST:8529"),
             ({"ARANGO_DB_HOST": "10.0.1.5"}, "https://10.0.1.5:8529"),
             ({"ARANGO_DB_HOST": "10.0.1.5", "ARANGO_DB_SCHEME": "http"}, "http://10.0.1.5:8529"),
             ({"ARANGO_DB_HOST": "10.0.1.5", "ARANGO_DB_SCHEME": " HTTP "}, "http://10.0.1.5:8529"),
