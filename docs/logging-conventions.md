@@ -25,7 +25,7 @@ name here is the `snake_case` form (`arangodb_ready`).
    | --- | --- |
    | `_started` | A unit of work began. Always paired with a `_finished` or `_failed`. |
    | `_finished` | The unit completed. Carries `duration_ms` and counts. |
-   | `_failed` | The unit did not complete. Carries `error_type` and `error`. |
+   | `_failed` | The unit did not complete. Carries `error_type` and `error` when an exception caused it; otherwise a `reason` (section 5) and the measurement, `rc` or `status_code`. |
    | `_skipped` | The unit was deliberately not run. Carries `reason`. |
    | `_loaded`, `_written`, `_created`, ... | A completed action with a result. |
 
@@ -96,7 +96,7 @@ Never log secrets: log whether a variable is set, not its value.
 
 | Level | Use |
 | --- | --- |
-| `ERROR` | The unit failed, or data was lost. Every raise on a failure path is preceded by one `*_failed` ERROR with `error_type` and `error`. |
+| `ERROR` | The unit failed, or data was lost. Every raise on a failure path is preceded by one `*_failed` ERROR that meets the `_failed` contract in section 1. |
 | `WARN` | Degraded but continuing: a fallback was used, a source returned partial data, a retry happened, or a destructive step ran. |
 | `INFO` | One line per completed unit of work. The default view of a run. |
 | `DEBUG` | Per-item detail and progress. Off in production. |
@@ -140,6 +140,7 @@ For `records_rejected` and `*_skipped` and `*_failed` lines. Lowercase
 | `not_found` | An expected input or artifact is absent |
 | `rate_limited` | The upstream returned HTTP 429 |
 | `http_error` | The upstream returned a non-success status; add `status_code` |
+| `nonzero_exit` | A subprocess exited with a non-zero `rc` |
 
 ## 6. Message vocabulary
 
@@ -160,7 +161,7 @@ reports give the source line each name replaces.
 | `phase_skipped` | INFO | `phase`, `reason`, `force` |
 | `subprocess_started` | INFO | `phase`, `script` or `main_class`, `java_opts` |
 | `subprocess_finished` | INFO | `phase`, `rc`, `duration_ms` |
-| `subprocess_failed` | ERROR | `phase`, `rc`, `duration_ms`; note `rc=137` as out of memory |
+| `subprocess_failed` | ERROR | `phase`, `reason=nonzero_exit`, `rc`, `duration_ms`; note `rc=137` as out of memory |
 | `source_versions_resolved` | INFO | `source`, `source_version` per source |
 
 ### Fetch (`DataFetcher`, `fetch.py`, `_common.py`)
@@ -188,18 +189,18 @@ reports give the source line each name replaces.
 | `cache_entries_cleared` | INFO | `records_out`, `files_touched` |
 | `external_source_empty` | ERROR | `file`, `source` |
 | `external_files_validated` | INFO | `files_ok`, `bytes` |
-| `hubmap_download_failed` | ERROR | `organ`, `version`, `status_code`, `url` |
+| `hubmap_download_failed` | ERROR | `organ`, `version`, `reason=http_error`, `status_code`, `url` |
 | `hubmap_table_removed` | WARN | `path`, `reason` |
 | `hubmap_urls_unresolved` | WARN | `n_failed`, `failures` |
 | `hubmap_no_urls_configured` | WARN | |
 | `results_dir_unreadable` | ERROR | `results_dir`, `error` |
 | `no_nsforest_results` | ERROR | `results_dir` |
-| `dataset_ids_failed` | ERROR | `error` |
-| `gene_context_failed` | ERROR | `error` |
-| `pubmed_fetch_failed` | WARN | `pmid`, `status_code` |
+| `dataset_ids_failed` | ERROR | `error_type`, `error` |
+| `gene_context_failed` | ERROR | `error_type`, `error` |
+| `pubmed_fetch_failed` | WARN | `pmid`, `reason=http_error`, `status_code` |
 | `gene_search_empty` | WARN | `name` |
-| `gene_search_failed` | WARN | `name`, `status_code` |
-| `gene_fetch_failed` | WARN | `gene_id`, `status_code` |
+| `gene_search_failed` | WARN | `name`, `reason=http_error`, `status_code` |
+| `gene_fetch_failed` | WARN | `gene_id`, `reason=http_error`, `status_code` |
 | `uniprot_http_error` | ERROR | `url`, `status_code`, `body` |
 
 ### Transform and tuple writers
@@ -208,33 +209,33 @@ reports give the source line each name replaces.
 | --- | --- | --- |
 | `transform_finished` | INFO | `source`, `input_path`, `output_path`, `records_in`, `records_out`, `records_rejected`, `duration_ms` |
 | `transform_skipped_up_to_date` | INFO | `source`, `input_mtime`, `output_mtime` |
-| `gene_parse_failed` | WARN | `gene_id`, `error` |
+| `gene_parse_failed` | WARN | `gene_id`, `error_type`, `error` |
 | `tuple_writer_started` | INFO | `source`, `input_path`, `records_in` |
 | `tuple_writer_dataset` | INFO | `file`, `records_in`, `records_rejected`, `tuples_out` |
 | `tuple_writers_finished` | INFO | `duration_ms`, `tuples_out` per writer |
 | `input_missing` | ERROR | `input`, `path` (the writer then raises) |
 | `tuples_written` | INFO | `output_path`, `records_out`, `records_rejected`, `deduped_removed`, `duration_ms` |
 | `records_rejected` | WARN | `source`, `reason`, `records_rejected`, `sample` (a short list of ids) |
-| `string_list_parse_failed` | WARN | `value`, `error`; aggregate to a count |
+| `string_list_parse_failed` | WARN | `value`, `error_type`, `error`; aggregate to a count |
 | `gene_mapping_loaded` | INFO | `source` (`local`, `s3`, `biomart`), `path` or `uri`, `age_hours`, `records_out`, `reason` |
 | `gene_mapping_cached` | INFO | `uri` |
-| `gene_mapping_cache_failed` | WARN | `error` |
+| `gene_mapping_cache_failed` | WARN | `error_type`, `error` |
 | `gene_mapping_s3_error` | WARN | `error` |
-| `biomart_retry` | WARN | `attempt`, `max_retries`, `delay_s`, `error` |
+| `biomart_retry` | WARN | `attempt`, `max_retries`, `wait_s`, `error` |
 | `gene_ids_collected` | INFO | `kind` (`ensembl`, `entrez`), `records_in`, `records_out`, `records_rejected` |
 | `gene_names_collected` | INFO | `n_files`, `records_out` |
 | `uberon_root_missing` | WARN | `path` or `organ` |
 | `summary_organ_missing` | WARN | |
 | `summary_missing` | WARN | `results_file` |
 | `results_missing_vs_manifest` | WARN | `file`, `results_dir` |
-| `manifest_check_failed` | WARN | `error` |
+| `manifest_check_failed` | WARN | `error_type`, `error` |
 | `results_uuid_added` | INFO | `file`, `rows` |
 
 ### Ontology and graph load (Java and Python)
 
 | Message | Level | Fields |
 | --- | --- | --- |
-| `ontology_downloaded` | INFO | `ontology`, `version_new`, `url`, `http_status`, `bytes`, `duration_ms` |
+| `ontology_downloaded` | INFO | `ontology`, `version_new`, `url`, `status_code`, `bytes`, `duration_ms` |
 | `ontology_updated` | INFO | `ontology`, `version_prev`, `version_new`, `archived_to` |
 | `ontology_unchanged` | INFO | `ontology`, `version_cur`, `version_new` |
 | `ontology_version_not_found` | WARN | `file` |
@@ -254,7 +255,7 @@ reports give the source line each name replaces.
 | `edges_updated` | INFO | `records_in`, `records_out`, `duration_ms` |
 | `edges_inserted` | INFO | `collection`, `records_in`, `records_out`, `records_rejected`, `duration_ms` |
 | `edges_dropped_by_label_filter` | WARN | `edge_collection`, `records_rejected`, `label_counts` |
-| `insert_failed` | ERROR | `collection`, `key`, `error`; first few only, then the summary |
+| `insert_failed` | ERROR | `collection`, `key`, `error_type`, `error`; first few only, then the summary |
 | `edge_skipped` | WARN | `records_rejected`, `reason=unrecognized_collection` |
 | `tuples_file_processed` | INFO | `tuples_file`, `records_in`, `records_rejected`, `duration_ms` |
 | `tuples_files_not_found` | ERROR | `pattern`, `dir` |
@@ -275,7 +276,7 @@ reports give the source line each name replaces.
 | `arangodb_ready` | INFO | `port`, `duration_ms` |
 | `arangodb_endpoint_resolved` | INFO | `mode`, `host`, `port`, `container_id` |
 | `arangodb_data_wiped` | INFO | `kind`, `volume` or `path` |
-| `arangodb_volume_removal_failed` | WARN | `volume`, `error` |
+| `arangodb_volume_removal_failed` | WARN | `volume`, `error_type`, `error` |
 | `docker_unreachable` | WARN | |
 | `arangodump_finished` | INFO | `dump_label`, `file_count`, `bytes`, `rc`, `duration_ms` |
 | `arangorestore_finished` | INFO | `dump_label`, `rc`, `duration_ms` |
@@ -285,7 +286,7 @@ reports give the source line each name replaces.
 | `graph_dropped` | WARN | `database`, `graph` |
 | `graph_recreated` | INFO | `database`, `graph` |
 | `graph_already_present` | INFO | `database`, `graph` |
-| `graph_recreate_failed` | ERROR | `database`, `graph`, `http_status` |
+| `graph_recreate_failed` | ERROR | `database`, `graph`, `reason=http_error`, `status_code` |
 | `graph_sidecars_exported` | INFO | `database`, `graph_count`, `analyzer_count` |
 | `analyzers_and_views_created` | INFO | `database`, `duration_ms` |
 | `view_link_skipped` | WARN | `collection`, `database` |
@@ -313,12 +314,12 @@ reports give the source line each name replaces.
 | `results_promoted_to_latest` | INFO | `objects_copied`; WARN when 0 |
 | `release_config_saved` | INFO | `path` |
 | `release_step_failed` | ERROR | `step`, `error_type`, `error`, `retry_command` |
-| `release_promotion_failed` | ERROR | `release_tag`, `error` |
+| `release_promotion_failed` | ERROR | `release_tag`, `error_type`, `error` |
 | `release_finished` | INFO | `release_tag`, `run_name`, `duration_ms`, `force_fetch`, per-step durations |
-| `github_status_posted` | INFO | `state`, `http_status` |
+| `github_status_posted` | INFO | `state`, `status_code` |
 | `github_status_skipped` | WARN | `missing_vars` |
-| `github_status_failed` | WARN | `state`, `http_status`, `error` |
-| `arango_password_fetch_failed` | ERROR | `secret_id`, `error` |
+| `github_status_failed` | WARN | `state`, `reason=http_error`, `status_code` |
+| `arango_password_fetch_failed` | ERROR | `secret_id`, `error_type`, `error` |
 
 ### Validation
 

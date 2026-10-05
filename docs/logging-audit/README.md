@@ -21,18 +21,29 @@ been re-verified line by line.
 
 ## Totals
 
-| Surface | Sites | Keep | Merge | Demote | Drop | Re-level |
-| --- | --- | --- | --- | --- | --- | --- |
-| Java | 118 | 48 | 37 | 15 | 18 | (about 40 become WARN or ERROR) |
-| Python scripts | 191 | 71 | 53 | 12 | 55 | (about 20 `WARNING:`/`ERROR:` prefixes become real levels) |
-| Prefect flows | 160 | 64 | 40 | 7 | 36 | 13 |
-| **Total** | **469** | **183** | **130** | **34** | **109** | |
+Each site gets one verdict: Keep, Merge, Demote or Drop. A fifth verdict,
+Re-level, appears only in the flows report, where a site that is kept but
+logged at a different level is counted on its own. The Java and Python reports
+instead count those sites under Keep and note the level change separately, so
+their Re-level figures overlap the other columns and are not part of the
+totals.
 
-A mechanical conversion would carry over about 470 lines. After the audit about
-310 remain: 183 kept, plus roughly 130 merges collapsing into about 40 to 50
-summary lines. The 109 drops are mostly `"="*70` banners, `Getting X` and
-`Creating X` per-call chatter, "Running X" lines that duplicate the flow, and
-per-item "could not find" lines that become one `records_rejected` count.
+| Surface | Sites | Keep | Merge | Demote | Drop | Re-level (own verdict) | Level changes (overlap) |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| Java | 118 | 48 | 37 | 15 | 18 | 0 | about 40 become WARN or ERROR |
+| Python scripts | 191 | 71 | 53 | 12 | 55 | 0 | about 20 `WARNING:`/`ERROR:` prefixes become real levels |
+| Prefect flows | 160 | 64 | 40 | 7 | 36 | 13 | 13 |
+| **Total** | **469** | **183** | **130** | **34** | **109** | **13** | |
+
+The columns sum to the site count: 183 + 130 + 34 + 109 + 13 = 469.
+
+A mechanical conversion would carry over 469 lines. After the audit, about 240
+lines remain at INFO or above: 183 kept and 13 re-leveled sites, plus the 130
+merged sites collapsing into about 40 to 50 summary lines. The 34 demoted
+sites remain as DEBUG lines. The 109 drops are mostly `"="*70` banners,
+`Getting X` and `Creating X` per-call chatter, "Running X" lines that
+duplicate the flow, and per-item "could not find" lines that become one
+`records_rejected` count.
 
 ## Patterns that repeat across the audits
 
