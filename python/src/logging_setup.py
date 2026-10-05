@@ -1,16 +1,13 @@
-"""Structured logging for the ETL: one JSON object per line on stdout.
+"""Structured logging for the ETL.
 
-Core fields on every line: ``timestamp``, ``level`` (UPPERCASE), ``service``,
-``correlation_id``, ``logger``, ``message`` and ``release``. The worker scripts
-run as separate processes, so the run-level context arrives through the
-environment:
+Emits one JSON object per line on stdout, ready for CloudWatch Logs. Every
+line carries the core fields ``timestamp``, ``level`` (UPPERCASE),
+``service``, ``correlation_id``, ``logger``, ``message`` and ``release``.
+The worker scripts run as separate processes, so the run-level context
+arrives through the environment; see :func:`configure_logging`.
 
-- ``CORRELATION_ID``: the run-level join key (a fresh UUID when unset)
-- ``PHASE``: the pipeline phase, bound when set
-- ``GIT_SHA``: the release, ``unknown`` when unset
-- ``LOG_FORMAT=console``: human-readable lines for local runs
-
-See ``nlm-ckn-rnd/docs/proposals/logging-approach.md``.
+The schema is described in
+``nlm-ckn-rnd/docs/proposals/logging-approach.md``.
 """
 
 import logging
@@ -28,6 +25,20 @@ LOG_FORMAT_ENV = "LOG_FORMAT"
 
 
 def _add_app_context(service: str):
+    """Return a processor that adds ``service`` and ``release`` to each event.
+
+    Parameters
+    ----------
+    service : str
+        The deployable unit, for example ``etl-pipeline``
+
+    Returns
+    -------
+    callable
+        A structlog processor. ``release`` is read from the ``GIT_SHA``
+        environment variable once, when the processor is built, and is
+        ``unknown`` when unset. Existing values are not overwritten.
+    """
     release = os.getenv(RELEASE_ENV) or "unknown"
 
     def processor(logger, method_name, event_dict):
@@ -39,9 +50,12 @@ def _add_app_context(service: str):
 
 
 def _uppercase_level(logger, method_name, event_dict):
-    # structlog emits "warning"/"error"; Java emits "WARN"/"ERROR". Uppercase
-    # and spell warning as Java does so one `level = "WARN"` filter matches
-    # every surface.
+    """Normalize ``level`` to the spelling Java emits.
+
+    structlog emits ``warning`` and ``error``; Java emits ``WARN`` and
+    ``ERROR``. Uppercasing, and spelling warning as ``WARN``, lets one
+    ``level = "WARN"`` filter match every surface.
+    """
     level = event_dict.get("level")
     if level:
         level = level.upper()
@@ -50,6 +64,15 @@ def _uppercase_level(logger, method_name, event_dict):
 
 
 def _shared_processors() -> list:
+    """Return the processors applied to both structlog and stdlib records.
+
+    Returns
+    -------
+    list
+        Processors that merge bound context, name the logger, set and
+        normalize ``level``, add an ISO 8601 UTC ``timestamp``, and render
+        stack info and exceptions into single string fields.
+    """
     return [
         structlog.contextvars.merge_contextvars,
         structlog.stdlib.add_logger_name,
@@ -66,10 +89,28 @@ def configure_logging(
     level: int = logging.INFO,
     stream: Optional[IO[str]] = None,
 ) -> None:
-    """Route structlog and stdlib logging to JSON lines on ``stream``.
+    """Route structlog and stdlib logging to one-line records on ``stream``.
 
-    Call once at process start, before the first log line. Binds
-    ``correlation_id`` (and ``phase`` when set) from the environment.
+    Call once at process start, before the first log line. Reconfiguring
+    replaces the root handler, so lines are not duplicated.
+
+    The run-level context is read from the environment:
+
+    - ``CORRELATION_ID``: the run-level join key; a fresh UUID when unset
+    - ``PHASE``: the pipeline phase, bound only when set
+    - ``GIT_SHA``: the release; ``unknown`` when unset
+    - ``LOG_FORMAT``: ``console`` renders readable lines for local runs;
+      anything else renders JSON
+
+    Parameters
+    ----------
+    service : str
+        The deployable unit, for example ``etl-pipeline``. The registry of
+        allowed values is in the logging proposal.
+    level : int
+        The root logger level, default ``logging.INFO``
+    stream : None | IO[str]
+        Where to write records, default ``sys.stdout``
     """
     shared = [_add_app_context(service), *_shared_processors()]
 
