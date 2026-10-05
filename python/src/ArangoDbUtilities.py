@@ -1,3 +1,4 @@
+import ipaddress
 import json
 import os
 from pprint import pprint
@@ -7,8 +8,19 @@ from arango import ArangoClient
 
 
 def is_loopback_host(host):
-    """Return whether ``host`` names this machine, ignoring case."""
-    return host.lower() in ("localhost", "127.0.0.1", "::1")
+    """Return whether ``host`` is ``localhost`` (any case) or a loopback IP
+    literal.  Any other hostname is not loopback; it is never resolved.
+    """
+    if host.lower() == "localhost":
+        return True
+    try:
+        addr = ipaddress.ip_address(host)
+    except ValueError:
+        return False
+    # ``::ffff:127.0.0.1`` is not ``is_loopback`` before Python 3.13
+    return addr.is_loopback or bool(
+        getattr(addr, "ipv4_mapped", None) and addr.ipv4_mapped.is_loopback
+    )
 
 
 def arango_scheme(host):

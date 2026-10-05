@@ -8,6 +8,8 @@ import com.arangodb.model.VertexCollectionRemoveOptions;
 import com.arangodb.entity.CollectionEntity;
 import com.arangodb.entity.CollectionType;
 
+import java.net.InetAddress;
+import java.net.UnknownHostException;
 import java.util.*;
 
 /**
@@ -22,11 +24,6 @@ public class ArangoDbUtilities {
      * An ArangoDB instance
      */
     public final ArangoDB arangoDB;
-
-    /**
-     * Hosts naming this machine, where ArangoDB serves plain HTTP by default
-     */
-    private static final Set<String> LOOPBACK_HOSTS = Set.of("localhost", "127.0.0.1", "::1");
 
     /**
      * Build the ArangoDB instance specified in the system environment.
@@ -70,7 +67,29 @@ public class ArangoDbUtilities {
             throw new IllegalArgumentException("ARANGO_DB_SCHEME must be http or https, not \"" + scheme + "\"");
         }
         String host = env.get("ARANGO_DB_HOST");
-        return !(host == null || host.isBlank() || LOOPBACK_HOSTS.contains(host.strip()));
+        return !(host == null || host.isBlank() || isLoopback(host.strip()));
+    }
+
+    /**
+     * Whether a host names this machine, where ArangoDB serves plain HTTP by
+     * default: localhost (any case) or a loopback IP literal. Only IP literals
+     * are parsed, so a hostname never triggers a DNS lookup.
+     *
+     * @param host Host name or IP literal
+     * @return True if the host is loopback
+     */
+    static boolean isLoopback(String host) {
+        if ("localhost".equalsIgnoreCase(host)) {
+            return true;
+        }
+        if (!host.contains(":") && !host.matches("[0-9.]+")) {
+            return false;
+        }
+        try {
+            return InetAddress.getByName(host).isLoopbackAddress();
+        } catch (UnknownHostException e) {
+            return false;
+        }
     }
 
     /**

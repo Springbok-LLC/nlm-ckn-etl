@@ -18,6 +18,7 @@ ECS Fargate task).  There are no Docker-in-Docker calls here.
 """
 
 import hashlib
+import ipaddress
 import json
 import logging
 import os
@@ -51,8 +52,20 @@ DEFAULT_JAVA_OPTS = "-Xmx32g"
 
 
 def _is_loopback(host: str) -> bool:
-    """Return whether ``host`` names this machine."""
-    return host in ("localhost", "127.0.0.1", "::1")
+    """Return whether ``host`` is ``localhost`` or a loopback IP literal.
+
+    Any other hostname is not loopback; it is never resolved.
+    """
+    if host == "localhost":
+        return True
+    try:
+        addr = ipaddress.ip_address(host)
+    except ValueError:
+        return False
+    # ``::ffff:127.0.0.1`` is not ``is_loopback`` before Python 3.13
+    return addr.is_loopback or bool(
+        getattr(addr, "ipv4_mapped", None) and addr.ipv4_mapped.is_loopback
+    )
 
 
 def _resolve_arango_db_scheme(host: str, override: str) -> str:

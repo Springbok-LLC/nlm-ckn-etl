@@ -14,14 +14,18 @@ class ArangoDbSslTest {
 	void loopbackOrUnsetHostDefaultsToHttp() {
 		assertFalse(ArangoDbUtilities.useSsl(Map.of()));
 		assertFalse(ArangoDbUtilities.useSsl(Map.of("ARANGO_DB_HOST", "")));
-		for (String host : new String[] { "localhost", "127.0.0.1", "::1" }) {
+		for (String host : new String[] { "localhost", "LOCALHOST", "127.0.0.1", "127.0.0.2", "::1",
+				"0:0:0:0:0:0:0:1", "::ffff:127.0.0.1" }) {
 			assertFalse(ArangoDbUtilities.useSsl(Map.of("ARANGO_DB_HOST", host)), host);
 		}
 	}
 
 	@Test
 	void remoteHostDefaultsToHttps() {
-		assertTrue(ArangoDbUtilities.useSsl(Map.of("ARANGO_DB_HOST", "10.0.1.5")));
+		for (String host : new String[] { "10.0.1.5", "::2", "localhost.example.com", "127.0.0.1.example.com",
+				"arangodb" }) {
+			assertTrue(ArangoDbUtilities.useSsl(Map.of("ARANGO_DB_HOST", host)), host);
+		}
 	}
 
 	@Test
