@@ -11098,6 +11098,21 @@ files = [
 ]
 
 [[package]]
+name = "structlog"
+version = "26.1.0"
+description = "Structured Logging for Python"
+optional = false
+python-versions = ">=3.10"
+groups = ["main"]
+files = [
+    {file = "structlog-26.1.0-py3-none-any.whl", hash = "sha256:e081a26d6c373e6d201eca24eede26d8ffab07f88f477822e679183428d3d91e"},
+    {file = "structlog-26.1.0.tar.gz", hash = "sha256:f63a716cbd1b1291cf7661de7794b455acfa4c43c5bcf1630e6ad5ddc1adb3b7"},
+]
+
+[package.dependencies]
+typing-extensions = {version = "*", markers = "python_version < \"3.11\""}
+
+[[package]]
 name = "taskgroup"
 version = "0.2.2"
 description = "backport of asyncio.TaskGroup, asyncio.Runner and asyncio.timeout"
@@ -12259,4 +12274,4 @@ type = ["pytest-mypy (>=1.0.1) ; platform_python_implementation != \"PyPy\""]
 [metadata]
 lock-version = "2.1"
 python-versions = ">=3.10,<3.13"
-content-hash = "dd1773f1a18ea346ac1d5ecc36455743b637b48d1c92ff1c4bbe25885d282a20"
+content-hash = "d0cbdc06ac640b7d9ed71fd046d9c68680525a37cd4c0155bce2c6b41d3313cf"
