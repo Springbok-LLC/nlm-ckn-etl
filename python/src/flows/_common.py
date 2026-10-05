@@ -18,7 +18,6 @@ ECS Fargate task).  There are no Docker-in-Docker calls here.
 """
 
 import hashlib
-import ipaddress
 import json
 import logging
 import os
@@ -42,6 +41,16 @@ from prefect import get_run_logger, task
 
 REPO_ROOT = Path(__file__).parents[3]
 
+# PYTHONPATH injected into every direct Python script invocation so that
+# sibling imports (LoaderUtilities, ArangoDbUtilities, …) resolve correctly.
+# Also put on this process's path so flows and in-process tasks can import
+# them the same way.
+PYTHON_SRC = str(REPO_ROOT / "python" / "src")
+if PYTHON_SRC not in sys.path:
+    sys.path.insert(0, PYTHON_SRC)
+
+from ArangoDbUtilities import is_loopback_host  # noqa: E402
+
 # Relative path to the compiled JAR (from REPO_ROOT).
 # The JAR is downloaded from S3 by ``ensure_jar()`` in flows/pipeline.py, or
 # built locally with ``mvn clean package -DskipTests`` for development.
@@ -49,22 +58,6 @@ CLASSPATH = "target/nlm-ckn-etl-1.0.jar"
 
 # Default Java heap.  Raise with --java-opts if OOM-killed (exit 137).
 DEFAULT_JAVA_OPTS = "-Xmx32g"
-
-
-def _is_loopback(host: str) -> bool:
-    """Return whether ``host`` is ``localhost`` (any case) or a loopback IP
-    literal.  Any other hostname is not loopback; it is never resolved.
-    """
-    if host.lower() == "localhost":
-        return True
-    try:
-        addr = ipaddress.ip_address(host)
-    except ValueError:
-        return False
-    # ``::ffff:127.0.0.1`` is not ``is_loopback`` before Python 3.13
-    return addr.is_loopback or bool(
-        getattr(addr, "ipv4_mapped", None) and addr.ipv4_mapped.is_loopback
-    )
 
 
 def _resolve_arango_db_scheme(host: str, override: str) -> str:
@@ -78,10 +71,10 @@ def _resolve_arango_db_scheme(host: str, override: str) -> str:
     """
     scheme = override.strip().lower()
     if not scheme:
-        return "http" if _is_loopback(host) else "https"
+        return "http" if is_loopback_host(host) else "https"
     if scheme not in ("http", "https"):
         raise ValueError(f"ARANGO_DB_SCHEME must be http or https, not {override!r}")
-    if scheme == "https" and _is_loopback(host):
+    if scheme == "https" and is_loopback_host(host):
         raise ValueError(
             f"ARANGO_DB_SCHEME=https is not supported for {host!r}: "
             "the pipeline-managed local ArangoDB container serves plain HTTP"
@@ -95,7 +88,7 @@ def _resolve_arango_db_scheme(host: str, override: str) -> str:
 ARANGO_DB_HOST = os.getenv("ARANGO_DB_HOST", "").strip().lower() or "localhost"
 # Loopback is local: the start/dump/restore tasks manage a local Docker
 # container and must run for 127.0.0.1 and ::1, not just the literal "localhost".
-ARANGO_DB_IS_LOCAL = _is_loopback(ARANGO_DB_HOST)
+ARANGO_DB_IS_LOCAL = is_loopback_host(ARANGO_DB_HOST)
 ARANGO_DB_PORT = int(os.getenv("ARANGO_DB_PORT", "8529"))
 ARANGO_DB_SCHEME = _resolve_arango_db_scheme(
     ARANGO_DB_HOST, os.getenv("ARANGO_DB_SCHEME", "")
@@ -132,10 +125,6 @@ S3_BUCKET = os.getenv("S3_BUCKET", "")
 # KMS key ARN/ID for server-side encryption of S3 uploads.  Required in
 # deployed environments; empty string falls back to SSE-S3 (AES-256).
 S3_KMS_KEY_ID = os.getenv("S3_KMS_KEY_ID", "")
-
-# PYTHONPATH injected into every direct Python script invocation so that
-# sibling imports (LoaderUtilities, ArangoDbUtilities, …) resolve correctly.
-PYTHON_SRC = str(REPO_ROOT / "python" / "src")
 
 
 _log = logging.getLogger(__name__)

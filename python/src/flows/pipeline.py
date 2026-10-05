@@ -80,7 +80,6 @@ import os
 import re
 import shutil
 import subprocess
-import sys
 import tarfile
 from datetime import datetime, timezone
 from pathlib import Path
@@ -100,7 +99,6 @@ from _common import (
     ARANGO_DB_VOLUME_NAME,
     CLASSPATH,
     DEFAULT_JAVA_OPTS,
-    PYTHON_SRC,
     REPO_ROOT,
     S3_BUCKET,
     S3_KMS_KEY_ID,
@@ -120,10 +118,6 @@ from _common import (
     sync_external_from_s3,
     validate_external_files,
 )
-
-# Put python/src on the path so in-process tasks can import sibling modules
-# (e.g. ArangoDbUtilities) the same way _run_python_script subprocesses do.
-sys.path.insert(0, PYTHON_SRC)
 
 # ── Tasks ──────────────────────────────────────────────────────────────────
 

@@ -60,14 +60,13 @@ class ArangoDbSchemeTestCase(unittest.TestCase):
 
     def test_loopback_detection(self):
         """Loopback IP literals and localhost only; hostnames are never resolved."""
-        for is_loopback in (_load_common()._is_loopback, adb.is_loopback_host):
-            for host in ("localhost", "LocalHost", "127.255.0.1", "::1", "::ffff:127.0.0.1"):
-                with self.subTest(fn=is_loopback.__name__, host=host):
-                    self.assertTrue(is_loopback(host))
-            for host in ("10.0.1.5", "::2", "::ffff:10.0.1.5", "localhost.example.com",
-                         "127.0.0.1.example.com", "arangodb"):
-                with self.subTest(fn=is_loopback.__name__, host=host):
-                    self.assertFalse(is_loopback(host))
+        for host in ("localhost", "LocalHost", "127.255.0.1", "::1", "::ffff:127.0.0.1"):
+            with self.subTest(host=host):
+                self.assertTrue(adb.is_loopback_host(host))
+        for host in ("10.0.1.5", "::2", "::ffff:10.0.1.5", "localhost.example.com",
+                     "127.0.0.1.example.com", "arangodb"):
+            with self.subTest(host=host):
+                self.assertFalse(adb.is_loopback_host(host))
         self.assertEqual(_load_common().arango_db_url(), "http://localhost:8529")
 
     def test_explicit_scheme_overrides_default(self):
