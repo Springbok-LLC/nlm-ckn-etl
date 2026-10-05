@@ -52,11 +52,10 @@ DEFAULT_JAVA_OPTS = "-Xmx32g"
 
 
 def _is_loopback(host: str) -> bool:
-    """Return whether ``host`` is ``localhost`` or a loopback IP literal.
-
-    Any other hostname is not loopback; it is never resolved.
+    """Return whether ``host`` is ``localhost`` (any case) or a loopback IP
+    literal.  Any other hostname is not loopback; it is never resolved.
     """
-    if host == "localhost":
+    if host.lower() == "localhost":
         return True
     try:
         addr = ipaddress.ip_address(host)
