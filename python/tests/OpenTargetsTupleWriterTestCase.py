@@ -117,7 +117,10 @@ class OpenTargetsTupleWriterTestCase(unittest.TestCase):
             ot, self._make_gene_results(), self._make_uniprot_results()
         )
         preds = [str(t[1]) for t in tuples if len(t) == 3]
-        self.assertTrue(any("RO_0004010" in p for p in preds))
+        # is_associated_with = RO_0004029 (was RO_0004010
+        # is_genetic_basis_for_condition, renamed in ckn-schema
+        # v0.0.0-alpha.6)
+        self.assertTrue(any("RO_0004029" in p for p in preds))
 
     def test_disease_score_edge_annotation(self):
         ot = self._make_ot_base()
@@ -125,10 +128,21 @@ class OpenTargetsTupleWriterTestCase(unittest.TestCase):
         tuples = create_tuples(
             ot, self._make_gene_results(), self._make_uniprot_results()
         )
-        score_quints = [
-            t for t in tuples if len(t) == 5 and "Score" in str(t[3])
-        ]
+        score_quints = [t for t in tuples if len(t) == 5 and "Score" in str(t[3])]
         self.assertGreater(len(score_quints), 0)
+
+        # The score annotation must address the same edge as the
+        # relationship triple it describes -- same subject, predicate, and
+        # object -- or it silently orphans onto an edge that does not exist.
+        relationship_triples = [
+            t for t in tuples if len(t) == 3 and "RO_0004029" in str(t[1])
+        ]
+        self.assertEqual(len(relationship_triples), 1)
+        subject, predicate, obj = relationship_triples[0]
+        quint_subject, quint_predicate, quint_object = score_quints[0][:3]
+        self.assertEqual(quint_subject, subject)
+        self.assertEqual(quint_predicate, predicate)
+        self.assertEqual(quint_object, obj)
 
     def test_skips_low_score_diseases(self):
         ot = self._make_ot_base()
@@ -137,7 +151,7 @@ class OpenTargetsTupleWriterTestCase(unittest.TestCase):
             ot, self._make_gene_results(), self._make_uniprot_results()
         )
         preds = [str(t[1]) for t in tuples if len(t) == 3]
-        self.assertFalse(any("RO_0004010" in p for p in preds))
+        self.assertFalse(any("RO_0004029" in p for p in preds))
 
     # ----- Drug tests -----
 
@@ -177,9 +191,7 @@ class OpenTargetsTupleWriterTestCase(unittest.TestCase):
     def test_drug_treats_disease(self):
         ot = self._make_ot_base()
         ot["ENSG00000001626"]["drugs"] = [
-            self._make_drug(
-                indications={"rows": [self._make_indication()]}
-            )
+            self._make_drug(indications={"rows": [self._make_indication()]})
         ]
         tuples = create_tuples(
             ot, self._make_gene_results(), self._make_uniprot_results()
@@ -188,34 +200,69 @@ class OpenTargetsTupleWriterTestCase(unittest.TestCase):
         # is_substance_that_treats = RO_0002606
         self.assertTrue(any("RO_0002606" in p for p in preds))
 
-    def test_drug_evaluated_in_clinical_trial(self):
+    def test_drug_study_id_from_clinical_trial(self):
+        """A drug's NCT ids land on Drug.study_id.
+
+        ckn-schema v0.0.0-alpha.6 removed the DrugEvaluatedInClinicalTrial
+        association (and its per-report ClinicalTrial entity); trial ids are
+        now comma-joined onto the Drug entity itself.
+        """
         ot = self._make_ot_base()
-        indication = self._make_indication(
-            clinicalReports=[{"id": "NCT00000001"}]
-        )
+        indication = self._make_indication(clinicalReports=[{"id": "NCT00000001"}])
         ot["ENSG00000001626"]["drugs"] = [
             self._make_drug(indications={"rows": [indication]})
         ]
         tuples = create_tuples(
             ot, self._make_gene_results(), self._make_uniprot_results()
         )
-        preds = [str(t[1]) for t in tuples if len(t) == 3]
-        # evaluated_in = RO_0020325
-        self.assertTrue(any("RO_0020325" in p for p in preds))
+        objects = [str(t[2]) for t in tuples if len(t) == 3]
+        self.assertIn("NCT00000001", objects)
+
+    def test_drug_study_id_dedupes_and_joins_multiple_trials(self):
+        ot = self._make_ot_base()
+        indication_a = self._make_indication(
+            clinicalReports=[{"id": "NCT00000001"}, {"id": "NCT00000002"}]
+        )
+        indication_b = self._make_indication(
+            disease={
+                "id": "MONDO_0005148",
+                "name": "type 2 diabetes mellitus",
+                "description": "A metabolic disorder.",
+            },
+            # The same trial can cover more than one indication.
+            clinicalReports=[{"id": "NCT00000001"}],
+        )
+        ot["ENSG00000001626"]["drugs"] = [
+            self._make_drug(indications={"rows": [indication_a, indication_b]})
+        ]
+        tuples = create_tuples(
+            ot, self._make_gene_results(), self._make_uniprot_results()
+        )
+        objects = [str(t[2]) for t in tuples if len(t) == 3]
+        self.assertIn("NCT00000001, NCT00000002", objects)
 
     def test_skips_non_nct_clinical_trial(self):
         ot = self._make_ot_base()
-        indication = self._make_indication(
-            clinicalReports=[{"id": "EUCTR2020-001234"}]
-        )
+        indication = self._make_indication(clinicalReports=[{"id": "EUCTR2020-001234"}])
         ot["ENSG00000001626"]["drugs"] = [
             self._make_drug(indications={"rows": [indication]})
         ]
         tuples = create_tuples(
             ot, self._make_gene_results(), self._make_uniprot_results()
         )
-        preds = [str(t[1]) for t in tuples if len(t) == 3]
-        self.assertFalse(any("RO_0020325" in p for p in preds))
+        objects = [str(t[2]) for t in tuples if len(t) == 3]
+        self.assertNotIn("EUCTR2020-001234", objects)
+
+    def test_no_study_id_when_no_clinical_reports(self):
+        ot = self._make_ot_base()
+        ot["ENSG00000001626"]["drugs"] = [self._make_drug()]
+        tuples = create_tuples(
+            ot, self._make_gene_results(), self._make_uniprot_results()
+        )
+        # No clinicalReports at all means study_id stays unset (None), so it
+        # contributes no vertex-annotation triple -- nothing to assert an
+        # object against directly, but the writer must not raise.
+        self.assertIsInstance(tuples, list)
 
     def test_drug_interacts_with_protein(self):
         ot = self._make_ot_base()
@@ -278,9 +325,7 @@ class OpenTargetsTupleWriterTestCase(unittest.TestCase):
 
     def test_creates_mutation_tuples(self):
         ot = self._make_ot_base()
-        ot["ENSG00000001626"]["pharmacogenetics"] = [
-            self._make_pharmacogenetics()
-        ]
+        ot["ENSG00000001626"]["pharmacogenetics"] = [self._make_pharmacogenetics()]
         tuples = create_tuples(
             ot, self._make_gene_results(), self._make_uniprot_results()
         )
@@ -330,9 +375,7 @@ class OpenTargetsTupleWriterTestCase(unittest.TestCase):
 
     def test_variant_consequence_manual_tuples(self):
         ot = self._make_ot_base()
-        ot["ENSG00000001626"]["pharmacogenetics"] = [
-            self._make_pharmacogenetics()
-        ]
+        ot["ENSG00000001626"]["pharmacogenetics"] = [self._make_pharmacogenetics()]
         tuples = create_tuples(
             ot, self._make_gene_results(), self._make_uniprot_results()
         )
@@ -341,7 +384,8 @@ class OpenTargetsTupleWriterTestCase(unittest.TestCase):
         self.assertTrue(any("RO_0002331" in p for p in preds))
         # Should also have VariantConsequence label annotation
         vc_labels = [
-            t for t in tuples
+            t
+            for t in tuples
             if len(t) == 3 and "Variant_consequence_label" in str(t[1])
         ]
         self.assertGreater(len(vc_labels), 0)

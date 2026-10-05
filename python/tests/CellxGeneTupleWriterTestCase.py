@@ -173,6 +173,28 @@ class CellxGeneTupleWriterTestCase(unittest.TestCase):
         ]
         self.assertEqual(dois, ["10.1234/test"])
 
+    def test_is_reference_dataset_true_when_in_the_reference_set(self):
+        tuples = create_tuples(
+            self._make_data(), reference_dataset_version_ids={"dvid-001"}
+        )
+        values = self._annotations(tuples, "CSD_", "is_reference_dataset")
+        self.assertEqual(values, ["True"])
+
+    def test_is_reference_dataset_false_explicitly_when_not_in_the_set(self):
+        # Explicit False, not left unset: a CSD not backed by a
+        # cluster_cid_mapping file must still assert the field
+        # (Springbok-LLC/nlm-ckn-etl#122).
+        tuples = create_tuples(
+            self._make_data(), reference_dataset_version_ids={"some-other-dvid"}
+        )
+        values = self._annotations(tuples, "CSD_", "is_reference_dataset")
+        self.assertEqual(values, ["False"])
+
+    def test_is_reference_dataset_false_when_no_reference_set_given(self):
+        tuples = create_tuples(self._make_data())
+        values = self._annotations(tuples, "CSD_", "is_reference_dataset")
+        self.assertEqual(values, ["False"])
+
 
 if __name__ == "__main__":
     unittest.main()

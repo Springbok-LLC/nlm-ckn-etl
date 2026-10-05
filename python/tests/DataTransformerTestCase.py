@@ -118,6 +118,111 @@ class CellxGeneTransformerTestCase(unittest.TestCase):
 
         self.assertNotIn("id1", result)
 
+    def test_transform_picks_h5ad_asset_when_not_first(self):
+        """The h5ad is selected even when it is not assets[0].
+
+        Reck (2025) Nat Commun (kidney) lists ATAC fragment assets before
+        its h5ad (NIH-NLM/nlm-ckn#342); assets[0] is not guaranteed to be
+        the h5ad.
+        """
+        transformer = CellxGeneTransformer()
+        raw = {
+            "dv-1": {
+                "dataset_json": {
+                    "citation": None,
+                    "assets": [
+                        {
+                            "filetype": "ATAC_FRAGMENT",
+                            "url": "https://cellxgene.cziscience.com/e/dv-1-fragment.tsv.bgz",
+                        },
+                        {
+                            "filetype": "ATAC_INDEX",
+                            "url": "https://cellxgene.cziscience.com/e/dv-1-fragment.tsv.bgz.tbi",
+                        },
+                        {
+                            "filetype": "H5AD",
+                            "url": "https://cellxgene.cziscience.com/e/dv-1.h5ad",
+                        },
+                    ],
+                },
+                "collection_json": {
+                    "doi": "10.1038/s41467-025-59997-4",
+                    "citation": None,
+                    "publisher_metadata": {"authors": [{"family": "Reck"}]},
+                },
+            }
+        }
+        result = transformer.transform(raw)
+
+        self.assertEqual(
+            result["dv-1"]["Link_to_CELLxGENE_dataset"],
+            "https://cellxgene.cziscience.com/e/dv-1.h5ad",
+        )
+
+    def test_transform_falls_back_to_first_asset_when_no_h5ad(self):
+        """Without a filetype-tagged h5ad asset, assets[0] is still used.
+
+        Keeps existing datasets (and the fixture data) working when the
+        CELLxGENE API response predates asset filetype tagging.
+        """
+        transformer = CellxGeneTransformer()
+        raw = {
+            "dv-1": {
+                "dataset_json": {
+                    "citation": None,
+                    "assets": [
+                        {"url": "https://cellxgene.cziscience.com/e/dv-1.cxg/"}
+                    ],
+                },
+                "collection_json": {
+                    "doi": "10.1126/science.adf6812",
+                    "citation": None,
+                    "publisher_metadata": {"authors": [{"family": "Jorstad"}]},
+                },
+            }
+        }
+        result = transformer.transform(raw)
+
+        self.assertEqual(
+            result["dv-1"]["Link_to_CELLxGENE_dataset"],
+            "https://cellxgene.cziscience.com/e/dv-1.cxg/",
+        )
+
+    def test_transform_leaves_link_unset_when_tagged_assets_have_no_h5ad(self):
+        """A tagged asset list with no H5AD must not fall back to assets[0].
+
+        An ATAC-only dataset (no H5AD asset at all) would otherwise get an
+        ATAC file silently assigned as its "dataset" link, reproducing the
+        class of bug this fix addresses rather than just this one instance
+        of it.
+        """
+        transformer = CellxGeneTransformer()
+        raw = {
+            "dv-1": {
+                "dataset_json": {
+                    "citation": None,
+                    "assets": [
+                        {
+                            "filetype": "ATAC_FRAGMENT",
+                            "url": "https://cellxgene.cziscience.com/e/dv-1-fragment.tsv.bgz",
+                        },
+                        {
+                            "filetype": "ATAC_INDEX",
+                            "url": "https://cellxgene.cziscience.com/e/dv-1-fragment.tsv.bgz.tbi",
+                        },
+                    ],
+                },
+                "collection_json": {
+                    "doi": "10.1038/s41467-025-59997-4",
+                    "citation": None,
+                    "publisher_metadata": {"authors": [{"family": "Reck"}]},
+                },
+            }
+        }
+        result = transformer.transform(raw)
+
+        self.assertIsNone(result["dv-1"]["Link_to_CELLxGENE_dataset"])
+
 
 class OpenTargetsTransformerTestCase(unittest.TestCase):
     """Tests for OpenTargetsTransformer using fixture data."""

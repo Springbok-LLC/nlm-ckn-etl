@@ -403,6 +403,48 @@ class CellSetDatasetMetadataTestCase(unittest.TestCase):
             self._annotation(tuples, "donor_age"), "59-year-old stage: 40"
         )
 
+    def _csd_annotation(self, tuples, attribute):
+        """Like _annotation, but for the CellSetDataset vertex, not the
+        CellSet vertex -- is_reference_dataset is CSD-only, not one of the
+        dataset-scoped fields carried onto the cell set."""
+        values = [
+            str(t[2])
+            for t in tuples
+            if len(t) == 3
+            and str(t[0]).rsplit("/", 1)[-1].startswith("CSD_")
+            and str(t[1]).endswith(f"#{attribute}")
+        ]
+        return values[0] if values else None
+
+    def test_is_reference_dataset_true_when_in_the_reference_set(self):
+        nsf, summary = self._make_data()
+        tuples = create_tuples(
+            nsf, summary, ["dvid-001"], reference_dataset_version_ids={"dvid-001"}
+        )
+        self.assertEqual(
+            self._csd_annotation(tuples, "is_reference_dataset"), "True"
+        )
+
+    def test_is_reference_dataset_false_explicitly_when_not_in_the_set(self):
+        # Explicit False, not left unset (Springbok-LLC/nlm-ckn-etl#122).
+        nsf, summary = self._make_data()
+        tuples = create_tuples(
+            nsf,
+            summary,
+            ["dvid-001"],
+            reference_dataset_version_ids={"some-other-dvid"},
+        )
+        self.assertEqual(
+            self._csd_annotation(tuples, "is_reference_dataset"), "False"
+        )
+
+    def test_is_reference_dataset_false_when_no_reference_set_given(self):
+        nsf, summary = self._make_data()
+        tuples = create_tuples(nsf, summary, ["dvid-001"])
+        self.assertEqual(
+            self._csd_annotation(tuples, "is_reference_dataset"), "False"
+        )
+
 
 class MeanBinaryScoreTestCase(unittest.TestCase):
     """The binary gene set carries the mean of its genes' binary scores.
@@ -489,7 +531,6 @@ class MeanBinaryScoreTestCase(unittest.TestCase):
                 for t in tuples
             )
         )
-
 
 if __name__ == "__main__":
     unittest.main()

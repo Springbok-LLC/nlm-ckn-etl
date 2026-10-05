@@ -483,6 +483,58 @@ class DatasetOrgansMapTestCase(unittest.TestCase):
         self.assertEqual(organs["dvid-kidney"], {"kidney"})
 
 
+class ReferenceDatasetVersionIdsTestCase(unittest.TestCase):
+    """Tests for get_reference_dataset_version_ids.
+
+    A reference dataset is one with a cluster_cid_mapping companion file;
+    the union of every such file's dataset_version_id column is the
+    reference set (CellSetDataset.is_reference_dataset,
+    Springbok-LLC/nlm-ckn-etl#122).
+    """
+
+    def setUp(self):
+        import tempfile
+
+        self._tmp = tempfile.TemporaryDirectory()
+        self.results_dir = Path(self._tmp.name)
+
+    def tearDown(self):
+        self._tmp.cleanup()
+
+    def _write_mapping(self, name, dvids):
+        lines = ["dataset_version_id,cluster_name"] + [
+            f"{dvid},c1" for dvid in dvids
+        ]
+        (self.results_dir / f"cluster_cid_mapping_{name}.csv").write_text(
+            "\n".join(lines) + "\n"
+        )
+
+    def test_unions_dataset_version_ids_across_mapping_files(self):
+        self._write_mapping("kidney_set", ["dvid-kidney"])
+        self._write_mapping("liver_set", ["dvid-liver-a", "dvid-liver-b"])
+        reference_ids = lu.get_reference_dataset_version_ids(self.results_dir)
+        self.assertEqual(
+            reference_ids, {"dvid-kidney", "dvid-liver-a", "dvid-liver-b"}
+        )
+
+    def test_dataset_with_no_mapping_file_is_not_reference(self):
+        self._write_mapping("kidney_set", ["dvid-kidney"])
+        reference_ids = lu.get_reference_dataset_version_ids(self.results_dir)
+        self.assertNotIn("dvid-not-mapped", reference_ids)
+
+    def test_no_mapping_files_gives_empty_set(self):
+        reference_ids = lu.get_reference_dataset_version_ids(self.results_dir)
+        self.assertEqual(reference_ids, set())
+
+    def test_mapping_file_missing_dataset_version_id_column_is_skipped(self):
+        (self.results_dir / "cluster_cid_mapping_broken.csv").write_text(
+            "cluster_name\nc1\n"
+        )
+        self._write_mapping("kidney_set", ["dvid-kidney"])
+        reference_ids = lu.get_reference_dataset_version_ids(self.results_dir)
+        self.assertEqual(reference_ids, {"dvid-kidney"})
+
+
 class HarvesterRowTestCase(unittest.TestCase):
     """A dataset takes its harvester row from its own organ's table.
 

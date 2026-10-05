@@ -170,7 +170,7 @@ class CellSetDatasetIdentifierTestCase(unittest.TestCase):
         import pandas as pd
 
         summary = pd.DataFrame({"organ": ["kidney"], "dataset_title": ["A kidney set"]})
-        csd, _ = twu.build_cell_set_dataset("dvid-1", summary_data=summary)
+        csd, _ = twu.build_cell_set_dataset("dvid-1", False, summary_data=summary)
         self.assertEqual(csd.dataset_identifier, "dvid-1__kidney")
         self.assertEqual(csd.version, "dvid-1")
 
@@ -178,7 +178,7 @@ class CellSetDatasetIdentifierTestCase(unittest.TestCase):
         import pandas as pd
 
         summary = pd.DataFrame({"dataset_title": ["No organ column"]})
-        csd, _ = twu.build_cell_set_dataset("dvid-1", summary_data=summary)
+        csd, _ = twu.build_cell_set_dataset("dvid-1", False, summary_data=summary)
         self.assertEqual(csd.dataset_identifier, "dvid-1")
         self.assertEqual(csd.version, "dvid-1")
 
@@ -225,9 +225,7 @@ class CellSetDatasetIdentifierTestCase(unittest.TestCase):
             twu.normalize_doi("https://doi.org/10.1038/S41591-023-02327-2"),
             "10.1038/s41591-023-02327-2",
         )
-        self.assertEqual(
-            twu.normalize_doi("dx.doi.org/10.1234/test"), "10.1234/test"
-        )
+        self.assertEqual(twu.normalize_doi("dx.doi.org/10.1234/test"), "10.1234/test")
         self.assertEqual(twu.normalize_doi(" 10.1234/test "), "10.1234/test")
         self.assertIsNone(twu.normalize_doi(None))
         self.assertIsNone(twu.normalize_doi(""))
@@ -274,6 +272,28 @@ class CellSetDatasetIdentifierTestCase(unittest.TestCase):
     def test_disease_fallback(self):
         disease = Disease(ontology_purl="MONDO:0009061")
         self.assertEqual(twu.entity_to_term(disease), "MONDO_0009061")
+
+
+class CellSetDatasetIsReferenceDatasetTestCase(unittest.TestCase):
+    """Tests for the is_reference_dataset parameter of build_cell_set_dataset.
+
+    ckn-schema v0.0.0-alpha.6 added CellSetDataset.is_reference_dataset.
+    There is no default: every call site must decide explicitly, so a
+    reference dataset never silently reads as False.
+    """
+
+    def test_required_argument_raises_when_omitted(self):
+        with self.assertRaises(TypeError):
+            twu.build_cell_set_dataset("dvid-1")
+
+    def test_true_is_set_explicitly(self):
+        csd, _ = twu.build_cell_set_dataset("dvid-1", True)
+        self.assertIs(csd.is_reference_dataset, True)
+
+    def test_false_is_set_explicitly_not_left_unset(self):
+        csd, _ = twu.build_cell_set_dataset("dvid-1", False)
+        self.assertIs(csd.is_reference_dataset, False)
+
 
 class GetPredicateUriTestCase(unittest.TestCase):
     """Tests for get_predicate_uri."""
@@ -513,7 +533,7 @@ class WriteTuplesDedupeTestCase(unittest.TestCase):
         attrs = {}
         for r in rows:
             if len(r) == 3 and r[0] == subj and r[1].startswith(prefix):
-                attrs[r[1][len(prefix):]] = r[2]
+                attrs[r[1][len(prefix) :]] = r[2]
         return attrs
 
     def test_sparse_then_rich_same_term(self):
@@ -571,7 +591,10 @@ class WriteTuplesDedupeTestCase(unittest.TestCase):
         from LoaderUtilities import RDFSBASE
 
         label_rows = [
-            r for r in rows if len(r) == 3 and r[1] == f"{RDFSBASE}#label"
+            r
+            for r in rows
+            if len(r) == 3
+            and r[1] == f"{RDFSBASE}#label"
             and r[0].endswith("CHEMBL_941")
         ]
         self.assertEqual(len(label_rows), 1)
@@ -595,9 +618,9 @@ class WriteTuplesDedupeTestCase(unittest.TestCase):
     def test_core_and_quintuples_not_deduped(self):
         ctx = {"chembl_id": "941"}
         a = self._make_drug_assoc(Drug(label="Imatinib"))
-        tuples = twu.association_to_tuples(a, ctx, source="S1") + twu.association_to_tuples(
-            a, ctx, source="S2"
-        )
+        tuples = twu.association_to_tuples(
+            a, ctx, source="S1"
+        ) + twu.association_to_tuples(a, ctx, source="S2")
 
         rows = self._write_and_read(tuples)
         core = [r for r in rows if len(r) == 3 and "#" not in r[1]]
@@ -646,7 +669,9 @@ class CellSetDatasetSlotSourcesTestCase(unittest.TestCase):
         return pd.DataFrame({k: [v] for k, v in row.items()}).iloc[0]
 
     def test_summary_supplies_the_dataset_rollups(self):
-        csd, _ = twu.build_cell_set_dataset("dvid-1", summary_data=self._summary())
+        csd, _ = twu.build_cell_set_dataset(
+            "dvid-1", False, summary_data=self._summary()
+        )
         self.assertEqual(csd.filtered_cell_count, "105445")
         self.assertEqual(csd.tissue_annotation, "UBERON:0002113: 105445")
         self.assertEqual(csd.assay_summary, "EFO:0009922: 105445")
@@ -658,7 +683,10 @@ class CellSetDatasetSlotSourcesTestCase(unittest.TestCase):
         # slot's definition (Springbok-LLC/nlm-ckn-etl#64); the summary's
         # filtered_cell_count is the faithful one.
         csd, _ = twu.build_cell_set_dataset(
-            "dvid-1", summary_data=self._summary(), harvester_row=self._harvester()
+            "dvid-1",
+            False,
+            summary_data=self._summary(),
+            harvester_row=self._harvester(),
         )
         self.assertEqual(csd.filtered_cell_count, "105445")
         self.assertEqual(csd.tissue_annotation, "UBERON:0002113: 105445")
@@ -666,6 +694,7 @@ class CellSetDatasetSlotSourcesTestCase(unittest.TestCase):
     def test_harvester_fills_what_the_summary_leaves_empty(self):
         csd, _ = twu.build_cell_set_dataset(
             "dvid-1",
+            False,
             summary_data=self._summary(
                 tissue_ontology_summary=None,
                 assay_ontology_summary=None,
@@ -684,6 +713,7 @@ class CellSetDatasetSlotSourcesTestCase(unittest.TestCase):
         # carrying a number that does not mean what the slot says.
         csd, _ = twu.build_cell_set_dataset(
             "dvid-1",
+            False,
             summary_data=self._summary(filtered_cell_count=None),
             harvester_row=self._harvester(),
         )
@@ -691,7 +721,10 @@ class CellSetDatasetSlotSourcesTestCase(unittest.TestCase):
 
     def test_donor_count_and_collection_version_come_from_the_harvester(self):
         csd, _ = twu.build_cell_set_dataset(
-            "dvid-1", summary_data=self._summary(), harvester_row=self._harvester()
+            "dvid-1",
+            False,
+            summary_data=self._summary(),
+            harvester_row=self._harvester(),
         )
         self.assertEqual(csd.donor_id_count, 31)
         self.assertEqual(csd.dataset_collection_version, "cvid-1")
@@ -701,10 +734,11 @@ class CellSetDatasetSlotSourcesTestCase(unittest.TestCase):
         # so a consumer that splits them would otherwise have to handle both
         # depending on which source covered the dataset.
         from_summary, _ = twu.build_cell_set_dataset(
-            "dvid-1", summary_data=self._summary()
+            "dvid-1", False, summary_data=self._summary()
         )
         from_harvester, _ = twu.build_cell_set_dataset(
             "dvid-1",
+            False,
             summary_data=self._summary(
                 tissue_ontology_summary=None, assay_ontology_summary=None
             ),
@@ -721,31 +755,40 @@ class CellSetDatasetSlotSourcesTestCase(unittest.TestCase):
         # and these counts reach the UI as strings.
         import pandas as pd
 
-        summary = pd.DataFrame({
-            "organ": ["kidney", "kidney"],
-            "filtered_cell_count": [105445.0, None],
-            "n_clusters": [75.0, None],
-        })
-        csd, _ = twu.build_cell_set_dataset("dvid-1", summary_data=summary)
+        summary = pd.DataFrame(
+            {
+                "organ": ["kidney", "kidney"],
+                "filtered_cell_count": [105445.0, None],
+                "n_clusters": [75.0, None],
+            }
+        )
+        csd, _ = twu.build_cell_set_dataset("dvid-1", False, summary_data=summary)
         self.assertEqual(csd.filtered_cell_count, "105445")
         self.assertEqual(csd.cluster_summary, 75)
 
     def test_publication_falls_back_to_the_summary_doi_normalized(self):
         # DOIs are case-insensitive, so the dataset must name the paper the
         # same way its PUB vertex key does.
-        csd, _ = twu.build_cell_set_dataset("dvid-1", summary_data=self._summary())
+        csd, _ = twu.build_cell_set_dataset(
+            "dvid-1", False, summary_data=self._summary()
+        )
         self.assertEqual(csd.publication, "10.1000/abc")
 
     def test_explicit_doi_wins_over_the_summary(self):
         csd, _ = twu.build_cell_set_dataset(
-            "dvid-1", summary_data=self._summary(), doi="https://doi.org/10.1000/XYZ"
+            "dvid-1",
+            False,
+            summary_data=self._summary(),
+            doi="https://doi.org/10.1000/XYZ",
         )
         self.assertEqual(csd.publication, "10.1000/xyz")
 
     def test_assay_names_the_terms_its_summary_counts(self):
         # assay and assay_summary come from one rollup: the terms the
         # dataset covers, and how many cells each contributed.
-        csd, _ = twu.build_cell_set_dataset("dvid-1", summary_data=self._summary())
+        csd, _ = twu.build_cell_set_dataset(
+            "dvid-1", False, summary_data=self._summary()
+        )
         self.assertEqual(csd.assay, "EFO:0009922")
         self.assertEqual(csd.assay_summary, "EFO:0009922: 105445")
 
@@ -754,6 +797,7 @@ class CellSetDatasetSlotSourcesTestCase(unittest.TestCase):
         # does not cover still gets them without going through the rollup.
         csd, _ = twu.build_cell_set_dataset(
             "dvid-1",
+            False,
             harvester_row=self._harvester(
                 assay_ontology_term_id="EFO:0009899; EFO:0010010"
             ),
@@ -762,20 +806,19 @@ class CellSetDatasetSlotSourcesTestCase(unittest.TestCase):
 
     def test_assay_falls_back_to_the_harvester_rollup(self):
         csd, _ = twu.build_cell_set_dataset(
-            "dvid-1", harvester_row=self._harvester()
+            "dvid-1", False, harvester_row=self._harvester()
         )
         self.assertEqual(csd.assay, "EFO:0009922")
 
     def test_donor_age_comes_from_the_development_stage_summary(self):
         csd, _ = twu.build_cell_set_dataset(
             "dvid-1",
+            False,
             summary_data=self._summary(
                 development_stage_summary="59-year-old stage: 40 | 22-year-old stage: 2"
             ),
         )
-        self.assertEqual(
-            csd.donor_age, "59-year-old stage: 40 | 22-year-old stage: 2"
-        )
+        self.assertEqual(csd.donor_age, "59-year-old stage: 40 | 22-year-old stage: 2")
 
     def test_donor_age_drops_the_stages_the_dataset_does_not_cover(self):
         # The summaries enumerate the whole HsapDv vocabulary here, all but
@@ -783,6 +826,7 @@ class CellSetDatasetSlotSourcesTestCase(unittest.TestCase):
         # stages the dataset has no cells for into the slot.
         csd, _ = twu.build_cell_set_dataset(
             "dvid-1",
+            False,
             summary_data=self._summary(
                 development_stage_summary=(
                     "59-year-old stage: 40 | 1-month-old stage: 0 | "
@@ -790,15 +834,14 @@ class CellSetDatasetSlotSourcesTestCase(unittest.TestCase):
                 )
             ),
         )
-        self.assertEqual(
-            csd.donor_age, "59-year-old stage: 40 | 22-year-old stage: 2"
-        )
+        self.assertEqual(csd.donor_age, "59-year-old stage: 40 | 22-year-old stage: 2")
 
     def test_donor_age_reads_a_count_published_with_thousands_separators(self):
         # The harvester writes its counts with commas, so a naive int() of
         # the count would treat every four-digit stage as unparsable.
         csd, _ = twu.build_cell_set_dataset(
             "dvid-1",
+            False,
             harvester_row=self._harvester(
                 development_stage_summary="30-year-old stage: 34,167; 5-year-old stage: 0"
             ),
@@ -810,6 +853,7 @@ class CellSetDatasetSlotSourcesTestCase(unittest.TestCase):
         # for the stage, so the pair stays rather than being dropped.
         csd, _ = twu.build_cell_set_dataset(
             "dvid-1",
+            False,
             summary_data=self._summary(
                 development_stage_summary="59-year-old stage: unknown"
             ),
@@ -819,6 +863,7 @@ class CellSetDatasetSlotSourcesTestCase(unittest.TestCase):
     def test_donor_age_is_empty_when_every_stage_is_zero(self):
         csd, _ = twu.build_cell_set_dataset(
             "dvid-1",
+            False,
             summary_data=self._summary(
                 development_stage_summary="1-month-old stage: 0 | 5-year-old stage: 0"
             ),

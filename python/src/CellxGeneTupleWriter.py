@@ -14,6 +14,7 @@ from LoaderUtilities import (
     RDFSBASE,
     get_current_run,
     get_dataset_organs_map,
+    get_reference_dataset_version_ids,
 )
 
 from TupleWriterUtilities import (
@@ -30,7 +31,9 @@ from TupleWriterUtilities import (
 
 
 def create_tuples(
-    cellxgene_results: dict, dataset_organs: dict | None = None
+    cellxgene_results: dict,
+    dataset_organs: dict | None = None,
+    reference_dataset_version_ids: set[str] | None = None,
 ) -> list[tuple]:
     """Create tuples from CELLxGENE metadata.
 
@@ -57,6 +60,11 @@ def create_tuples(
         Mapping from ``dataset_version_id`` to the set of organs it was
         filtered for, from ``LoaderUtilities.get_dataset_organs_map``.  When
         omitted, every dataset yields a single source-keyed vertex.
+    reference_dataset_version_ids : set[str], optional
+        Dataset version ids backed by a cluster_cid_mapping file, as
+        returned by ``LoaderUtilities.get_reference_dataset_version_ids``.
+        Sets ``CellSetDataset.is_reference_dataset``; ``None`` or absence
+        from the set means ``False``, not unset.
 
     Returns
     -------
@@ -65,6 +73,7 @@ def create_tuples(
     """
     tuples = []
     dataset_organs = dataset_organs or {}
+    reference_dataset_version_ids = reference_dataset_version_ids or set()
 
     # CellSetDataset was_attributed_to Publication
     for dataset_version_id, metadata in cellxgene_results.items():
@@ -100,6 +109,8 @@ def create_tuples(
                 # dataset summary or harvester row covers
                 # (Springbok-LLC/nlm-ckn-etl#63).
                 publication=normalize_doi(metadata.get("Link_to_publication")),
+                is_reference_dataset=str(dataset_version_id)
+                in reference_dataset_version_ids,
             )
             pub = Publication(
                 publication_doi=normalize_doi(metadata.get("Link_to_publication")),
@@ -151,7 +162,10 @@ def main():
         cellxgene_results = json.load(fp)
 
     dataset_organs = get_dataset_organs_map()
-    tuples = create_tuples(cellxgene_results, dataset_organs)
+    reference_dataset_version_ids = get_reference_dataset_version_ids()
+    tuples = create_tuples(
+        cellxgene_results, dataset_organs, reference_dataset_version_ids
+    )
     if tuples:
         write_tuples(tuples, get_tuples_dir() / "cellxgene.json")
 

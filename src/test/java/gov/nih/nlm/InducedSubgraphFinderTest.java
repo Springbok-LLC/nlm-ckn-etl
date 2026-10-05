@@ -37,22 +37,25 @@ class InducedSubgraphFinderTest {
     /**
      * Build a small test graph:
      *
-     *   CS/1 --[CS-CL]--> CL/1 --[CL-GO]--> GO/1
+     *   CS/1 --[CS-CL]--> CL/1 --[CL-MONDO]--> MONDO/1
      *   CL/1 --[CL-CL, SUB_CLASS_OF]--> CL/2  (self-referential)
-     *   GO/1 --[GO-GO, SUB_CLASS_OF]--> GO/2  (self-referential)
+     *   MONDO/1 --[MONDO-MONDO, SUB_CLASS_OF]--> MONDO/2  (self-referential)
      *   CHEMBL/1 --[CHEMBL-CL]--> CL/1  (incoming to CL/1 from nothing else)
      *   CHEMBL/1 --[CHEMBL-PR]--> PR/1
      *   CS/1 --[CS-CHEBI]--> CHEBI/1 --[CHEBI-PR]--> PR/2  (CHEBI blocked)
      *   CS/1 --[CS-NCT]--> NCT/1  (NCT blocked)
+     *   CL/1 --[CL-GO]--> GO/1  (GO blocked: excluded from the induced phenotype
+     *       graph entirely — GO terms and associations do not provide
+     *       meaningful biological information there; Springbok-LLC/nlm-ckn-etl#119)
      *   CS/1 --[CS-UBERON]--> UBERON/1
      *   UBERON/1 --[UBERON-UBERON, PART_OF]--> UBERON/2  (self-referential)
      */
     private record TestGraph(
             DirectedPseudograph<ArangoVertex, ArangoEdge> graph,
             ArangoVertex cs1, ArangoVertex cl1, ArangoVertex cl2,
-            ArangoVertex go1, ArangoVertex go2,
+            ArangoVertex mondo1, ArangoVertex mondo2,
             ArangoVertex chembl1, ArangoVertex pr1, ArangoVertex pr2,
-            ArangoVertex chebi1, ArangoVertex nct1,
+            ArangoVertex chebi1, ArangoVertex nct1, ArangoVertex go1,
             ArangoVertex uberon1, ArangoVertex uberon2) {}
 
     private TestGraph buildTestGraph() {
@@ -61,25 +64,26 @@ class InducedSubgraphFinderTest {
         ArangoVertex cs1 = vertex("CS", "1");
         ArangoVertex cl1 = vertex("CL", "1");
         ArangoVertex cl2 = vertex("CL", "2");
-        ArangoVertex go1 = vertex("GO", "1");
-        ArangoVertex go2 = vertex("GO", "2");
+        ArangoVertex mondo1 = vertex("MONDO", "1");
+        ArangoVertex mondo2 = vertex("MONDO", "2");
         ArangoVertex chembl1 = vertex("CHEMBL", "1");
         ArangoVertex pr1 = vertex("PR", "1");
         ArangoVertex pr2 = vertex("PR", "2");
         ArangoVertex chebi1 = vertex("CHEBI", "1");
         ArangoVertex nct1 = vertex("NCT", "1");
+        ArangoVertex go1 = vertex("GO", "1");
         ArangoVertex uberon1 = vertex("UBERON", "1");
         ArangoVertex uberon2 = vertex("UBERON", "2");
 
-        for (ArangoVertex v : new ArangoVertex[]{cs1, cl1, cl2, go1, go2, chembl1, pr1, pr2,
-                chebi1, nct1, uberon1, uberon2}) {
+        for (ArangoVertex v : new ArangoVertex[]{cs1, cl1, cl2, mondo1, mondo2, chembl1, pr1, pr2,
+                chebi1, nct1, go1, uberon1, uberon2}) {
             g.addVertex(v);
         }
 
         g.addEdge(cs1, cl1, edge("e1", cs1, cl1, "CS-CL"));
-        g.addEdge(cl1, go1, edge("e2", cl1, go1, "CL-GO"));
+        g.addEdge(cl1, mondo1, edge("e2", cl1, mondo1, "CL-MONDO"));
         g.addEdge(cl1, cl2, edge("e3", cl1, cl2, "CL-CL", Map.of("Label", "SUB_CLASS_OF")));
-        g.addEdge(go1, go2, edge("e4", go1, go2, "GO-GO", Map.of("Label", "SUB_CLASS_OF")));
+        g.addEdge(mondo1, mondo2, edge("e4", mondo1, mondo2, "MONDO-MONDO", Map.of("Label", "SUB_CLASS_OF")));
         g.addEdge(chembl1, cl1, edge("e5", chembl1, cl1, "CHEMBL-CL"));
         g.addEdge(chembl1, pr1, edge("e6", chembl1, pr1, "CHEMBL-PR"));
         g.addEdge(cs1, chebi1, edge("e7", cs1, chebi1, "CS-CHEBI"));
@@ -88,8 +92,9 @@ class InducedSubgraphFinderTest {
         g.addEdge(cs1, uberon1, edge("e10", cs1, uberon1, "CS-UBERON"));
         g.addEdge(uberon1, uberon2, edge("e11", uberon1, uberon2, "UBERON-UBERON",
                 Map.of("Label", "PART_OF")));
+        g.addEdge(cl1, go1, edge("e12", cl1, go1, "CL-GO"));
 
-        return new TestGraph(g, cs1, cl1, cl2, go1, go2, chembl1, pr1, pr2, chebi1, nct1,
+        return new TestGraph(g, cs1, cl1, cl2, mondo1, mondo2, chembl1, pr1, pr2, chebi1, nct1, go1,
                 uberon1, uberon2);
     }
 
@@ -138,6 +143,16 @@ class InducedSubgraphFinderTest {
     }
 
     @Test
+    void find_ignoredCollections_goExcluded() {
+        // GO terms and associations do not provide meaningful biological information in
+        // the induced phenotype graph, so GO is excluded like CHEBI and NCT
+        // (Springbok-LLC/nlm-ckn-etl#119).
+        TestGraph tg = buildTestGraph();
+        DirectedPseudograph<ArangoVertex, ArangoEdge> induced = finder.find(tg.graph(), "CS", 10);
+        assertFalse(vertexIds(induced).contains("GO/1"), "GO vertices should be excluded");
+    }
+
+    @Test
     void find_ignoredCollections_blocksTraversalBeyond() {
         TestGraph tg = buildTestGraph();
         DirectedPseudograph<ArangoVertex, ArangoEdge> induced = finder.find(tg.graph(), "CS", 10);
@@ -150,11 +165,11 @@ class InducedSubgraphFinderTest {
     void find_selfReferentialEdgesSkippedInBfs() {
         TestGraph tg = buildTestGraph();
         DirectedPseudograph<ArangoVertex, ArangoEdge> induced = finder.find(tg.graph(), "CS", 10);
-        // CL/2, GO/2, UBERON/2 are only reachable via self-referential edges, so BFS should skip them
+        // CL/2, MONDO/2, UBERON/2 are only reachable via self-referential edges, so BFS should skip them
         assertFalse(vertexIds(induced).contains("CL/2"),
                 "CL/2 should not be reached via CL-CL self-referential edge");
-        assertFalse(vertexIds(induced).contains("GO/2"),
-                "GO/2 should not be reached via GO-GO self-referential edge");
+        assertFalse(vertexIds(induced).contains("MONDO/2"),
+                "MONDO/2 should not be reached via MONDO-MONDO self-referential edge");
         assertFalse(vertexIds(induced).contains("UBERON/2"),
                 "UBERON/2 should not be reached via UBERON-UBERON self-referential edge");
     }
@@ -168,15 +183,17 @@ class InducedSubgraphFinderTest {
         assertTrue(ids.contains("CS/1"));
         assertTrue(ids.contains("CL/1"), "CL/1 is 1 hop from CS/1");
         assertTrue(ids.contains("UBERON/1"), "UBERON/1 is 1 hop from CS/1");
-        assertFalse(ids.contains("GO/1"), "GO/1 is 2 hops from CS/1");
+        assertFalse(ids.contains("MONDO/1"), "MONDO/1 is 2 hops from CS/1");
     }
 
     @Test
     void find_depthBoundaryVertexIncluded() {
         TestGraph tg = buildTestGraph();
-        // Depth 2: CS/1 -> CL/1 -> GO/1 (depth 2 should be included)
+        // Depth 2: CS/1 -> CL/1 -> MONDO/1 (depth 2 should be included)
         DirectedPseudograph<ArangoVertex, ArangoEdge> induced = finder.find(tg.graph(), "CS", 2);
-        assertTrue(vertexIds(induced).contains("GO/1"), "GO/1 at depth 2 should be included");
+        assertTrue(vertexIds(induced).contains("MONDO/1"), "MONDO/1 at depth 2 should be included");
+        // GO/1 is also at depth 2 but is excluded regardless of depth
+        assertFalse(vertexIds(induced).contains("GO/1"), "GO/1 should be excluded even within depth");
     }
 
     @Test
@@ -186,7 +203,7 @@ class InducedSubgraphFinderTest {
         Set<String> keys = edgeKeys(induced);
         // Cross-collection edges between reachable vertices should all be present
         assertTrue(keys.contains("e1"), "CS-CL edge");
-        assertTrue(keys.contains("e2"), "CL-GO edge");
+        assertTrue(keys.contains("e2"), "CL-MONDO edge");
         assertTrue(keys.contains("e5"), "CHEMBL-CL edge");
         assertTrue(keys.contains("e6"), "CHEMBL-PR edge");
         assertTrue(keys.contains("e10"), "CS-UBERON edge");
@@ -200,6 +217,7 @@ class InducedSubgraphFinderTest {
         assertFalse(keys.contains("e7"), "CS-CHEBI edge should be excluded");
         assertFalse(keys.contains("e8"), "CHEBI-PR edge should be excluded");
         assertFalse(keys.contains("e9"), "CS-NCT edge should be excluded");
+        assertFalse(keys.contains("e12"), "CL-GO edge should be excluded");
     }
 
     // -- Hierarchy enrichment tests --
@@ -209,11 +227,23 @@ class InducedSubgraphFinderTest {
         TestGraph tg = buildTestGraph();
         DirectedPseudograph<ArangoVertex, ArangoEdge> induced = finder.find(tg.graph(), "CS", 10);
         finder.addOntologyHierarchyPaths(tg.graph(), induced);
-        // GO/2 should now be added via walk from GO/1 following SUB_CLASS_OF
-        assertTrue(vertexIds(induced).contains("GO/2"),
-                "GO/2 should be added by hierarchy walk from GO/1");
+        // MONDO/2 should now be added via walk from MONDO/1 following SUB_CLASS_OF
+        assertTrue(vertexIds(induced).contains("MONDO/2"),
+                "MONDO/2 should be added by hierarchy walk from MONDO/1");
         assertTrue(edgeKeys(induced).contains("e4"),
-                "GO-GO SUB_CLASS_OF edge should be added by hierarchy enrichment");
+                "MONDO-MONDO SUB_CLASS_OF edge should be added by hierarchy enrichment");
+    }
+
+    @Test
+    void addOntologyHierarchyPaths_doesNotBackfillGo() {
+        // GO has no HIERARCHY_CONFIG entry (it is excluded from the induced graph
+        // entirely, so no GO vertex is ever present for hierarchy enrichment to walk
+        // from); confirm enrichment does not reintroduce it.
+        TestGraph tg = buildTestGraph();
+        DirectedPseudograph<ArangoVertex, ArangoEdge> induced = finder.find(tg.graph(), "CS", 10);
+        finder.addOntologyHierarchyPaths(tg.graph(), induced);
+        assertFalse(vertexIds(induced).contains("GO/1"),
+                "GO/1 should not be added by hierarchy enrichment");
     }
 
     @Test
@@ -244,7 +274,7 @@ class InducedSubgraphFinderTest {
         TestGraph tg = buildTestGraph();
         DirectedPseudograph<ArangoVertex, ArangoEdge> induced = finder.find(tg.graph(), "CS", 10);
         int verticesBefore = induced.vertexSet().size();
-        // CL/1 and GO/1 are already in the induced subgraph
+        // CL/1 and MONDO/1 are already in the induced subgraph
         finder.addOntologyHierarchyPaths(tg.graph(), induced);
         // Count CL/1 occurrences — should be exactly 1
         long cl1Count = induced.vertexSet().stream().filter(v -> v.id().equals("CL/1")).count();

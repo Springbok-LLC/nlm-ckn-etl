@@ -28,6 +28,7 @@ from LoaderUtilities import (
     get_dataset_version_id_lists,
     get_gene_ensembl_id_to_names_map,
     get_harvester_row,
+    get_reference_dataset_version_ids,
     get_uberon_root_map,
     hyphenate,
     load_results,
@@ -146,6 +147,7 @@ def create_tuples(
     harvester_data: pd.DataFrame | None = None,
     cluster_dvid_map: dict[str, str] | None = None,
     root_uberon_term: str | None = None,
+    reference_dataset_version_ids: set[str] | None = None,
 ) -> list[tuple]:
     """Create tuples from NSForest results.
 
@@ -189,6 +191,11 @@ def create_tuples(
         sets and the dataset connect to it alone, and the summary's descendant
         tissue terms become an edge annotation.  ``None`` for an organ with no
         root term, where the descendant terms are connected as before.
+    reference_dataset_version_ids : set[str], optional
+        Dataset version ids backed by a cluster_cid_mapping file, as
+        returned by ``LoaderUtilities.get_reference_dataset_version_ids``.
+        Sets ``CellSetDataset.is_reference_dataset``; ``None`` or absence
+        from the set means ``False``, not unset.
 
     Returns
     -------
@@ -244,7 +251,12 @@ def create_tuples(
             else None
         )
         harvester_row = get_harvester_row(harvester_data, dvid, organ)
-        csd_by_dvid[dvid] = build_cell_set_dataset(dvid, summary_row, harvester_row)
+        csd_by_dvid[dvid] = build_cell_set_dataset(
+            dvid,
+            str(dvid) in (reference_dataset_version_ids or set()),
+            summary_row,
+            harvester_row,
+        )
 
     # CellSetDataset is_about AnatomicalStructure (dataset-scope)
     for dvid, (csd, citation) in csd_by_dvid.items():
@@ -258,9 +270,7 @@ def create_tuples(
             )
             tuples.extend(association_to_tuples(assoc, source="CELLxGENE"))
             tuples.extend(
-                sampled_tissue_annotation(
-                    csd_term, assoc, uberon_term, sampled_tissue
-                )
+                sampled_tissue_annotation(csd_term, assoc, uberon_term, sampled_tissue)
             )
         tuples.extend(
             cell_set_dataset_name_tuples(csd_term, citation, csd.dataset_name)
@@ -331,9 +341,7 @@ def create_tuples(
             anatomical_structure=cell_set_anatomical_structure,
             publication=describing_csd.publication,
             dataset_name=describing_csd.dataset_name,
-            cellxgene_collection=remove_protocols(
-                describing_csd.cellxgene_collection
-            ),
+            cellxgene_collection=remove_protocols(describing_csd.cellxgene_collection),
             # Built the way MappingTupleWriter builds it, so a cell set names
             # its dataset identically whether or not it is also mapped.
             cellxgene_dataset=(
@@ -509,6 +517,7 @@ def main():
     uberon_root_map = get_uberon_root_map(results_dir)
     file_paths = get_dataset_file_paths(results_dir)
     dataset_version_id_lists = get_dataset_version_id_lists(file_paths)
+    reference_dataset_version_ids = get_reference_dataset_version_ids(results_dir)
 
     for (
         nsforest_path,
@@ -605,6 +614,7 @@ def main():
             harvester_data,
             cluster_dvid_map,
             root_uberon_term,
+            reference_dataset_version_ids,
         )
         if tuples:
             output_name = nsforest_path.name.replace(".csv", "-nsforest.json")

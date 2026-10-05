@@ -808,6 +808,7 @@ def cell_set_dataset_identifier(dataset_version_id: str, organ: str | None) -> s
 
 def build_cell_set_dataset(
     dataset_version_id: str,
+    is_reference_dataset: bool,
     summary_data: pd.DataFrame | None = None,
     harvester_row: pd.Series | None = None,
     doi: str | None = None,
@@ -831,6 +832,11 @@ def build_cell_set_dataset(
     ----------
     dataset_version_id : str
         Dataset version identifier (used as the CSD vertex term).
+    is_reference_dataset : bool
+        Whether this dataset_version_id is backed by a cluster_cid_mapping
+        file (see LoaderUtilities.get_reference_dataset_version_ids). No
+        default: every call site must decide explicitly, rather than a
+        reference dataset silently defaulting to False.
     summary_data : pd.DataFrame, optional
         DataFrame from dataset summary CSV.
     harvester_row : pd.Series, optional
@@ -861,6 +867,7 @@ def build_cell_set_dataset(
         "publication": normalize_doi(doi),
         "collection_id": collection_id,
         "dataset_collection_version": collection_version_id,
+        "is_reference_dataset": is_reference_dataset,
     }
 
     def fill(field: str, value: Any) -> None:

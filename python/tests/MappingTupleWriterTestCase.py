@@ -167,6 +167,20 @@ class MappingTupleWriterTestCase(unittest.TestCase):
         self.assertEqual(names, ["Sikkema (2023) Nat Med - Lung, 3' v2"])
         self.assertEqual(citations, ["Sikkema (2023) Nat Med"])
 
+    def test_is_reference_dataset_is_always_true(self):
+        # mapping_results is read from a cluster_cid_mapping file (main()
+        # skips any dataset without one), so every dataset this writer sees
+        # is, by construction, a reference dataset (Springbok-LLC/nlm-ckn-etl#122).
+        tuples = create_tuples(self._make_data(), self._make_summary())
+        values = [
+            str(t[2])
+            for t in tuples
+            if len(t) == 3
+            and str(t[0]).rsplit("/", 1)[-1].startswith("CSD_")
+            and str(t[1]).endswith("#is_reference_dataset")
+        ]
+        self.assertEqual(values, ["True"])
+
 
 if __name__ == "__main__":
     unittest.main()

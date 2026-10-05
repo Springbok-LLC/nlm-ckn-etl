@@ -454,6 +454,9 @@ def create_view(database_name, collection_maps_name):
 
     db = create_or_get_database(database_name)
     if database_name == "Cell-KN-Phenotypes":
+        # No GO: excluded from the induced phenotype graph itself
+        # (InducedSubgraphFinder.IGNORED_VERTEX_COLLECTIONS), so it is never
+        # populated here either (Springbok-LLC/nlm-ckn-etl#119).
         keys = list(properties["links"].keys())
         for key in keys:
             if key not in [
@@ -463,7 +466,6 @@ def create_view(database_name, collection_maps_name):
                 "CL",
                 "CS",
                 "CSD",
-                "GO",
                 "GS",
                 "MONDO",
                 "NCBITaxon",

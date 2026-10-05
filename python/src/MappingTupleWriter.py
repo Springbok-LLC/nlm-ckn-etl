@@ -99,8 +99,7 @@ def create_tuples(
             cl_id_raw = row.get("cell_ontology_id")
         if pd.isna(cl_id_raw) or str(cl_id_raw).strip() == "":
             print(
-                f"Warning: No cell ontology ID for cluster "
-                f"{row.get('cluster_name')!r}"
+                f"Warning: No cell ontology ID for cluster {row.get('cluster_name')!r}"
             )
             continue
         cl_curie = purl_to_curie(str(cl_id_raw))
@@ -218,6 +217,10 @@ def create_tuples(
 
         csd, citation = build_cell_set_dataset(
             dataset_version_id,
+            # mapping_results is read from a cluster_cid_mapping file (main()
+            # skips any dataset without one), so every dataset_version_id this
+            # writer sees is, by construction, a reference dataset.
+            is_reference_dataset=True,
             summary_data=summary_row if not summary_row.empty else None,
             harvester_row=harvester_row,
             doi=str(doi) if pd.notna(doi) else None,

@@ -1,7 +1,7 @@
 """Create tuples from Open Targets data using schema entities.
 
-Produces ClinicalTrial, Disease, Drug, Gene, Mutation, and Protein
-associations from Open Targets Platform GraphQL API results.
+Produces Disease, Drug, Gene, Mutation, and Protein associations from Open
+Targets Platform GraphQL API results.
 """
 
 import json
@@ -10,7 +10,6 @@ import pandas as pd
 from rdflib.term import Literal, URIRef
 
 from ckn_schema.pydantic.ckn_schema import (
-    ClinicalTrial,
     Disease,
     Drug,
     Gene,
@@ -73,12 +72,16 @@ def create_tuples(
     """Create tuples from Open Targets results.
 
     Produces:
-    - GeneIsGeneticBasisForDisease
+    - GeneIsAssociatedWithDisease
     - DrugMolecularlyInteractsWithProtein
     - DrugIsSubstanceThatTreatsDisease
-    - DrugEvaluatedInClinicalTrial
     - GeneHasQualityMutation
     - MutationHasPharmacologicalEffectDrug
+
+    Clinical trial ids (NCT) are no longer asserted as a separate
+    ClinicalTrial entity/association (ckn-schema removed
+    DrugEvaluatedInClinicalTrial in v0.0.0-alpha.6); they are instead
+    comma-joined onto Drug.study_id, the schema's replacement slot.
 
     Parameters
     ----------
@@ -135,7 +138,7 @@ def create_tuples(
 
         ot_data = opentargets_results.get(gene_ensembl_id, {})
 
-        # Gene is_genetic_basis_for_condition Disease
+        # Gene is_associated_with Disease
         for disease in ot_data.get("diseases", []):
             mondo_term = get_mondo_term(disease["disease"]["id"], efo2mondo)
             if mondo_term is None or disease["score"] < 0.5:
@@ -147,9 +150,9 @@ def create_tuples(
                 definition=disease["disease"].get("description"),
             )
 
-            assoc = ASSOCIATION_CLASSES["GeneIsGeneticBasisForDisease"](
+            assoc = ASSOCIATION_CLASSES["GeneIsAssociatedWithDisease"](
                 subject=gene_entity,
-                predicate="nlm-ckn:is_genetic_basis_for_condition",
+                predicate="nlm-ckn:is_associated_with",
                 object=disease_entity,
             )
             tuples.extend(
@@ -158,12 +161,15 @@ def create_tuples(
                 )
             )
 
-            # Edge annotation: score
+            # Edge annotation: score. Subject/predicate/object must match the
+            # relationship triple above so the annotation addresses the same
+            # edge (is_associated_with = RO_0004029, since ckn-schema
+            # v0.0.0-alpha.6 renamed GeneIsGeneticBasisForDisease).
             gs_term = f"GS_{gene_name}"
             tuples.append(
                 (
                     URIRef(f"{PURLBASE}/{gs_term}"),
-                    URIRef(f"{PURLBASE}/RO_0004010"),
+                    URIRef(f"{PURLBASE}/RO_0004029"),
                     URIRef(f"{PURLBASE}/{mondo_term}"),
                     URIRef(f"{RDFSBASE}#Score"),
                     Literal(str(disease["score"])),
@@ -196,6 +202,23 @@ def create_tuples(
                     mechanism = moa.get("mechanismOfAction")
                     break
 
+            # Clinical trial (NCT) ids, collected across every indication before
+            # the Drug entity is built -- ckn-schema v0.0.0-alpha.6 dropped the
+            # DrugEvaluatedInClinicalTrial association (and its per-report
+            # ClinicalTrial entity) in favor of a single Drug.study_id slot.
+            # Deduped and ordered: the same trial can appear on more than one
+            # indication for the same drug.
+            trial_ids = list(
+                dict.fromkeys(
+                    clinical_report.get("id", "")
+                    for indication in (drug["drug"].get("indications") or {}).get(
+                        "rows", []
+                    )
+                    for clinical_report in indication.get("clinicalReports", [])
+                    if "nct" in clinical_report.get("id", "").lower()
+                )
+            )
+
             drug_entity = Drug(
                 label=drug_name,
                 definition=drug_desc,
@@ -206,6 +229,7 @@ def create_tuples(
                 approval_status=drug["drug"].get("maximumClinicalStage"),
                 uniprot_id=uniprot_name,
                 protein=protein_name,
+                study_id=", ".join(trial_ids) if trial_ids else None,
             )
             ctx = {"chembl_id": chembl_id}
 
@@ -254,26 +278,6 @@ def create_tuples(
                             assoc, ctx, source="Open Targets", annotated_terms=annotated
                         )
                     )
-
-                    # Drug evaluated_in ClinicalTrial
-                    for clinical_report in indication.get("clinicalReports", []):
-                        trial_id = clinical_report.get("id", "")
-                        if "nct" not in trial_id.lower():
-                            continue
-                        ct_entity = ClinicalTrial(study_id=trial_id)
-                        assoc = ASSOCIATION_CLASSES["DrugEvaluatedInClinicalTrial"](
-                            subject=drug_entity,
-                            predicate="nlm-ckn:evaluated_in",
-                            object=ct_entity,
-                        )
-                        tuples.extend(
-                            association_to_tuples(
-                                assoc,
-                                ctx,
-                                source="Open Targets",
-                                annotated_terms=annotated,
-                            )
-                        )
 
         # Gene has_quality Mutation, and Mutation has_pharmacological_effect
         # Drug

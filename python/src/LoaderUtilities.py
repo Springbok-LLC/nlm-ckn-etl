@@ -500,6 +500,44 @@ def get_dataset_file_paths(results_dir=None):
     }
 
 
+def get_reference_dataset_version_ids(results_dir=None):
+    """Return the dataset_version_ids of every "reference" dataset.
+
+    A reference dataset is one with a ``cluster_cid_mapping`` companion file
+    (see ``get_dataset_file_paths``) — the dataset per organ selected for
+    manual cell type mapping. Every such file carries a
+    ``dataset_version_id`` column identifying which dataset(s) it covers;
+    the union across all mapping files in the results directory is the
+    reference set (``CellSetDataset.is_reference_dataset``).
+
+    Parameters
+    ----------
+    results_dir : Path, optional
+        Flat directory of extracted release zip contents. Defaults to the
+        current run config's ``results_dir``.
+
+    Returns
+    -------
+    set[str]
+        The dataset_version_ids backed by a cluster_cid_mapping file.
+    """
+    if results_dir is None:
+        results_dir = get_current_run().results_dir
+
+    results_dir = Path(results_dir)
+    reference_ids = set()
+    for mapping_path in results_dir.glob(f"**/{spec.MAPPING_PREFIX}_*.csv"):
+        try:
+            mapping_df = pd.read_csv(mapping_path, usecols=["dataset_version_id"])
+        except ValueError as exc:
+            print(
+                f"WARNING: {mapping_path.name} has no dataset_version_id column: {exc}"
+            )
+            continue
+        reference_ids.update(mapping_df["dataset_version_id"].astype(str))
+    return reference_ids
+
+
 def get_dataset_version_id_lists(file_paths):
     """Get dataset version id lists for each results source from the dataset
     summary file's ``dataset_version_id`` column.

@@ -64,6 +64,17 @@ class ArangoDbUtilitiesSearchTestCase(unittest.TestCase):
             {"analyzers": ["text_en", "text_en_no_stem", "n-gram", "identity"]},
         )
 
+    def test_create_view_excludes_go_for_cell_kn_phenotypes(self):
+        """GO is excluded from the induced phenotype graph itself
+        (InducedSubgraphFinder.IGNORED_VERTEX_COLLECTIONS), so its search view
+        must not link a GO collection even when one exists in the database
+        (Springbok-LLC/nlm-ckn-etl#119)."""
+        self.db.collections.return_value = [{"name": "CL"}, {"name": "GO"}]
+        adb.create_view("Cell-KN-Phenotypes", collection_maps_name=COLLECTION_MAPS)
+        properties = self.db.create_view.call_args.kwargs["properties"]
+        self.assertNotIn("GO", properties["links"])
+        self.assertIn("CL", properties["links"])
+
 
 if __name__ == "__main__":
     unittest.main()
