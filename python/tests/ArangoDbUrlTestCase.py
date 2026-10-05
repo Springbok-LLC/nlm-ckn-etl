@@ -111,6 +111,8 @@ class ArangoUrlTestCase(unittest.TestCase):
             ({"ARANGO_DB_HOST": "127.0.0.1"}, "http://127.0.0.1:8529"),
             ({"ARANGO_DB_HOST": "10.0.1.5"}, "https://10.0.1.5:8529"),
             ({"ARANGO_DB_HOST": "10.0.1.5", "ARANGO_DB_SCHEME": "http"}, "http://10.0.1.5:8529"),
+            ({"ARANGO_DB_HOST": "10.0.1.5", "ARANGO_DB_SCHEME": " HTTP "}, "http://10.0.1.5:8529"),
+            ({"ARANGO_DB_HOST": "10.0.1.5", "ARANGO_DB_SCHEME": "  "}, "https://10.0.1.5:8529"),
         ]
         for env, url in cases:
             with self.subTest(env=env), patch.dict(os.environ):
@@ -118,6 +120,15 @@ class ArangoUrlTestCase(unittest.TestCase):
                     os.environ.pop(name, None)
                 os.environ.update(env)
                 self.assertEqual(adb._client().hosts, [url])
+
+    def test_invalid_scheme_rejected(self):
+        """A typo cannot silently downgrade a standalone client to HTTP."""
+        for scheme in ("tcp", "htps", "https://"):
+            with self.subTest(scheme=scheme), patch.dict(
+                os.environ, {"ARANGO_DB_SCHEME": scheme}
+            ):
+                with self.assertRaisesRegex(ValueError, "ARANGO_DB_SCHEME"):
+                    adb.arango_scheme("10.0.1.5")
 
 
 if __name__ == "__main__":

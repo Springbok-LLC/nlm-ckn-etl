@@ -47,17 +47,27 @@ public class ArangoDbUtilities {
 
     /**
      * Whether to connect over TLS. An explicit ARANGO_DB_SCHEME wins (the
-     * pipeline always sets it; see python/src/flows/_common.py). Otherwise
-     * http for a loopback or unset ARANGO_DB_HOST, where the local container
-     * serves plain HTTP, and https for any other host.
+     * pipeline always sets it; see python/src/flows/_common.py), and must be
+     * http or https, so a typo cannot silently downgrade the connection.
+     * Otherwise http for a loopback or unset ARANGO_DB_HOST, where the local
+     * container serves plain HTTP, and https for any other host.
      *
      * @param env Environment map
      * @return True if the resolved scheme is https
+     * @throws IllegalArgumentException If ARANGO_DB_SCHEME is neither http nor
+     *                                  https
      */
     public static boolean useSsl(Map<String, String> env) {
         String scheme = env.get("ARANGO_DB_SCHEME");
         if (scheme != null && !scheme.isBlank()) {
-            return "https".equalsIgnoreCase(scheme.strip());
+            String resolved = scheme.strip();
+            if ("https".equalsIgnoreCase(resolved)) {
+                return true;
+            }
+            if ("http".equalsIgnoreCase(resolved)) {
+                return false;
+            }
+            throw new IllegalArgumentException("ARANGO_DB_SCHEME must be http or https, not \"" + scheme + "\"");
         }
         String host = env.get("ARANGO_DB_HOST");
         return !(host == null || host.isBlank() || LOOPBACK_HOSTS.contains(host.strip()));

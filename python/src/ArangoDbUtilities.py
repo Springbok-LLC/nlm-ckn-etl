@@ -15,11 +15,20 @@ def arango_scheme(host):
     """Return ``ARANGO_DB_SCHEME`` if set, else ``http`` only for loopback.
 
     The local container serves plain HTTP; any other host defaults to
-    ``https`` so root credentials never cross the network in clear.
+    ``https`` so root credentials never cross the network in clear.  An
+    explicit value is stripped, lowercased, and rejected unless it is
+    ``http`` or ``https``, so a typo cannot silently downgrade the
+    connection (see ``flows/_common.py``).
     """
-    return os.getenv("ARANGO_DB_SCHEME") or (
-        "http" if is_loopback_host(host) else "https"
-    )
+    scheme = os.getenv("ARANGO_DB_SCHEME", "").strip().lower()
+    if not scheme:
+        return "http" if is_loopback_host(host) else "https"
+    if scheme not in ("http", "https"):
+        raise ValueError(
+            f"ARANGO_DB_SCHEME must be http or https, not "
+            f"{os.environ['ARANGO_DB_SCHEME']!r}"
+        )
+    return scheme
 
 
 def arango_url(scheme, host, port):
