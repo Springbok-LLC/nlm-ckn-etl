@@ -110,6 +110,7 @@ from _common import (
     _get_arangodb_id,
     _get_or_create_arango_password,
     _jar_key,
+    _log_env,
     _parse_s3_url,
     _run_python_script,
     _s3_download_tar,
@@ -420,7 +421,11 @@ def download_ontologies(
         _java_cmd("gov.nih.nlm.OntologyDownloader", arango_db_password, java_opts),
         check=True,
         cwd=REPO_ROOT,
-        env={**os.environ, **_arango_env(arango_db_password)},
+        env={
+            **os.environ,
+            **_arango_env(arango_db_password),
+            **_log_env("ontology"),
+        },
     )
     owl_files = list((REPO_ROOT / "data" / "obo").glob("*.owl"))
     if not owl_files:
@@ -461,7 +466,11 @@ def slim_ontologies(
         _java_cmd("gov.nih.nlm.OntologySlimmer", arango_db_password, java_opts),
         check=True,
         cwd=REPO_ROOT,
-        env={**os.environ, **_arango_env(arango_db_password)},
+        env={
+            **os.environ,
+            **_arango_env(arango_db_password),
+            **_log_env("ontology"),
+        },
     )
     logger.info("Ontologies slimmed")
 
@@ -480,7 +489,11 @@ def build_ontology_graph(
         _java_cmd("gov.nih.nlm.OntologyGraphBuilder", arango_db_password, java_opts),
         check=True,
         cwd=REPO_ROOT,
-        env={**os.environ, **_arango_env(arango_db_password)},
+        env={
+            **os.environ,
+            **_arango_env(arango_db_password),
+            **_log_env("ontology"),
+        },
     )
     logger.info("Ontology graph built")
 
@@ -886,7 +899,10 @@ def write_tuples(arango_db_password: str, run_name: str = "") -> None:
     logger.info("Writing all tuples (TupleWriterPipeline)")
     extra_args = ["--run-name", run_name] if run_name else None
     _run_python_script(
-        "TupleWriterPipeline.py", arango_db_password, extra_args=extra_args
+        "TupleWriterPipeline.py",
+        arango_db_password,
+        extra_args=extra_args,
+        phase="results",
     )
     logger.info("All tuples written")
 
@@ -1045,7 +1061,12 @@ def build_results_graph(
         _java_cmd("gov.nih.nlm.ResultsGraphBuilder", arango_db_password, java_opts),
         check=True,
         cwd=REPO_ROOT,
-        env={**os.environ, **_arango_env(arango_db_password), "CKN_RUN": run_name},
+        env={
+            **os.environ,
+            **_arango_env(arango_db_password),
+            **_log_env("results"),
+            "CKN_RUN": run_name,
+        },
     )
     logger.info("Results graph built")
 
@@ -1070,6 +1091,7 @@ def build_induced_subgraph(
         env={
             **os.environ,
             **_arango_env(arango_db_password),
+            **_log_env("results"),
             "ARANGO_ONTOLOGY_DB_NAME": "Cell-KN-Ontologies",
             "ARANGO_ONTOLOGY_GRAPH_NAME": "KN-Ontologies-v2.0",
             "ARANGO_PHENOTYPE_DB_NAME": "Cell-KN-Phenotypes",
