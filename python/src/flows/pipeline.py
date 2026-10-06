@@ -80,7 +80,6 @@ import os
 import re
 import shutil
 import subprocess
-import sys
 import tarfile
 from datetime import datetime, timezone
 from pathlib import Path
@@ -93,14 +92,13 @@ from prefect import flow, get_run_logger, task
 import _common as _common_mod
 from _common import (
     ARANGO_DB_HOME,
-    ARANGO_DB_HOST,
     ARANGO_DB_HOST_HOME,
     ARANGO_DB_IS_LOCAL,
     ARANGO_DB_PORT,
+    ARANGO_DB_SCHEME,
     ARANGO_DB_VOLUME_NAME,
     CLASSPATH,
     DEFAULT_JAVA_OPTS,
-    PYTHON_SRC,
     REPO_ROOT,
     S3_BUCKET,
     S3_KMS_KEY_ID,
@@ -115,14 +113,11 @@ from _common import (
     _s3_download_tar,
     _s3_sync,
     _s3_upload_tar,
+    arango_db_url,
     post_github_deployment_status,
     sync_external_from_s3,
     validate_external_files,
 )
-
-# Put python/src on the path so in-process tasks can import sibling modules
-# (e.g. ArangoDbUtilities) the same way _run_python_script subprocesses do.
-sys.path.insert(0, PYTHON_SRC)
 
 # ── Tasks ──────────────────────────────────────────────────────────────────
 
@@ -225,7 +220,7 @@ def _wait_for_arangodb_ready(
 
     auth = base64.b64encode(f"root:{arango_db_password}".encode()).decode()
     req = urllib.request.Request(
-        f"http://{ARANGO_DB_HOST}:{port}/_api/version",
+        f"{arango_db_url(port)}/_api/version",
         headers={"Authorization": f"Basic {auth}"},
     )
     deadline = time.monotonic() + timeout
@@ -242,7 +237,7 @@ def _wait_for_arangodb_ready(
             last_err = exc
         time.sleep(1.0)
     raise RuntimeError(
-        f"ArangoDB did not become ready on {ARANGO_DB_HOST}:{port} "
+        f"ArangoDB did not become ready at {arango_db_url(port)} "
         f"within {timeout:.0f}s (last error: {last_err})"
     )
 
@@ -318,9 +313,11 @@ def require_arangodb() -> None:
     """
     logger = get_run_logger()
     if not ARANGO_DB_IS_LOCAL:
-        logger.info(
-            f"Remote ArangoDB mode: host={ARANGO_DB_HOST}, port={ARANGO_DB_PORT}"
-        )
+        logger.info(f"Remote ArangoDB mode: {arango_db_url()}")
+        if ARANGO_DB_SCHEME == "http":
+            logger.warning(
+                "ARANGO_DB_SCHEME=http: root credentials go to a remote host unencrypted"
+            )
         return
     cid = _get_arangodb_id()
     if not cid:
@@ -594,7 +591,7 @@ def export_graphs_and_analyzers(
 
     auth = base64.b64encode(f"root:{arango_db_password}".encode()).decode()
     headers = {"Authorization": f"Basic {auth}"}
-    base_url = f"http://{ARANGO_DB_HOST}:{ARANGO_DB_PORT}"
+    base_url = arango_db_url()
 
     _ARANGO_TIMEOUT = 30  # seconds; guards against a hung ArangoDB during export
 
@@ -678,7 +675,7 @@ def import_graphs_from_sidecar(dump_dir: Path, arango_db_password: str) -> None:
     failures: list[str] = []
 
     auth = base64.b64encode(f"root:{arango_db_password}".encode()).decode()
-    base_url = f"http://{ARANGO_DB_HOST}:{ARANGO_DB_PORT}"
+    base_url = arango_db_url()
     _ARANGO_TIMEOUT = 30  # seconds
 
     db_dirs = sorted(
@@ -1093,11 +1090,10 @@ def create_analyzers_and_views(arango_db_password: str, database: str) -> None:
     logger = get_run_logger()
 
     # ArangoDbUtilities reads connection settings from the environment at call
-    # time; export the live host/port (the port is assigned dynamically at
-    # container start) and password so it connects to this run's instance.
-    os.environ["ARANGO_DB_HOST"] = ARANGO_DB_HOST
-    os.environ["ARANGO_DB_PORT"] = str(ARANGO_DB_PORT)
-    os.environ["ARANGO_DB_PASSWORD"] = arango_db_password
+    # time; export the same settings subprocesses get — the live port (assigned
+    # dynamically at container start), scheme, and password — so it connects
+    # to this run's instance.
+    os.environ.update(_arango_env(arango_db_password))
 
     import ArangoDbUtilities as adb
 
@@ -1411,7 +1407,7 @@ def nlm_ckn_etl(
                 phase1_started_arangodb = True
             else:
                 logger.info(
-                    f"Remote ArangoDB at {ARANGO_DB_HOST}:{ARANGO_DB_PORT} — "
+                    f"Remote ArangoDB at {arango_db_url()} — "
                     "skipping container start/stop and data-dir wipe"
                 )
             require_arangodb()

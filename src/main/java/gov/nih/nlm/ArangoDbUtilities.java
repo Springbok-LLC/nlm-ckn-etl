@@ -8,6 +8,8 @@ import com.arangodb.model.VertexCollectionRemoveOptions;
 import com.arangodb.entity.CollectionEntity;
 import com.arangodb.entity.CollectionType;
 
+import java.net.InetAddress;
+import java.net.UnknownHostException;
 import java.util.*;
 
 /**
@@ -28,7 +30,7 @@ public class ArangoDbUtilities {
      */
     public ArangoDbUtilities() {
         Map<String, String> env = System.getenv();
-        arangoDB = new ArangoDB.Builder().host(env.get("ARANGO_DB_HOST"), Integer.parseInt(env.get("ARANGO_DB_PORT"))).user(env.get("ARANGO_DB_USER")).password(env.get("ARANGO_DB_PASSWORD")).build();
+        arangoDB = new ArangoDB.Builder().host(env.get("ARANGO_DB_HOST"), Integer.parseInt(env.get("ARANGO_DB_PORT"))).useSsl(useSsl(env)).user(env.get("ARANGO_DB_USER")).password(env.get("ARANGO_DB_PASSWORD")).build();
     }
 
     /**
@@ -37,7 +39,57 @@ public class ArangoDbUtilities {
      * @param env Environment map
      */
     public ArangoDbUtilities(Map<String, String> env) {
-        arangoDB = new ArangoDB.Builder().host(env.get("ARANGO_DB_HOST"), Integer.parseInt(env.get("ARANGO_DB_PORT"))).user(env.get("ARANGO_DB_USER")).password(env.get("ARANGO_DB_PASSWORD")).build();
+        arangoDB = new ArangoDB.Builder().host(env.get("ARANGO_DB_HOST"), Integer.parseInt(env.get("ARANGO_DB_PORT"))).useSsl(useSsl(env)).user(env.get("ARANGO_DB_USER")).password(env.get("ARANGO_DB_PASSWORD")).build();
+    }
+
+    /**
+     * Whether to connect over TLS. An explicit ARANGO_DB_SCHEME wins (the
+     * pipeline always sets it; see python/src/flows/_common.py), and must be
+     * http or https, so a typo cannot silently downgrade the connection.
+     * Otherwise http for a loopback or unset ARANGO_DB_HOST, where the local
+     * container serves plain HTTP, and https for any other host.
+     *
+     * @param env Environment map
+     * @return True if the resolved scheme is https
+     * @throws IllegalArgumentException If ARANGO_DB_SCHEME is neither http nor
+     *                                  https
+     */
+    public static boolean useSsl(Map<String, String> env) {
+        String scheme = env.get("ARANGO_DB_SCHEME");
+        if (scheme != null && !scheme.isBlank()) {
+            String resolved = scheme.strip();
+            if ("https".equalsIgnoreCase(resolved)) {
+                return true;
+            }
+            if ("http".equalsIgnoreCase(resolved)) {
+                return false;
+            }
+            throw new IllegalArgumentException("ARANGO_DB_SCHEME must be http or https, not \"" + scheme + "\"");
+        }
+        String host = env.get("ARANGO_DB_HOST");
+        return !(host == null || host.isBlank() || isLoopback(host.strip()));
+    }
+
+    /**
+     * Whether a host names this machine, where ArangoDB serves plain HTTP by
+     * default: localhost (any case) or a loopback IP literal. Only IP literals
+     * are parsed, so a hostname never triggers a DNS lookup.
+     *
+     * @param host Host name or IP literal
+     * @return True if the host is loopback
+     */
+    static boolean isLoopback(String host) {
+        if ("localhost".equalsIgnoreCase(host)) {
+            return true;
+        }
+        if (!host.contains(":") && !host.matches("[0-9.]+")) {
+            return false;
+        }
+        try {
+            return InetAddress.getByName(host).isLoopbackAddress();
+        } catch (UnknownHostException e) {
+            return false;
+        }
     }
 
     /**

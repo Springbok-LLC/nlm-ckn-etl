@@ -41,6 +41,16 @@ from prefect import get_run_logger, task
 
 REPO_ROOT = Path(__file__).parents[3]
 
+# PYTHONPATH injected into every direct Python script invocation so that
+# sibling imports (LoaderUtilities, ArangoDbUtilities, …) resolve correctly.
+# Also put on this process's path so flows and in-process tasks can import
+# them the same way.
+PYTHON_SRC = str(REPO_ROOT / "python" / "src")
+if PYTHON_SRC not in sys.path:
+    sys.path.insert(0, PYTHON_SRC)
+
+from ArangoDbUtilities import is_loopback_host  # noqa: E402
+
 # Relative path to the compiled JAR (from REPO_ROOT).
 # The JAR is downloaded from S3 by ``ensure_jar()`` in flows/pipeline.py, or
 # built locally with ``mvn clean package -DskipTests`` for development.
@@ -49,11 +59,40 @@ CLASSPATH = "target/nlm-ckn-etl-1.0.jar"
 # Default Java heap.  Raise with --java-opts if OOM-killed (exit 137).
 DEFAULT_JAVA_OPTS = "-Xmx32g"
 
-ARANGO_DB_HOST = os.getenv("ARANGO_DB_HOST", "localhost")
+
+def _resolve_arango_db_scheme(host: str, override: str) -> str:
+    """Return the URL scheme for ArangoDB at ``host``.
+
+    ``override`` (``ARANGO_DB_SCHEME``) wins when set.  Otherwise loopback is
+    ``http`` — the local Docker container serves plain HTTP — and any other
+    host is ``https``, so root credentials never cross the network in clear
+    unless someone deliberately sets ``ARANGO_DB_SCHEME=http``.  ``https`` is
+    rejected for loopback because that container has no TLS listener.
+    """
+    scheme = override.strip().lower()
+    if not scheme:
+        return "http" if is_loopback_host(host) else "https"
+    if scheme not in ("http", "https"):
+        raise ValueError(f"ARANGO_DB_SCHEME must be http or https, not {override!r}")
+    if scheme == "https" and is_loopback_host(host):
+        raise ValueError(
+            f"ARANGO_DB_SCHEME=https is not supported for {host!r}: "
+            "the pipeline-managed local ArangoDB container serves plain HTTP"
+        )
+    return scheme
+
+
+# An empty ARANGO_DB_HOST means the default, never a URL like ``http://:8529``.
+# Hostnames are case-insensitive, so lowercase once here and ``LOCALHOST`` is
+# classified as loopback below.
+ARANGO_DB_HOST = os.getenv("ARANGO_DB_HOST", "").strip().lower() or "localhost"
 # Loopback is local: the start/dump/restore tasks manage a local Docker
 # container and must run for 127.0.0.1 and ::1, not just the literal "localhost".
-ARANGO_DB_IS_LOCAL = ARANGO_DB_HOST in ("localhost", "127.0.0.1", "::1", "")
+ARANGO_DB_IS_LOCAL = is_loopback_host(ARANGO_DB_HOST)
 ARANGO_DB_PORT = int(os.getenv("ARANGO_DB_PORT", "8529"))
+ARANGO_DB_SCHEME = _resolve_arango_db_scheme(
+    ARANGO_DB_HOST, os.getenv("ARANGO_DB_SCHEME", "")
+)
 ARANGO_DB_HOME = os.getenv("ARANGO_DB_HOME", str(REPO_ROOT / "data" / "arangodb"))
 
 # Host-side path for the ArangoDB data directory, used as the Docker volume
@@ -86,10 +125,6 @@ S3_BUCKET = os.getenv("S3_BUCKET", "")
 # KMS key ARN/ID for server-side encryption of S3 uploads.  Required in
 # deployed environments; empty string falls back to SSE-S3 (AES-256).
 S3_KMS_KEY_ID = os.getenv("S3_KMS_KEY_ID", "")
-
-# PYTHONPATH injected into every direct Python script invocation so that
-# sibling imports (LoaderUtilities, ArangoDbUtilities, …) resolve correctly.
-PYTHON_SRC = str(REPO_ROOT / "python" / "src")
 
 
 _log = logging.getLogger(__name__)
@@ -176,15 +211,31 @@ def _get_arangodb_id() -> str | None:
         return None
 
 
+def arango_db_url(port: int | None = None) -> str:
+    """Return the ArangoDB base URL, e.g. ``https://10.0.1.5:8529``.
+
+    Every HTTP connection the flows make goes through here (or through
+    ``_arango_env`` for subprocesses), so the scheme cannot drift between
+    calls.  The port is read at call time because ``_set_arango_port``
+    rebinds it after a dynamic container start; pass ``port`` to probe a
+    container before that happens.
+    """
+    host = f"[{ARANGO_DB_HOST}]" if ":" in ARANGO_DB_HOST else ARANGO_DB_HOST
+    return f"{ARANGO_DB_SCHEME}://{host}:{port or ARANGO_DB_PORT}"
+
+
 def _arango_env(arango_db_password: str) -> dict[str, str]:
     """Return environment variables for ArangoDB connectivity.
 
     Injected into every Python script and Java program subprocess so they
     can reach the ArangoDB instance regardless of where it runs.
+    ``ARANGO_DB_SCHEME`` is always the resolved value, so a subprocess never
+    falls back to its own default.
     """
     return {
         "ARANGO_DB_HOST": ARANGO_DB_HOST,
         "ARANGO_DB_PORT": str(ARANGO_DB_PORT),
+        "ARANGO_DB_SCHEME": ARANGO_DB_SCHEME,
         "ARANGO_DB_USER": "root",
         "ARANGO_DB_PASSWORD": arango_db_password,
     }
