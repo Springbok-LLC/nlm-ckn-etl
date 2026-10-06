@@ -169,6 +169,7 @@ def fetch_external_api_results(
             "NCBI_API_KEY": ncbi_api_key,
         },
         extra_args=extra_args or None,
+        phase="fetch",
     )
     logger.info("External API results fetched")
 
@@ -206,6 +207,7 @@ def transform_external_api_results(
         "DataTransformer.py",
         arango_db_password=arango_db_password,
         extra_args=extra_args or None,
+        phase="fetch",
     )
     logger.info("External API results transformed")
 

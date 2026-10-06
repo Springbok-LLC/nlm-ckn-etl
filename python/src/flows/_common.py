@@ -29,6 +29,7 @@ import tarfile
 import tempfile
 import urllib.error
 import urllib.request
+import uuid
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -36,6 +37,7 @@ import boto3
 
 import docker as docker_sdk
 from prefect import get_run_logger, task
+from prefect.runtime import flow_run
 
 # ── Constants ──────────────────────────────────────────────────────────────
 
@@ -190,11 +192,49 @@ def _arango_env(arango_db_password: str) -> dict[str, str]:
     }
 
 
+# Used when a launch happens outside a Prefect run with no CORRELATION_ID set,
+# so every subprocess of one process still shares a single id.
+_FALLBACK_CORRELATION_ID = str(uuid.uuid4())
+
+
+def _log_env(phase: str | None = None) -> dict[str, str]:
+    """Return the logging context to merge into a subprocess environment.
+
+    The worker scripts and Java run as separate processes, so the run-level
+    context reaches them through the environment (see
+    ``logging_setup.configure_logging``).
+
+    ``CORRELATION_ID`` is, in order: the value already in the environment
+    (so a caller or the Batch job definition can fix one id for the whole
+    run), the current Prefect flow-run id, or a per-process UUID. ``GIT_SHA``
+    is forwarded only when set; the child reports ``unknown`` otherwise.
+
+    Parameters
+    ----------
+    phase:
+        The pipeline phase the subprocess belongs to (``fetch``, ``ontology``,
+        ``results`` or ``archive``). Omitted when ``None``, which leaves any
+        ``PHASE`` already in the environment untouched.
+    """
+    env = {
+        "CORRELATION_ID": os.environ.get("CORRELATION_ID")
+        or flow_run.id
+        or _FALLBACK_CORRELATION_ID
+    }
+    git_sha = os.environ.get("GIT_SHA")
+    if git_sha:
+        env["GIT_SHA"] = git_sha
+    if phase:
+        env["PHASE"] = phase
+    return env
+
+
 def _run_python_script(
     script: str,
     arango_db_password: str,
     extra_env: dict[str, str] | None = None,
     extra_args: list[str] | None = None,
+    phase: str | None = None,
 ) -> None:
     """Run a Python script directly using ``sys.executable``.
 
@@ -214,12 +254,15 @@ def _run_python_script(
     extra_args:
         Additional command-line arguments appended to the script invocation
         (e.g. ``["--force-all"]``).
+    phase:
+        The pipeline phase, forwarded as ``PHASE`` (see :func:`_log_env`).
     """
     env = {
         **os.environ,
         "PYTHONPATH": PYTHON_SRC,
         "PYTHONUNBUFFERED": "1",
         **_arango_env(arango_db_password),
+        **_log_env(phase),
         **(extra_env or {}),
     }
     subprocess.run(
