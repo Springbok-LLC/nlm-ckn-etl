@@ -162,6 +162,7 @@ reports give the source line each name replaces.
 | `subprocess_started` | INFO | `phase`, `argv`, `cwd`; no secrets in `argv` |
 | `subprocess_finished` | INFO | `phase`, `rc`, `duration_ms` |
 | `subprocess_failed` | ERROR | `phase`, `reason=nonzero_exit`, `rc`, `duration_ms`; `oom_suspected=true` when `rc` is 137 or -9 |
+| `subprocess_pipes_held` | WARN | `phase`, `grace_s`; the child exited but a descendant still holds its output pipes, so the flow stopped waiting for them |
 | `subprocess_output` | INFO (stdout), WARN (stderr) | `stream`, `line`, `truncated`; a child line that is not already a structured record. Structured child lines pass through unchanged. |
 | `source_versions_resolved` | INFO | `source`, `source_version` per source |
 

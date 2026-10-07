@@ -17,6 +17,7 @@ ECS Fargate task).  There are no Docker-in-Docker calls here.
   sibling modules (``LoaderUtilities``, ``ArangoDbUtilities``, etc.).
 """
 
+import contextvars
 import hashlib
 import json
 import logging
@@ -241,8 +242,13 @@ def _log_env(phase: str | None = None) -> dict[str, str]:
 # 256 KB, and a runaway line is not worth the whole batch.
 _MAX_CHILD_LINE = 32_768
 
+# How long to keep waiting for a child's pipes to close after the child itself
+# has exited. A descendant it left running (a build daemon, say) can hold them
+# open indefinitely; its output is still forwarded, but the flow moves on.
+_READER_GRACE_S = 5.0
 
-def _forward_child_line(line: str, stream: str) -> None:
+
+def _forward_child_line(line: str, stream: str, truncated: bool = False) -> None:
     """Emit one line of child output as a structured log line.
 
     A line that is already a structured record (a JSON object with ``message``
@@ -257,8 +263,12 @@ def _forward_child_line(line: str, stream: str) -> None:
         One line of child output, without its newline.
     stream:
         ``stdout`` or ``stderr``.
+    truncated:
+        The line was longer than ``_MAX_CHILD_LINE`` and ``line`` is its
+        prefix. A truncated line is never passed through, even when it looks
+        structured, because the sink may reject an oversized event.
     """
-    if line.startswith("{"):
+    if not truncated and line.startswith("{"):
         try:
             record = json.loads(line)
         except ValueError:
@@ -269,8 +279,8 @@ def _forward_child_line(line: str, stream: str) -> None:
             sys.stdout.write(line + "\n")
             sys.stdout.flush()
             return
-    fields = {"stream": stream, "line": line[:_MAX_CHILD_LINE]}
-    if len(line) > _MAX_CHILD_LINE:
+    fields = {"stream": stream, "line": line}
+    if truncated:
         fields["truncated"] = True
     if stream == "stderr":
         _events.warning("subprocess_output", **fields)
@@ -278,13 +288,32 @@ def _forward_child_line(line: str, stream: str) -> None:
         _events.info("subprocess_output", **fields)
 
 
+def _read_lines(pipe):
+    """Yield ``(line, truncated)`` from ``pipe`` without buffering a whole line.
+
+    At most ``_MAX_CHILD_LINE`` characters of a line are kept; the rest of an
+    over-long line is read and discarded up to its newline, so a child that
+    never writes one cannot grow this process's memory.
+    """
+    while True:
+        chunk = pipe.readline(_MAX_CHILD_LINE + 1)
+        if not chunk:
+            return
+        truncated = len(chunk) > _MAX_CHILD_LINE and not chunk.endswith("\n")
+        if truncated:
+            while True:
+                rest = pipe.readline(_MAX_CHILD_LINE + 1)
+                if not rest or rest.endswith("\n"):
+                    break
+        yield chunk.rstrip("\r\n")[:_MAX_CHILD_LINE], truncated
+
+
 def _pump(pipe, stream: str) -> None:
     """Forward every line of ``pipe`` until it closes."""
     with pipe:
-        for raw in pipe:
-            line = raw.rstrip("\r\n")
+        for line, truncated in _read_lines(pipe):
             if line.strip():
-                _forward_child_line(line, stream)
+                _forward_child_line(line, stream, truncated)
 
 
 def _run_logged(
@@ -339,16 +368,23 @@ def _run_logged(
     )
     readers = []
     if capture:
+        # A new thread starts with an empty context, so give each reader a copy
+        # of this one; otherwise its events lose the correlation id.
         readers = [
-            threading.Thread(target=_pump, args=(proc.stdout, "stdout"), daemon=True),
-            threading.Thread(target=_pump, args=(proc.stderr, "stderr"), daemon=True),
+            threading.Thread(
+                target=contextvars.copy_context().run,
+                args=(_pump, pipe_, name),
+                daemon=True,
+            )
+            for pipe_, name in ((proc.stdout, "stdout"), (proc.stderr, "stderr"))
         ]
     try:
         for reader in readers:
             reader.start()
         rc = proc.wait()
+        deadline = time.monotonic() + _READER_GRACE_S
         for reader in readers:
-            reader.join()
+            reader.join(max(0.0, deadline - time.monotonic()))
     except BaseException:
         proc.kill()
         proc.wait()
@@ -356,6 +392,9 @@ def _run_logged(
         for reader in readers:
             reader.join(timeout=5)
         raise
+    if any(reader.is_alive() for reader in readers):
+        # The daemon readers keep forwarding whatever the descendant writes.
+        _events.warning("subprocess_pipes_held", phase=phase, grace_s=_READER_GRACE_S)
     duration_ms = int((time.monotonic() - started) * 1000)
     if rc != 0:
         failure = {"reason": "nonzero_exit", "rc": rc, "duration_ms": duration_ms}

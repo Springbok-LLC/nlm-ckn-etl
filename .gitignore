@@ -55,6 +55,7 @@ CLAUDE.md
 # data
 docs/java/
 log/
+*.log
 data/arangodb/
 
 data/external*/

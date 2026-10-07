@@ -23,6 +23,9 @@ class LoggingSetupTestCase(unittest.TestCase):
     def setUp(self):
         self._root_handlers = logging.getLogger().handlers[:]
         self._root_level = logging.getLogger().level
+        self._quiet_levels = {
+            name: logging.getLogger(name).level for name in logging_setup._QUIET_LOGGERS
+        }
 
     def tearDown(self):
         root = logging.getLogger()
@@ -30,8 +33,8 @@ class LoggingSetupTestCase(unittest.TestCase):
         root.setLevel(self._root_level)
         structlog.contextvars.clear_contextvars()
         structlog.reset_defaults()
-        for name in logging_setup._QUIET_LOGGERS:
-            logging.getLogger(name).setLevel(logging.NOTSET)
+        for name, level in self._quiet_levels.items():
+            logging.getLogger(name).setLevel(level)
 
     def _emit(self, env=None, emit=None):
         """Configure under ``env`` and return the lines written to the stream."""

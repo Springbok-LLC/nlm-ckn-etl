@@ -5,6 +5,7 @@ import json
 import os
 import subprocess
 import sys
+import time
 import unittest
 from pathlib import Path
 from unittest.mock import MagicMock, patch
@@ -70,6 +71,12 @@ class RunLoggedTestCase(unittest.TestCase):
         self.assertEqual(event["stream"], "stdout")
         self.assertEqual(event["line"], "hello from child")
 
+    def test_output_events_carry_the_correlation_id(self):
+        # Reader threads start with an empty context; the id must be copied in.
+        _common._run_logged(_py("print('x')"), phase="fetch")
+        (event,) = self._by_message("subprocess_output")
+        self.assertEqual(event["correlation_id"], "run-x")
+
     def test_stderr_becomes_warn_event(self):
         _common._run_logged(
             _py("import sys; print('Exception in thread main', file=sys.stderr)")
@@ -134,6 +141,45 @@ class RunLoggedTestCase(unittest.TestCase):
         (event,) = self._by_message("subprocess_output")
         self.assertEqual(len(event["line"]), _common._MAX_CHILD_LINE)
         self.assertTrue(event["truncated"])
+
+    def test_line_of_exactly_the_limit_is_not_truncated(self):
+        n = _common._MAX_CHILD_LINE
+        _common._run_logged(_py(f"print('x' * {n})"))
+        (event,) = self._by_message("subprocess_output")
+        self.assertEqual(len(event["line"]), n)
+        self.assertNotIn("truncated", event)
+
+    def test_overlong_line_is_drained_and_the_next_line_survives(self):
+        _common._run_logged(_py("print('x' * 100000); print('after')"))
+        lines = [e["line"] for e in self._by_message("subprocess_output")]
+        self.assertEqual(len(lines), 2)
+        self.assertEqual(lines[1], "after")
+
+    def test_overlong_structured_line_is_truncated_not_passed_through(self):
+        code = (
+            "import json\n"
+            "print(json.dumps({'message': 'm', 'level': 'INFO',"
+            " 'blob': 'y' * 50000}))\n"
+        )
+        _common._run_logged(_py(code))
+        self.assertEqual(self.passthrough.getvalue(), "")
+        (event,) = self._by_message("subprocess_output")
+        self.assertTrue(event["truncated"])
+        self.assertEqual(len(event["line"]), _common._MAX_CHILD_LINE)
+
+    def test_descendant_holding_the_pipes_does_not_block_the_flow(self):
+        code = (
+            "import subprocess, sys\n"
+            "subprocess.Popen([sys.executable, '-c',"
+            " 'import time; time.sleep(4)'])\n"
+        )
+        with patch.object(_common, "_READER_GRACE_S", 0.3):
+            started = time.monotonic()
+            _common._run_logged(_py(code))
+            elapsed = time.monotonic() - started
+        self.assertLess(elapsed, 3)
+        self.assertEqual(len(self._by_message("subprocess_pipes_held")), 1)
+        self.assertEqual(len(self._by_message("subprocess_finished")), 1)
 
     def test_console_mode_leaves_child_output_alone(self):
         with patch.dict(os.environ, {"LOG_FORMAT": "console"}):
