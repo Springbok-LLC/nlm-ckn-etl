@@ -27,6 +27,8 @@ import subprocess
 import sys
 import tarfile
 import tempfile
+import threading
+import time
 import urllib.error
 import urllib.request
 import uuid
@@ -34,6 +36,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 import boto3
+import structlog
 
 import docker as docker_sdk
 from prefect import get_run_logger, task
@@ -95,6 +98,7 @@ PYTHON_SRC = str(REPO_ROOT / "python" / "src")
 
 
 _log = logging.getLogger(__name__)
+_events = structlog.get_logger(__name__)
 
 # ── Private helpers ────────────────────────────────────────────────────────
 
@@ -206,8 +210,10 @@ def _log_env(phase: str | None = None) -> dict[str, str]:
 
     ``CORRELATION_ID`` is, in order: the value already in the environment
     (so a caller or the Batch job definition can fix one id for the whole
-    run), the current Prefect flow-run id, or a per-process UUID. ``GIT_SHA``
-    is forwarded only when set; the child reports ``unknown`` otherwise.
+    run), the id this process is already logging under (bound by
+    ``configure_logging``, so the parent and its children join), the current
+    Prefect flow-run id, or a per-process UUID. ``GIT_SHA`` is forwarded only
+    when set; the child reports ``unknown`` otherwise.
 
     Parameters
     ----------
@@ -216,8 +222,10 @@ def _log_env(phase: str | None = None) -> dict[str, str]:
         ``results`` or ``archive``). Omitted when ``None``, which leaves any
         ``PHASE`` already in the environment untouched.
     """
+    bound = structlog.contextvars.get_contextvars().get("correlation_id")
     env = {
         "CORRELATION_ID": os.environ.get("CORRELATION_ID")
+        or bound
         or flow_run.id
         or _FALLBACK_CORRELATION_ID
     }
@@ -227,6 +235,135 @@ def _log_env(phase: str | None = None) -> dict[str, str]:
     if phase:
         env["PHASE"] = phase
     return env
+
+
+# Longest child line forwarded as one event; CloudWatch rejects events over
+# 256 KB, and a runaway line is not worth the whole batch.
+_MAX_CHILD_LINE = 32_768
+
+
+def _forward_child_line(line: str, stream: str) -> None:
+    """Emit one line of child output as a structured log line.
+
+    A line that is already a structured record (a JSON object with ``message``
+    and ``level``, as the Python workers and Java write) is written through
+    unchanged, so its fields and level survive. Anything else (a JVM stack
+    trace, Maven output, a third-party warning) becomes a ``subprocess_output``
+    event: INFO for stdout, WARN for stderr.
+
+    Parameters
+    ----------
+    line:
+        One line of child output, without its newline.
+    stream:
+        ``stdout`` or ``stderr``.
+    """
+    if line.startswith("{"):
+        try:
+            record = json.loads(line)
+        except ValueError:
+            record = None
+        if isinstance(record, dict) and "message" in record and "level" in record:
+            # One write call, so lines from the two reader threads and the
+            # parent's own handler cannot interleave mid-line.
+            sys.stdout.write(line + "\n")
+            sys.stdout.flush()
+            return
+    fields = {"stream": stream, "line": line[:_MAX_CHILD_LINE]}
+    if len(line) > _MAX_CHILD_LINE:
+        fields["truncated"] = True
+    if stream == "stderr":
+        _events.warning("subprocess_output", **fields)
+    else:
+        _events.info("subprocess_output", **fields)
+
+
+def _pump(pipe, stream: str) -> None:
+    """Forward every line of ``pipe`` until it closes."""
+    with pipe:
+        for raw in pipe:
+            line = raw.rstrip("\r\n")
+            if line.strip():
+                _forward_child_line(line, stream)
+
+
+def _run_logged(
+    cmd: list[str],
+    phase: str | None = None,
+    env: dict[str, str] | None = None,
+    cwd: Path | str | None = None,
+) -> None:
+    """Run a subprocess, logging its lifecycle and forwarding its output.
+
+    Emits ``subprocess_started``, then ``subprocess_finished`` (``rc``,
+    ``duration_ms``) or ``subprocess_failed`` (``reason=nonzero_exit``, ``rc``,
+    ``duration_ms``), and raises :class:`subprocess.CalledProcessError` on a
+    non-zero exit just as ``subprocess.run(check=True)`` does. The child is
+    killed if this call is interrupted.
+
+    The child's stdout and stderr are read line by line, never accumulated;
+    see :func:`_forward_child_line` for how each line is forwarded. With
+    ``LOG_FORMAT=console`` the child inherits this process's streams instead,
+    since both sides are then writing human-readable text.
+
+    Parameters
+    ----------
+    cmd:
+        The command and arguments. Logged as ``argv``, so do not put secrets
+        in it; pass them through ``env``.
+    phase:
+        The pipeline phase; merged into the child environment as ``PHASE``
+        together with ``CORRELATION_ID`` and ``GIT_SHA`` (see :func:`_log_env`).
+    env:
+        The child environment. Defaults to this process's environment.
+    cwd:
+        Working directory for the child.
+    """
+    child_env = {**(os.environ if env is None else env), **_log_env(phase)}
+    capture = os.environ.get("LOG_FORMAT", "").lower() != "console"
+    pipe = subprocess.PIPE if capture else None
+    fields = {"phase": phase, "argv": cmd}
+    if cwd is not None:
+        fields["cwd"] = str(cwd)
+    _events.info("subprocess_started", **fields)
+    started = time.monotonic()
+    proc = subprocess.Popen(
+        cmd,
+        env=child_env,
+        cwd=cwd,
+        stdout=pipe,
+        stderr=pipe,
+        text=True,
+        errors="replace",
+        bufsize=1,
+    )
+    readers = []
+    if capture:
+        readers = [
+            threading.Thread(target=_pump, args=(proc.stdout, "stdout"), daemon=True),
+            threading.Thread(target=_pump, args=(proc.stderr, "stderr"), daemon=True),
+        ]
+    try:
+        for reader in readers:
+            reader.start()
+        rc = proc.wait()
+        for reader in readers:
+            reader.join()
+    except BaseException:
+        proc.kill()
+        proc.wait()
+        # A grandchild holding the pipe open must not hang the cleanup.
+        for reader in readers:
+            reader.join(timeout=5)
+        raise
+    duration_ms = int((time.monotonic() - started) * 1000)
+    if rc != 0:
+        failure = {"reason": "nonzero_exit", "rc": rc, "duration_ms": duration_ms}
+        if rc in (137, -9):
+            failure["oom_suspected"] = True
+        _events.error("subprocess_failed", phase=phase, **failure)
+        raise subprocess.CalledProcessError(rc, cmd)
+    _events.info("subprocess_finished", phase=phase, rc=rc, duration_ms=duration_ms)
 
 
 def _run_python_script(
@@ -262,16 +399,15 @@ def _run_python_script(
         "PYTHONPATH": PYTHON_SRC,
         "PYTHONUNBUFFERED": "1",
         **_arango_env(arango_db_password),
-        **_log_env(phase),
         **(extra_env or {}),
     }
-    subprocess.run(
+    _run_logged(
         [
             sys.executable,
             str(REPO_ROOT / "python" / "src" / script),
             *(extra_args or []),
         ],
-        check=True,
+        phase=phase,
         env=env,
     )
 

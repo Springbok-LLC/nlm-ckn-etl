@@ -159,9 +159,10 @@ reports give the source line each name replaces.
 | `phase_started` | INFO | `phase` |
 | `phase_finished` | INFO | `phase`, `duration_ms`, counts |
 | `phase_skipped` | INFO | `phase`, `reason`, `force` |
-| `subprocess_started` | INFO | `phase`, `script` or `main_class`, `java_opts` |
+| `subprocess_started` | INFO | `phase`, `argv`, `cwd`; no secrets in `argv` |
 | `subprocess_finished` | INFO | `phase`, `rc`, `duration_ms` |
-| `subprocess_failed` | ERROR | `phase`, `reason=nonzero_exit`, `rc`, `duration_ms`; note `rc=137` as out of memory |
+| `subprocess_failed` | ERROR | `phase`, `reason=nonzero_exit`, `rc`, `duration_ms`; `oom_suspected=true` when `rc` is 137 or -9 |
+| `subprocess_output` | INFO (stdout), WARN (stderr) | `stream`, `line`, `truncated`; a child line that is not already a structured record. Structured child lines pass through unchanged. |
 | `source_versions_resolved` | INFO | `source`, `source_version` per source |
 
 ### Fetch (`DataFetcher`, `fetch.py`, `_common.py`)

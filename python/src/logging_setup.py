@@ -23,6 +23,11 @@ PHASE_ENV = "PHASE"
 RELEASE_ENV = "GIT_SHA"
 LOG_FORMAT_ENV = "LOG_FORMAT"
 
+# Libraries that log every request at INFO. Held at WARNING so a run is not
+# buried in "HTTP Request: GET ..." lines (Prefect's API client alone makes
+# several per task).
+_QUIET_LOGGERS = ("httpx", "httpcore")
+
 
 def _add_app_context(service: str):
     """Return a processor that adds ``service`` and ``release`` to each event.
@@ -143,6 +148,8 @@ def configure_logging(
     root = logging.getLogger()
     root.handlers = [handler]
     root.setLevel(level)
+    for name in _QUIET_LOGGERS:
+        logging.getLogger(name).setLevel(max(level, logging.WARNING))
 
     structlog.contextvars.clear_contextvars()
     bound = {

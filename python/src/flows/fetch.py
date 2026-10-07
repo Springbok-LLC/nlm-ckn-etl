@@ -558,6 +558,9 @@ def _parse_args(argv=None):
 
 
 if __name__ == "__main__":
+    from logging_setup import configure_logging
+
+    configure_logging("etl-fetcher")
     args = _parse_args()
     nlm_ckn_fetch(
         ncbi_email=args.ncbi_email,
