@@ -4,6 +4,7 @@
 environment, so a run's lines join on one id and carry their phase.
 """
 
+import io
 import os
 import subprocess
 import sys
@@ -11,6 +12,8 @@ import unittest
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
+
+import structlog
 
 _SRC = Path(__file__).resolve().parents[1] / "src"
 sys.path.insert(0, str(_SRC / "flows"))
@@ -23,12 +26,35 @@ import pipeline  # noqa: E402
 _LOG_KEYS = ("CORRELATION_ID", "PHASE", "GIT_SHA")
 
 
+class _FakeProc:
+    """A finished child with no output, standing in for ``subprocess.Popen``."""
+
+    def __init__(self):
+        self.stdout = io.StringIO()
+        self.stderr = io.StringIO()
+
+    def wait(self):
+        return 0
+
+
 def _clean_env(**extra):
     env = {k: v for k, v in os.environ.items() if k not in _LOG_KEYS}
     return {**env, **extra}
 
 
 class LogEnvTestCase(unittest.TestCase):
+    def setUp(self):
+        structlog.contextvars.clear_contextvars()
+        self.addCleanup(structlog.contextvars.clear_contextvars)
+
+    def test_bound_id_beats_flow_run_id(self):
+        # The parent already logs under the bound id; its children must match.
+        run = SimpleNamespace(id="flow-run-1")
+        structlog.contextvars.bind_contextvars(correlation_id="bound-1")
+        with patch.dict(os.environ, _clean_env(), clear=True):
+            with patch.object(_common, "flow_run", run):
+                self.assertEqual(_common._log_env()["CORRELATION_ID"], "bound-1")
+
     def test_environment_correlation_id_wins(self):
         run = SimpleNamespace(id="flow-run-1")
         with patch.dict(os.environ, _clean_env(CORRELATION_ID="batch-1"), clear=True):
@@ -67,9 +93,11 @@ class LogEnvTestCase(unittest.TestCase):
 
 
 class LaunchEnvTestCase(unittest.TestCase):
-    """The env handed to ``subprocess.run`` carries the id and the right phase."""
+    """The env handed to ``subprocess.Popen`` carries the id and the right phase."""
 
     def setUp(self):
+        structlog.contextvars.clear_contextvars()
+        self.addCleanup(structlog.contextvars.clear_contextvars)
         self.run = SimpleNamespace(id="flow-run-9")
         patcher = patch.dict(os.environ, _clean_env(GIT_SHA="sha9"), clear=True)
         patcher.start()
@@ -77,7 +105,9 @@ class LaunchEnvTestCase(unittest.TestCase):
         patcher = patch.object(_common, "flow_run", self.run)
         patcher.start()
         self.addCleanup(patcher.stop)
-        patcher = patch.object(subprocess, "run")
+        patcher = patch.object(
+            subprocess, "Popen", side_effect=lambda *a, **k: _FakeProc()
+        )
         self.run_mock = patcher.start()
         self.addCleanup(patcher.stop)
         patcher = patch.object(pipeline, "get_run_logger", return_value=MagicMock())

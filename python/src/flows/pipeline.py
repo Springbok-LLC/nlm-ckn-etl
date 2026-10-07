@@ -110,8 +110,8 @@ from _common import (
     _get_arangodb_id,
     _get_or_create_arango_password,
     _jar_key,
-    _log_env,
     _parse_s3_url,
+    _run_logged,
     _run_python_script,
     _s3_download_tar,
     _s3_sync,
@@ -364,11 +364,7 @@ def ensure_jar() -> str:
 
     if not S3_BUCKET:
         logger.info("S3_BUCKET not set — building JAR locally with Maven")
-        subprocess.run(
-            ["mvn", "clean", "package", "-DskipTests"],
-            check=True,
-            cwd=REPO_ROOT,
-        )
+        _run_logged(["mvn", "clean", "package", "-DskipTests"], cwd=REPO_ROOT)
         if not jar.exists():
             raise FileNotFoundError(f"Maven build succeeded but JAR not found at {jar}")
         jar_key = _jar_key()
@@ -417,15 +413,11 @@ def download_ontologies(
     """Run OntologyDownloader to fetch OWL files into data/obo/."""
     logger = get_run_logger()
     logger.info(f"Downloading ontologies (gov.nih.nlm.OntologyDownloader, {java_opts})")
-    subprocess.run(
+    _run_logged(
         _java_cmd("gov.nih.nlm.OntologyDownloader", arango_db_password, java_opts),
-        check=True,
+        phase="ontology",
         cwd=REPO_ROOT,
-        env={
-            **os.environ,
-            **_arango_env(arango_db_password),
-            **_log_env("ontology"),
-        },
+        env={**os.environ, **_arango_env(arango_db_password)},
     )
     owl_files = list((REPO_ROOT / "data" / "obo").glob("*.owl"))
     if not owl_files:
@@ -462,15 +454,11 @@ def slim_ontologies(
     """
     logger = get_run_logger()
     logger.info(f"Slimming ontologies (gov.nih.nlm.OntologySlimmer, {java_opts})")
-    subprocess.run(
+    _run_logged(
         _java_cmd("gov.nih.nlm.OntologySlimmer", arango_db_password, java_opts),
-        check=True,
+        phase="ontology",
         cwd=REPO_ROOT,
-        env={
-            **os.environ,
-            **_arango_env(arango_db_password),
-            **_log_env("ontology"),
-        },
+        env={**os.environ, **_arango_env(arango_db_password)},
     )
     logger.info("Ontologies slimmed")
 
@@ -485,15 +473,11 @@ def build_ontology_graph(
     logger.info(
         f"Building ontology graph (gov.nih.nlm.OntologyGraphBuilder, {java_opts})"
     )
-    subprocess.run(
+    _run_logged(
         _java_cmd("gov.nih.nlm.OntologyGraphBuilder", arango_db_password, java_opts),
-        check=True,
+        phase="ontology",
         cwd=REPO_ROOT,
-        env={
-            **os.environ,
-            **_arango_env(arango_db_password),
-            **_log_env("ontology"),
-        },
+        env={**os.environ, **_arango_env(arango_db_password)},
     )
     logger.info("Ontology graph built")
 
@@ -1057,16 +1041,11 @@ def build_results_graph(
     logger.info(
         f"Building results graph (gov.nih.nlm.ResultsGraphBuilder, {java_opts})"
     )
-    subprocess.run(
+    _run_logged(
         _java_cmd("gov.nih.nlm.ResultsGraphBuilder", arango_db_password, java_opts),
-        check=True,
+        phase="results",
         cwd=REPO_ROOT,
-        env={
-            **os.environ,
-            **_arango_env(arango_db_password),
-            **_log_env("results"),
-            "CKN_RUN": run_name,
-        },
+        env={**os.environ, **_arango_env(arango_db_password), "CKN_RUN": run_name},
     )
     logger.info("Results graph built")
 
@@ -1084,14 +1063,13 @@ def build_induced_subgraph(
     logger.info(
         f"Building induced subgraph (gov.nih.nlm.InducedSubgraphBuilder, {java_opts})"
     )
-    subprocess.run(
+    _run_logged(
         _java_cmd("gov.nih.nlm.InducedSubgraphBuilder", arango_db_password, java_opts),
-        check=True,
+        phase="results",
         cwd=REPO_ROOT,
         env={
             **os.environ,
             **_arango_env(arango_db_password),
-            **_log_env("results"),
             "ARANGO_ONTOLOGY_DB_NAME": "Cell-KN-Ontologies",
             "ARANGO_ONTOLOGY_GRAPH_NAME": "KN-Ontologies-v2.0",
             "ARANGO_PHENOTYPE_DB_NAME": "Cell-KN-Phenotypes",
@@ -1629,6 +1607,9 @@ def nlm_ckn_etl(
 # ── CLI entry point ────────────────────────────────────────────────────────
 
 if __name__ == "__main__":
+    from logging_setup import configure_logging
+
+    configure_logging("etl-pipeline")
     parser = argparse.ArgumentParser(
         description="NLM-CKN ETL pipeline (Prefect) — three-phase",
         formatter_class=argparse.RawDescriptionHelpFormatter,

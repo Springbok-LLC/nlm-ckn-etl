@@ -23,6 +23,9 @@ class LoggingSetupTestCase(unittest.TestCase):
     def setUp(self):
         self._root_handlers = logging.getLogger().handlers[:]
         self._root_level = logging.getLogger().level
+        self._quiet_levels = {
+            name: logging.getLogger(name).level for name in logging_setup._QUIET_LOGGERS
+        }
 
     def tearDown(self):
         root = logging.getLogger()
@@ -30,6 +33,8 @@ class LoggingSetupTestCase(unittest.TestCase):
         root.setLevel(self._root_level)
         structlog.contextvars.clear_contextvars()
         structlog.reset_defaults()
+        for name, level in self._quiet_levels.items():
+            logging.getLogger(name).setLevel(level)
 
     def _emit(self, env=None, emit=None):
         """Configure under ``env`` and return the lines written to the stream."""
@@ -113,6 +118,14 @@ class LoggingSetupTestCase(unittest.TestCase):
         self.assertIn("event happened", line)
         with self.assertRaises(json.JSONDecodeError):
             json.loads(line)
+
+    def test_http_client_chatter_is_quiet(self):
+        def emit():
+            logging.getLogger("httpx").info("HTTP Request: GET http://x")
+            logging.getLogger("httpx").warning("slow")
+
+        lines = self._emit(emit=emit)
+        self.assertEqual([json.loads(x)["message"] for x in lines], ["slow"])
 
     def test_reconfigure_does_not_duplicate_lines(self):
         stream = io.StringIO()

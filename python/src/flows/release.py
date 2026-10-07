@@ -630,6 +630,11 @@ def _parse_args(argv=None):
 
 
 if __name__ == "__main__":
+    from logging_setup import configure_logging
+
+    # The release image runs the pipeline as well as the fetch, so it logs
+    # as the pipeline service.
+    configure_logging("etl-pipeline")
     # Resolve --release-config first so the file it points to (not just the
     # repo-root release.json) seeds every env-backed default below.
     _pre = argparse.ArgumentParser(add_help=False)
