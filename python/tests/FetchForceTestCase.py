@@ -29,7 +29,7 @@ class FetchForceTestCase(unittest.TestCase):
         with patch.object(_common, "S3_BUCKET", ""), patch.object(
             _common, "_external_dir", return_value=d
         ):
-            return _common.should_force_fetch("test-run", max_age, _QUIET)
+            return _common.should_force_fetch("test-run", max_age)
 
     def test_reuse_when_fresh_and_code_unchanged(self):
         with tempfile.TemporaryDirectory() as t:

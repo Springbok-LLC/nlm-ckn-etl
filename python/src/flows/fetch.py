@@ -432,7 +432,7 @@ def nlm_ckn_fetch(
     # Auto-resolve force from cache age + fetch-code hash when a whole-cache max
     # age is given (the scheduled fetch) and force was not requested explicitly.
     if max_fetch_age_hours > 0 and not force:
-        force = should_force_fetch(run_name, max_fetch_age_hours, logger.info)
+        force = should_force_fetch(run_name, max_fetch_age_hours)
         retry_empty = not force
 
     sync_results_from_s3(run_name=run_name)  # ensure release results are available
