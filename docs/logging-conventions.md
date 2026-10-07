@@ -86,7 +86,7 @@ Tier 3 payload fields. Use these names and units; do not invent synonyms.
 | `path`, `input_path`, `output_path` | string | File paths |
 | `database`, `graph`, `collection` | string | ArangoDB names |
 | `attempt`, `max_retries`, `wait_s` | int, int, float | Retry state |
-| `artifact` | string | `tuples`, `baseline_dump`, `results_dump`, `golden`, `obo`, `external` |
+| `artifact` | string | `tuples`, `baseline_dump`, `results_dump`, `golden`, `obo`, `external`, `external_staging` |
 | `release_tag`, `run_name` | string | Release identity |
 
 Counts are JSON numbers, never strings. Lists are fields, never message text.
@@ -279,7 +279,7 @@ reports give the source line each name replaces.
 | `arangodb_endpoint_resolved` | INFO | `mode`, `host`, `port`, `container_id` |
 | `arangodb_data_wiped` | INFO | `kind`, `volume` or `path` |
 | `arangodb_volume_removal_failed` | WARN | `volume`, `error_type`, `error` |
-| `docker_unreachable` | WARN | |
+| `docker_unreachable` | WARN | `error_type`, `error` |
 | `arangodump_finished` | INFO | `dump_label`, `file_count`, `bytes`, `rc`, `duration_ms` |
 | `arangorestore_finished` | INFO | `dump_label`, `rc`, `duration_ms` |
 | `database_created` | INFO | `database` |
@@ -300,9 +300,10 @@ reports give the source line each name replaces.
 | Message | Level | Fields |
 | --- | --- | --- |
 | `jar_resolved` | INFO | `source` (`cache`, `maven`, `s3`), `bytes`, `jar_key`, `duration_ms` |
-| `s3_sync_finished` | INFO | `direction` (`up`, `down`), `s3_uri`, `objects_transferred`, `objects_skipped`, `bytes`, `duration_ms` |
-| `s3_upload_finished` | INFO | `artifact`, `s3_uri`, `bytes`, `files`, `duration_ms` |
-| `s3_download_finished` | INFO | `artifact`, `s3_uri`, `bytes`, `duration_ms` |
+| `s3_sync_finished` | INFO | `direction` (`up`, `down`), `s3_uri`, `objects_transferred`, `objects_skipped` (unchanged), `bytes` transferred, `duration_ms`, and `artifact` when the caller names one |
+| `s3_upload_finished` | INFO | `artifact` when named, `s3_uri`, `bytes` (the archive), `files`, `members_skipped` (`.archive/` members left out), `kms_encrypted` (never the key id), `duration_ms` |
+| `s3_download_finished` | INFO | `artifact` when named, `s3_uri`, `bytes` (the archive), `files` extracted, `links_skipped`, `path_traversal_skipped`, `duration_ms` |
+| `tar_members_skipped` | WARN | `artifact` when named, `s3_uri`, `links`, `path_traversal`; only when something was skipped |
 | `artifact_cache_hit` | INFO | `artifact`, `path` |
 | `artifact_upload_skipped` | WARN | `artifact`, `reason` |
 | `external_cache_promoted` | INFO | `objects_copied`, `src_prefix`, `duration_ms`; WARN when 0 |
@@ -318,9 +319,9 @@ reports give the source line each name replaces.
 | `release_step_failed` | ERROR | `step`, `error_type`, `error`, `retry_command` |
 | `release_promotion_failed` | ERROR | `release_tag`, `error_type`, `error` |
 | `release_finished` | INFO | `release_tag`, `run_name`, `duration_ms`, `force_fetch`, per-step durations |
-| `github_status_posted` | INFO | `state`, `status_code` |
-| `github_status_skipped` | WARN | `missing_vars` |
-| `github_status_failed` | WARN | `state`, `reason=http_error`, `status_code` |
+| `github_status_posted` | INFO | `state`, `status_code`, `log_url_attached` |
+| `github_status_skipped` | WARN | `state`, `missing_vars` (names only, never values) |
+| `github_status_failed` | WARN | `state`, then `reason=http_error`, `status_code` and `error` (response body, 500 characters), or `error_type` and `error` for other failures |
 | `arango_password_fetch_failed` | ERROR | `secret_id`, `error_type`, `error` |
 
 ### Validation

@@ -132,11 +132,11 @@ def _get_or_create_arango_password() -> str:
             response = client.get_secret_value(SecretId=secret_id)
             return response["SecretString"]
         except Exception as e:
-            _log.error(
-                "Failed to retrieve ArangoDB password from Secrets Manager "
-                "(secret_id=%s): %s",
-                secret_id,
-                e,
+            _events.error(
+                "arango_password_fetch_failed",
+                secret_id=secret_id,
+                error_type=type(e).__name__,
+                error=str(e),
             )
             raise
 
@@ -179,7 +179,10 @@ def _get_arangodb_id() -> str | None:
             filters={"ancestor": "arangodb", "status": "running"}
         )
         return by_image[0].short_id if by_image else None
-    except docker_sdk.errors.DockerException:
+    except docker_sdk.errors.DockerException as exc:
+        _events.warning(
+            "docker_unreachable", error_type=type(exc).__name__, error=str(exc)
+        )
         return None
 
 
@@ -458,7 +461,14 @@ def _parse_s3_url(s3_url: str) -> tuple[str, str]:
     return bucket, key
 
 
-def _s3_upload_tar(local_dir: Path, s3_path: str) -> None:
+def _fields(**fields) -> dict:
+    """Return ``fields`` without the ``None`` values, so absent ones are not logged."""
+    return {k: v for k, v in fields.items() if v is not None}
+
+
+def _s3_upload_tar(
+    local_dir: Path, s3_path: str, artifact: str | None = None
+) -> dict[str, int]:
     """Compress ``local_dir`` to a .tar.gz and upload to ``s3_path``.
 
     Produces a single object with a stable hash, reducing per-file S3 API
@@ -468,9 +478,28 @@ def _s3_upload_tar(local_dir: Path, s3_path: str) -> None:
     S3_KMS_KEY_ID is set, otherwise SSE-S3/AES-256).  Bucket-level public-access
     blocks and S3/CloudTrail logging must also be enforced via infrastructure
     policy — this call alone is not sufficient.
+
+    Logs ``s3_upload_finished`` (the URI, whether KMS was used, never the key
+    id).  Members under ``.archive/`` are left out of the archive and counted.
+
+    Parameters
+    ----------
+    local_dir:
+        Directory to archive.
+    s3_path:
+        Destination ``s3://bucket/key``.
+    artifact:
+        Optional artifact name for the log line (``tuples``, ``baseline_dump``, ...).
+
+    Returns
+    -------
+    dict
+        ``files`` archived, ``members_skipped`` and ``bytes`` uploaded; all zero
+        when ``S3_BUCKET`` is empty.
     """
     if not S3_BUCKET:
-        return
+        return {"files": 0, "members_skipped": 0, "bytes": 0}
+    started = time.monotonic()
     local_dir = Path(local_dir)
     bucket, key = _parse_s3_url(s3_path)
     sse_args: dict = (
@@ -478,35 +507,79 @@ def _s3_upload_tar(local_dir: Path, s3_path: str) -> None:
         if S3_KMS_KEY_ID
         else {"ServerSideEncryption": "AES256"}
     )
+    counts = {"files": 0, "members_skipped": 0}
+
+    def _keep(member):
+        if "/.archive/" in member.name:
+            counts["members_skipped"] += 1
+            return None
+        if member.isfile():
+            counts["files"] += 1
+        return member
+
     with tempfile.NamedTemporaryFile(suffix=".tar.gz", delete=False) as tmp:
         tmp_path = Path(tmp.name)
     try:
         with tarfile.open(tmp_path, "w:gz") as tar:
-            tar.add(local_dir, arcname=local_dir.name,
-                    filter=lambda m: None if "/.archive/" in m.name else m)
+            tar.add(local_dir, arcname=local_dir.name, filter=_keep)
+        size = tmp_path.stat().st_size
         boto3.client("s3").upload_file(
             str(tmp_path), bucket, key, ExtraArgs={"ACL": "private", **sse_args}
         )
     finally:
         tmp_path.unlink(missing_ok=True)
+    stats = {**counts, "bytes": size}
+    _events.info(
+        "s3_upload_finished",
+        **_fields(artifact=artifact),
+        s3_uri=s3_path,
+        kms_encrypted=bool(S3_KMS_KEY_ID),
+        duration_ms=int((time.monotonic() - started) * 1000),
+        **stats,
+    )
+    return stats
 
 
-def _s3_download_tar(s3_path: str, local_dir: Path) -> None:
+def _s3_download_tar(
+    s3_path: str, local_dir: Path, artifact: str | None = None
+) -> dict[str, int]:
     """Download a .tar.gz from ``s3_path`` and extract its contents into ``local_dir``.
 
     The top-level directory inside the archive is stripped so that files land
     directly in ``local_dir`` (mirrors the extraction pattern used in
     ``dump_arangodb``).  No-op when ``S3_BUCKET`` is empty.
+
+    Logs ``s3_download_finished``.  Symlinks, hard links and members that would
+    resolve outside ``local_dir`` are not extracted; when any are skipped a
+    ``tar_members_skipped`` WARN reports how many of each.
+
+    Parameters
+    ----------
+    s3_path:
+        Source ``s3://bucket/key``.
+    local_dir:
+        Directory to extract into.
+    artifact:
+        Optional artifact name for the log line.
+
+    Returns
+    -------
+    dict
+        ``files`` extracted, ``links_skipped``, ``path_traversal_skipped`` and
+        ``bytes`` downloaded; all zero when ``S3_BUCKET`` is empty.
     """
     if not S3_BUCKET:
-        return
+        return {"files": 0, "links_skipped": 0, "path_traversal_skipped": 0, "bytes": 0}
+    started = time.monotonic()
     local_dir = Path(local_dir)
     local_dir.mkdir(parents=True, exist_ok=True)
     bucket, key = _parse_s3_url(s3_path)
+    counts = {"files": 0, "links_skipped": 0, "path_traversal_skipped": 0}
     with tempfile.NamedTemporaryFile(suffix=".tar.gz", delete=False) as tmp:
         tmp_path = Path(tmp.name)
     try:
         boto3.client("s3").download_file(bucket, key, str(tmp_path))
+        size = tmp_path.stat().st_size
         base_dir = local_dir.resolve()
         with tarfile.open(tmp_path, "r:gz") as tar:
             for member in tar.getmembers():
@@ -514,14 +587,35 @@ def _s3_download_tar(s3_path: str, local_dir: Path) -> None:
                 if len(parts) <= 1:
                     continue
                 if member.issym() or member.islnk():
+                    counts["links_skipped"] += 1
                     continue
                 member.name = str(Path(*parts[1:]))
                 resolved = (local_dir / member.name).resolve()
                 if not str(resolved).startswith(str(base_dir) + os.sep):
+                    counts["path_traversal_skipped"] += 1
                     continue
                 tar.extract(member, local_dir)
+                if member.isfile():
+                    counts["files"] += 1
     finally:
         tmp_path.unlink(missing_ok=True)
+    stats = {**counts, "bytes": size}
+    if counts["links_skipped"] or counts["path_traversal_skipped"]:
+        _events.warning(
+            "tar_members_skipped",
+            **_fields(artifact=artifact),
+            s3_uri=s3_path,
+            links=counts["links_skipped"],
+            path_traversal=counts["path_traversal_skipped"],
+        )
+    _events.info(
+        "s3_download_finished",
+        **_fields(artifact=artifact),
+        s3_uri=s3_path,
+        duration_ms=int((time.monotonic() - started) * 1000),
+        **stats,
+    )
+    return stats
 
 
 def _s3_copy_prefix(bucket: str, src_prefix: str, dst_prefix: str) -> int:
@@ -546,18 +640,37 @@ def _s3_copy_prefix(bucket: str, src_prefix: str, dst_prefix: str) -> int:
     return count
 
 
-def _s3_sync(src: str, dst: str) -> None:
+def _s3_sync(src: str, dst: str, artifact: str | None = None) -> dict[str, int]:
     """Sync a directory between local filesystem and S3, skipping unchanged files.
 
     Detects direction from whether ``src`` or ``dst`` starts with ``s3://``.
     Unchanged files are identified by size, matching ``aws s3 sync`` behaviour.
     No-op when ``S3_BUCKET`` is empty (local-only mode).
+
+    Logs ``s3_sync_finished`` with the direction (``down`` or ``up``), the S3
+    URI and the counts.
+
+    Parameters
+    ----------
+    src, dst:
+        One is an ``s3://bucket/prefix``, the other a local directory.
+    artifact:
+        Optional artifact name for the log line.
+
+    Returns
+    -------
+    dict
+        ``objects_transferred``, ``objects_skipped`` (unchanged) and ``bytes``
+        transferred; all zero when ``S3_BUCKET`` is empty.
     """
+    stats = {"objects_transferred": 0, "objects_skipped": 0, "bytes": 0}
     if not S3_BUCKET:
-        return
+        return stats
+    started = time.monotonic()
     s3 = boto3.client("s3")
     if src.startswith("s3://"):
         # Download: S3 → local
+        direction, s3_uri = "down", src
         bucket, prefix = _parse_s3_url(src)
         local_dir = Path(dst)
         local_dir.mkdir(parents=True, exist_ok=True)
@@ -576,8 +689,13 @@ def _s3_sync(src: str, dst: str) -> None:
                     local_path = local_dir / relative
                     local_path.parent.mkdir(parents=True, exist_ok=True)
                     s3.download_file(bucket, obj["Key"], str(local_path))
+                    stats["objects_transferred"] += 1
+                    stats["bytes"] += obj["Size"]
+                else:
+                    stats["objects_skipped"] += 1
     else:
         # Upload: local → S3
+        direction, s3_uri = "up", dst
         local_dir = Path(src)
         bucket, prefix = _parse_s3_url(dst)
         sse_args = (
@@ -596,11 +714,27 @@ def _s3_sync(src: str, dst: str) -> None:
             if not path.is_file():
                 continue
             relative = path.relative_to(local_dir).as_posix()
-            if relative not in s3_index or s3_index[relative] != path.stat().st_size:
+            size = path.stat().st_size
+            if relative not in s3_index or s3_index[relative] != size:
                 s3.upload_file(
-                    str(path), bucket, prefix + relative,
+                    str(path),
+                    bucket,
+                    prefix + relative,
                     ExtraArgs={"ACL": "private", **sse_args},
                 )
+                stats["objects_transferred"] += 1
+                stats["bytes"] += size
+            else:
+                stats["objects_skipped"] += 1
+    _events.info(
+        "s3_sync_finished",
+        **_fields(artifact=artifact),
+        direction=direction,
+        s3_uri=s3_uri,
+        duration_ms=int((time.monotonic() - started) * 1000),
+        **stats,
+    )
+    return stats
 
 
 # ── GitHub deployment status ───────────────────────────────────────────────
@@ -634,18 +768,20 @@ def post_github_deployment_status(*, state: str, description: str) -> None:
     description:
         Short human-readable summary shown on the deployments page (≤ 140 chars).
     """
-    token         = os.getenv("GITHUB_TOKEN", "")
-    repo          = os.getenv("GITHUB_REPOSITORY", "")
+    token = os.getenv("GITHUB_TOKEN", "")
+    repo = os.getenv("GITHUB_REPOSITORY", "")
     deployment_id = os.getenv("GITHUB_DEPLOYMENT_ID", "")
-    _log.info(
-        "GitHub deployment status: state=%s  repo=%s  deployment_id=%s  token=%s",
-        state,
-        "set" if repo else "MISSING",
-        deployment_id or "MISSING",
-        "set" if token else "MISSING",
-    )
-    if not (token and repo and deployment_id):
-        _log.warning("Skipping deployment status update — one or more env vars missing")
+    missing = [
+        name
+        for name, value in (
+            ("GITHUB_TOKEN", token),
+            ("GITHUB_REPOSITORY", repo),
+            ("GITHUB_DEPLOYMENT_ID", deployment_id),
+        )
+        if not value
+    ]
+    if missing:
+        _events.warning("github_status_skipped", state=state, missing_vars=missing)
         return
 
     payload: dict = {
@@ -671,14 +807,27 @@ def post_github_deployment_status(*, state: str, description: str) -> None:
     )
     try:
         resp = urllib.request.urlopen(req, timeout=10)
-        _log.info("GitHub deployment status posted: HTTP %s", resp.status)
+        _events.info(
+            "github_status_posted",
+            state=state,
+            status_code=resp.status,
+            log_url_attached=bool(log_url),
+        )
     except urllib.error.HTTPError as exc:
-        _log.warning(
-            "GitHub deployment status update failed: HTTP %s — %s",
-            exc.code, exc.read().decode(),
+        _events.warning(
+            "github_status_failed",
+            state=state,
+            reason="http_error",
+            status_code=exc.code,
+            error=exc.read().decode(errors="replace")[:500],
         )
     except Exception as exc:
-        _log.warning("GitHub deployment status update failed: %s", exc)
+        _events.warning(
+            "github_status_failed",
+            state=state,
+            error_type=type(exc).__name__,
+            error=str(exc),
+        )
 
 
 # ── Shared tasks ───────────────────────────────────────────────────────────
@@ -974,16 +1123,11 @@ def sync_external_from_s3(run_name: str = "") -> None:
         prefix is the live, shared ``external/``).  Defaults to ``$CKN_RUN``
         or ``'full'``.
     """
-    logger = get_run_logger()
     if not S3_BUCKET:
-        logger.info("S3_BUCKET not set — skipping S3 sync (local mode)")
         return
     external_dir = _external_dir(run_name)
     external_dir.mkdir(parents=True, exist_ok=True)
-    s3_prefix = f"s3://{S3_BUCKET}/external/"
-    logger.info(f"Syncing {s3_prefix} → {external_dir.name}/")
-    _s3_sync(s3_prefix, str(external_dir))
-    logger.info("External cache restored from S3")
+    _s3_sync(f"s3://{S3_BUCKET}/external/", str(external_dir), artifact="external")
 
 
 @task(name="sync-external-to-s3", log_prints=True)
@@ -999,15 +1143,10 @@ def sync_external_to_s3(run_name: str = "") -> None:
         prefix is the live, shared ``external/``).  Defaults to ``$CKN_RUN``
         or ``'full'``.
     """
-    logger = get_run_logger()
     if not S3_BUCKET:
-        logger.info("S3_BUCKET not set — skipping S3 sync (local mode)")
         return
     external_dir = _external_dir(run_name)
-    s3_prefix = f"s3://{S3_BUCKET}/external/"
-    logger.info(f"Syncing {external_dir.name}/ → {s3_prefix}")
-    _s3_sync(str(external_dir), s3_prefix)
-    logger.info("External cache pushed to S3")
+    _s3_sync(str(external_dir), f"s3://{S3_BUCKET}/external/", artifact="external")
 
 
 @task(name="sync-external-to-s3-staging", log_prints=True)
@@ -1032,16 +1171,12 @@ def sync_external_to_s3_staging(run_name: str = "") -> None:
         ``runs/<name>/external-staging/`` in S3).  Defaults to
         ``$CKN_RUN`` or ``'full'``.
     """
-    logger = get_run_logger()
     if not S3_BUCKET:
-        logger.info("S3_BUCKET not set — skipping S3 sync (local mode)")
         return
     run_name = run_name or os.getenv("CKN_RUN", "full")
     external_dir = _external_dir(run_name)
     s3_staging = f"s3://{S3_BUCKET}/runs/{run_name}/external-staging/"
-    logger.info(f"Syncing {external_dir.name}/ → {s3_staging} (staging)")
-    _s3_sync(str(external_dir), s3_staging)
-    logger.info("External cache pushed to staging")
+    _s3_sync(str(external_dir), s3_staging, artifact="external_staging")
 
 
 @task(name="promote-external-staging", log_prints=True)
@@ -1062,14 +1197,17 @@ def promote_external_staging(run_name: str = "") -> None:
         Run name (must match the value passed to ``sync_external_to_s3_staging``).
         Defaults to ``$CKN_RUN`` or ``'full'``.
     """
-    logger = get_run_logger()
     if not S3_BUCKET:
-        logger.info("S3_BUCKET not set — skipping staging promotion (local mode)")
         return
     run_name = run_name or os.getenv("CKN_RUN", "full")
     src_prefix = f"runs/{run_name}/external-staging/"
-    logger.info(
-        f"Promoting s3://{S3_BUCKET}/{src_prefix} → s3://{S3_BUCKET}/external/"
-    )
+    started = time.monotonic()
     count = _s3_copy_prefix(S3_BUCKET, src_prefix, "external/")
-    logger.info(f"Promoted {count} object(s) from staging to live external cache")
+    # Nothing to promote means the live cache was not refreshed: surface it.
+    log = _events.info if count else _events.warning
+    log(
+        "external_cache_promoted",
+        objects_copied=count,
+        src_prefix=src_prefix,
+        duration_ms=int((time.monotonic() - started) * 1000),
+    )
