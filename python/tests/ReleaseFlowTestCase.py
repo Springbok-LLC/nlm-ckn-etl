@@ -106,8 +106,7 @@ class ResolveFetchForceTestCase(unittest.TestCase):
 
     def _call(self, **kwargs):
         """Invoke the task's underlying function, bypassing the Prefect runtime."""
-        with patch("release.get_run_logger", return_value=_noop_logger()):
-            return resolve_fetch_force.fn(**kwargs)
+        return resolve_fetch_force.fn(**kwargs)
 
     def _fresh_info(self, hours_old):
         """fetch-info.json with the CURRENT code hash so the age branch is exercised."""
@@ -166,8 +165,7 @@ class ResolveFetchForceTestCase(unittest.TestCase):
         mock_s3.download_file.side_effect = fake_download
 
         with patch("_common.S3_BUCKET", "my-bucket"), \
-             patch("_common.boto3") as mock_boto3, \
-             patch("release.get_run_logger", return_value=_noop_logger()):
+             patch("_common.boto3") as mock_boto3:
             mock_boto3.client.return_value = mock_s3
             # Bad JSON is caught -> no marker -> resume from on-disk cache.
             result = resolve_fetch_force.fn(run_name="test-run", max_fetch_age_hours=48.0)
@@ -189,8 +187,7 @@ class ResolveFetchForceTestCase(unittest.TestCase):
         mock_s3.download_file.side_effect = fake_download
 
         with patch("_common.S3_BUCKET", "my-bucket"), \
-             patch("_common.boto3") as mock_boto3, \
-             patch("release.get_run_logger", return_value=_noop_logger()):
+             patch("_common.boto3") as mock_boto3:
             mock_boto3.client.return_value = mock_s3
             result = resolve_fetch_force.fn(run_name="test-run", max_fetch_age_hours=48.0)
 
@@ -215,8 +212,7 @@ class ExtractReleaseTarballTestCase(unittest.TestCase):
         return dest
 
     def _call(self, tar_source, run_name, hubmap_urls, repo_root):
-        with patch("release.get_run_logger", return_value=_noop_logger()), \
-             patch("release.REPO_ROOT", repo_root):
+        with patch("release.REPO_ROOT", repo_root):
             return extract_release_tarball.fn(tar_source, run_name, hubmap_urls)
 
     def test_files_extracted_flat(self):

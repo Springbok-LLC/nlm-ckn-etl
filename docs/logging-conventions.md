@@ -324,15 +324,15 @@ reports give the source line each name replaces.
 | `release_dir_validated` | INFO | `records_out` (NSForest files) |
 | `tuple_files_validated` | INFO | `records_out` (files) |
 | `production_promotion_finished` | INFO | `run_name`, `objects`, `bytes`, `duration_ms` |
-| `release_started` | INFO | `release_tag`, `run_name`, `github_repo`, `tar_source`, `max_fetch_age_hours`, `java_opts`, `hubmap_url_count` |
+| `release_started` | INFO | `release_tag`, `run_name`, `github_repo`, `tar_source`, `release_config` (path or URL), `max_fetch_age_hours`, `java_opts`, `hubmap_url_count`, `s3_enabled`; once per run, and only on Batch, `batch_job_id` and `cloudwatch_log_url` (the log group, not a stream) |
 | `release_tarball_fetched` | INFO | `source_kind` (`https`, `s3`, `local`), `uri` or `path`, `bytes`, `duration_ms` |
-| `release_tarball_extracted` | INFO | `nsforest_files`, `hubmap_urls`, `manifest_rows`, `files_skipped`, `duration_ms` |
-| `release_manifest_merged` | INFO | `records_out` |
-| `results_promoted_to_latest` | INFO | `objects_copied`; WARN when 0 |
+| `release_tarball_extracted` | INFO | `nsforest_files`, `hubmap_urls` (count written), `manifest_rows`, `files_skipped` (links and path-traversal members), `duration_ms`; a `tar_members_skipped` WARN (`artifact=release_tarball`) precedes it when `files_skipped` is not 0 |
+| `release_manifest_merged` | INFO | `records_out` (rows in the unioned `master_s3_manifest.csv`) |
+| `results_promoted_to_latest` | INFO (WARN when 0) | `objects_copied` |
 | `release_config_saved` | INFO | `path` |
-| `release_step_failed` | ERROR | `step`, `error_type`, `error`, `retry_command` |
+| `release_step_failed` | ERROR | `step` (1, 2, 3, or `config` for validation before step 1), `release_tag`, `run_name`, `error_type`, `error`, `retry_command` (re-runs the whole release; finished work is reused); logged before the flow re-raises |
 | `release_promotion_failed` | ERROR | `release_tag`, `error_type`, `error` |
-| `release_finished` | INFO | `release_tag`, `run_name`, `duration_ms`, `force_fetch`, per-step durations |
+| `release_finished` | INFO | `release_tag`, `run_name`, `duration_ms`, `force_fetch`, `step_durations_ms` (an object keyed `extract`, `fetch`, `etl`, `promote`) |
 | `github_status_posted` | INFO | `state`, `status_code`, `log_url_attached` |
 | `github_status_skipped` | WARN | `state`, `missing_vars` (names only, never values) |
 | `github_status_failed` | WARN | `state`, then `reason=http_error`, `status_code` and `error` (response body, 500 characters), or `error_type` and `error` for other failures |
