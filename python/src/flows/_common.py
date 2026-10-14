@@ -20,7 +20,6 @@ ECS Fargate task).  There are no Docker-in-Docker calls here.
 import contextvars
 import hashlib
 import json
-import logging
 import os
 import secrets
 import socket
@@ -40,7 +39,7 @@ import boto3
 import structlog
 
 import docker as docker_sdk
-from prefect import get_run_logger, task
+from prefect import task
 from prefect.runtime import flow_run
 
 # ── Constants ──────────────────────────────────────────────────────────────
@@ -98,7 +97,6 @@ S3_KMS_KEY_ID = os.getenv("S3_KMS_KEY_ID", "")
 PYTHON_SRC = str(REPO_ROOT / "python" / "src")
 
 
-_log = logging.getLogger(__name__)
 _events = structlog.get_logger(__name__)
 
 # ── Private helpers ────────────────────────────────────────────────────────
