@@ -82,12 +82,14 @@ import shutil
 import subprocess
 import sys
 import tarfile
+import time
 from datetime import datetime, timezone
 from pathlib import Path
 
 import boto3
 
 import docker as docker_sdk
+import structlog
 from prefect import flow, get_run_logger, task
 
 import _common as _common_mod
@@ -125,32 +127,44 @@ from _common import (
 # (e.g. ArangoDbUtilities) the same way _run_python_script subprocesses do.
 sys.path.insert(0, PYTHON_SRC)
 
+_events = structlog.get_logger(__name__)
+
+# arangodump/arangorestore output kept at DEBUG is cut to this many characters.
+_MAX_TOOL_OUTPUT = 32_768
+_ERROR_LINE = re.compile(r"\bERROR\b")
+
+
+def _ms(started: float) -> int:
+    """Return the whole milliseconds elapsed since ``started`` (monotonic)."""
+    return int((time.monotonic() - started) * 1000)
+
 # ── Tasks ──────────────────────────────────────────────────────────────────
 
 
 @task(name="stop-arangodb", log_prints=True)
 def stop_arangodb() -> None:
     """Stop and remove the running ArangoDB container, if any."""
-    logger = get_run_logger()
     try:
         client = docker_sdk.from_env()
-    except docker_sdk.errors.DockerException:
-        logger.info("Docker daemon unreachable — nothing to stop")
+    except docker_sdk.errors.DockerException as exc:
+        _events.warning(
+            "docker_unreachable", error_type=type(exc).__name__, error=str(exc)
+        )
         return
     containers = client.containers.list(filters={"name": "arangodb"}, all=True)
-    if not containers:
-        logger.info("No ArangoDB container found")
-        return
     for container in containers:
-        logger.info(
-            f"Stopping/removing ArangoDB container {container.short_id} (status={container.status})"
-        )
-        if container.status == "running":
+        status = container.status
+        if status == "running":
             container.stop()
         container.remove()
+        _events.info(
+            "arangodb_container_removed",
+            container_id=container.short_id,
+            status=status,
+        )
 
 
-def _wipe_arangodb_data(arango_db_home: str, logger) -> None:
+def _wipe_arangodb_data(arango_db_home: str) -> None:
     """Remove all persisted ArangoDB data so the next start initialises fresh.
 
     For bind-mount volumes, removes the local directory.
@@ -166,18 +180,27 @@ def _wipe_arangodb_data(arango_db_home: str, logger) -> None:
             try:
                 vol = client.volumes.get(volume_source)
                 vol.remove(force=True)
-                logger.info(f"Removed named ArangoDB volume: {volume_source}")
-            except docker_sdk.errors.NotFound:
-                logger.info(
-                    f"Named ArangoDB volume not found, nothing to remove: {volume_source}"
+                _events.info(
+                    "arangodb_data_wiped", kind="named_volume", volume=volume_source
                 )
-        except docker_sdk.errors.DockerException as e:
-            logger.warning(f"Could not remove named volume {volume_source}: {e}")
+            except docker_sdk.errors.NotFound:
+                pass  # nothing to remove
+        except docker_sdk.errors.DockerException as exc:
+            # Log and continue: a stale volume keeps the old root password and
+            # causes a 401 when the next container starts.
+            _events.warning(
+                "arangodb_volume_removal_failed",
+                volume=volume_source,
+                error_type=type(exc).__name__,
+                error=str(exc),
+            )
     else:
         arango_home = Path(volume_source)
         if arango_home.exists():
-            logger.info(f"Wiping ArangoDB data dir: {arango_home}")
             shutil.rmtree(arango_home)
+            _events.info(
+                "arangodb_data_wiped", kind="bind_mount", path=str(arango_home)
+            )
 
 
 def _arangodb_volume_source(arango_db_home: str) -> tuple[str, bool]:
@@ -264,31 +287,35 @@ def start_arangodb(arango_db_home: str, arango_db_password: str) -> int:
     - Running inside a container → named volume ``nlm-ckn-arangodb-data``.
     - Direct host execution → bind-mount ``arango_db_home``.
     """
-    logger = get_run_logger()
-    if _get_arangodb_id():
-        logger.info("ArangoDB container already running")
+    existing_id = _get_arangodb_id()
+    if existing_id:
         client = docker_sdk.from_env()
+        port = ARANGO_DB_PORT
         try:
-            container = client.containers.get(_get_arangodb_id())
+            container = client.containers.get(existing_id)
             ports = container.ports.get("8529/tcp")
             if ports:
-                return int(ports[0]["HostPort"])
-        except Exception:
-            pass
-        return ARANGO_DB_PORT
+                port = int(ports[0]["HostPort"])
+        except Exception as exc:
+            # Fall back to the default port, but say so: a wrong port shows up
+            # later as an unexplained connection failure.
+            _events.warning(
+                "arangodb_port_lookup_failed",
+                container_id=existing_id,
+                port=port,
+                error_type=type(exc).__name__,
+                error=str(exc),
+            )
+        _events.info("arangodb_container_reused", container_id=existing_id, port=port)
+        return port
 
     arango_db_port = _find_free_port()
     volume_source, is_named_volume = _arangodb_volume_source(arango_db_home)
-    if is_named_volume:
-        logger.info(
-            f"Starting ArangoDB (named volume={volume_source}, port={arango_db_port})"
-        )
-        volumes = {volume_source: {"bind": "/var/lib/arangodb3", "mode": "rw"}}
-    else:
+    if not is_named_volume:
         Path(volume_source).mkdir(parents=True, exist_ok=True)
-        logger.info(f"Starting ArangoDB (home={volume_source}, port={arango_db_port})")
-        volumes = {volume_source: {"bind": "/var/lib/arangodb3", "mode": "rw"}}
+    volumes = {volume_source: {"bind": "/var/lib/arangodb3", "mode": "rw"}}
 
+    started = time.monotonic()
     client = docker_sdk.from_env()
     client.containers.run(
         "arangodb",
@@ -298,12 +325,18 @@ def start_arangodb(arango_db_home: str, arango_db_password: str) -> int:
         ports={"8529/tcp": arango_db_port},
         volumes=volumes,
     )
-    logger.info(f"ArangoDB container started on port {arango_db_port}")
+    _events.info(
+        "arangodb_container_started",
+        port=arango_db_port,
+        volume_kind="named_volume" if is_named_volume else "bind_mount",
+        duration_ms=_ms(started),
+    )
     # Wait until the server accepts authenticated connections before returning;
     # callers (dump/restore) connect immediately and a fresh data dir takes
     # several seconds to initialise.
+    started = time.monotonic()
     _wait_for_arangodb_ready(arango_db_port, arango_db_password)
-    logger.info("ArangoDB is accepting connections")
+    _events.info("arangodb_ready", port=arango_db_port, duration_ms=_ms(started))
     return arango_db_port
 
 
@@ -317,10 +350,12 @@ def require_arangodb() -> None:
 
     Local mode: raises ``RuntimeError`` if no ArangoDB container is running.
     """
-    logger = get_run_logger()
     if not ARANGO_DB_IS_LOCAL:
-        logger.info(
-            f"Remote ArangoDB mode: host={ARANGO_DB_HOST}, port={ARANGO_DB_PORT}"
+        _events.info(
+            "arangodb_endpoint_resolved",
+            mode="remote",
+            host=ARANGO_DB_HOST,
+            port=ARANGO_DB_PORT,
         )
         return
     cid = _get_arangodb_id()
@@ -329,7 +364,13 @@ def require_arangodb() -> None:
             "ArangoDB container is not running. "
             "Start it first or run the ontology stage."
         )
-    logger.info(f"Local ArangoDB container: {cid}")
+    _events.info(
+        "arangodb_endpoint_resolved",
+        mode="local",
+        host=ARANGO_DB_HOST,
+        port=ARANGO_DB_PORT,
+        container_id=cid,
+    )
 
 
 @task(name="ensure-jar", log_prints=True)
@@ -352,38 +393,35 @@ def ensure_jar() -> str:
         key the baseline arangodump in S3 so the dump and the JAR that
         produced it are always stored together.
     """
-    logger = get_run_logger()
+    started = time.monotonic()
     jar = REPO_ROOT / CLASSPATH
-    if jar.exists():
-        logger.info(
-            f"JAR already present: {jar.relative_to(REPO_ROOT)} ({jar.stat().st_size:,} bytes)"
-        )
+
+    def _resolved(source: str) -> str:
         jar_key = _jar_key()
-        logger.info(f"JAR key: {jar_key}")
+        _events.info(
+            "jar_resolved",
+            source=source,
+            bytes=jar.stat().st_size,
+            jar_key=jar_key,
+            duration_ms=_ms(started),
+        )
         return jar_key
 
+    if jar.exists():
+        return _resolved("cache")
+
     if not S3_BUCKET:
-        logger.info("S3_BUCKET not set — building JAR locally with Maven")
         _run_logged(["mvn", "clean", "package", "-DskipTests"], cwd=REPO_ROOT)
         if not jar.exists():
             raise FileNotFoundError(f"Maven build succeeded but JAR not found at {jar}")
-        jar_key = _jar_key()
-        logger.info(
-            f"JAR built: {jar.relative_to(REPO_ROOT)} ({jar.stat().st_size:,} bytes), key={jar_key}"
-        )
-        return jar_key
+        return _resolved("maven")
 
     jar.parent.mkdir(parents=True, exist_ok=True)
     s3_path = f"s3://{S3_BUCKET}/artifacts/{jar.name}"
-    logger.info(f"Downloading JAR from {s3_path}")
     boto3.client("s3").download_file(S3_BUCKET, f"artifacts/{jar.name}", str(jar))
     if not jar.exists():
         raise FileNotFoundError(f"JAR download from {s3_path} failed")
-    jar_key = _jar_key()
-    logger.info(
-        f"JAR downloaded: {jar.relative_to(REPO_ROOT)} ({jar.stat().st_size:,} bytes), key={jar_key}"
-    )
-    return jar_key
+    return _resolved("s3")
 
 
 def _java_cmd(
@@ -411,8 +449,7 @@ def download_ontologies(
     java_opts: str = DEFAULT_JAVA_OPTS,
 ) -> None:
     """Run OntologyDownloader to fetch OWL files into data/obo/."""
-    logger = get_run_logger()
-    logger.info(f"Downloading ontologies (gov.nih.nlm.OntologyDownloader, {java_opts})")
+    started = time.monotonic()
     _run_logged(
         _java_cmd("gov.nih.nlm.OntologyDownloader", arango_db_password, java_opts),
         phase="ontology",
@@ -421,10 +458,21 @@ def download_ontologies(
     )
     owl_files = list((REPO_ROOT / "data" / "obo").glob("*.owl"))
     if not owl_files:
+        _events.error(
+            "ontologies_download_failed",
+            phase="ontology",
+            reason="no_owl_files",
+            path="data/obo",
+        )
         raise FileNotFoundError(
             "No OWL files found in data/obo/ after OntologyDownloader"
         )
-    logger.info(f"Downloaded {len(owl_files)} OWL file(s) to data/obo/")
+    _events.info(
+        "ontologies_downloaded",
+        phase="ontology",
+        records_out=len(owl_files),
+        duration_ms=_ms(started),
+    )
 
 
 @task(name="slim-ontologies", log_prints=True)
@@ -452,15 +500,12 @@ def slim_ontologies(
     drops taxon-constraint relations, so non-human taxa and those relations do
     not reach the graph.
     """
-    logger = get_run_logger()
-    logger.info(f"Slimming ontologies (gov.nih.nlm.OntologySlimmer, {java_opts})")
     _run_logged(
         _java_cmd("gov.nih.nlm.OntologySlimmer", arango_db_password, java_opts),
         phase="ontology",
         cwd=REPO_ROOT,
         env={**os.environ, **_arango_env(arango_db_password)},
     )
-    logger.info("Ontologies slimmed")
 
 
 @task(name="build-ontology-graph", log_prints=True)
@@ -469,17 +514,12 @@ def build_ontology_graph(
     java_opts: str = DEFAULT_JAVA_OPTS,
 ) -> None:
     """Run OntologyGraphBuilder to load OWL triples into ArangoDB."""
-    logger = get_run_logger()
-    logger.info(
-        f"Building ontology graph (gov.nih.nlm.OntologyGraphBuilder, {java_opts})"
-    )
     _run_logged(
         _java_cmd("gov.nih.nlm.OntologyGraphBuilder", arango_db_password, java_opts),
         phase="ontology",
         cwd=REPO_ROOT,
         env={**os.environ, **_arango_env(arango_db_password)},
     )
-    logger.info("Ontology graph built")
 
 
 @task(name="dump-arangodb", log_prints=True)
@@ -503,13 +543,13 @@ def dump_arangodb(
     arango_db_password:
         ArangoDB root password.
     label:
-        Human-readable label used in log messages (e.g. ``"baseline"``).
+        Value of the ``dump_label`` log field (e.g. ``"baseline"``); defaults
+        to the dump directory name.
     """
-    logger = get_run_logger()
+    started = time.monotonic()
     dump_dir = Path(dump_dir)
     dump_dir.mkdir(parents=True, exist_ok=True)
-    tag = f" ({label})" if label else ""
-    logger.info(f"Dumping ArangoDB → {dump_dir.relative_to(REPO_ROOT)}{tag}")
+    dump_label = label or dump_dir.name
 
     container_out = f"/tmp/{dump_dir.name}"
     client = docker_sdk.from_env()
@@ -525,10 +565,20 @@ def dump_arangodb(
             "--all-databases=true",
         ]
     )
+    output = result.output.decode(errors="replace")
     if result.exit_code != 0:
-        raise RuntimeError(
-            f"arangodump failed (exit {result.exit_code}):\n{result.output.decode()}"
+        _events.error(
+            "arangodump_failed",
+            dump_label=dump_label,
+            reason="nonzero_exit",
+            rc=result.exit_code,
+            duration_ms=_ms(started),
+            output=output[-_MAX_TOOL_OUTPUT:],
         )
+        raise RuntimeError(f"arangodump failed (exit {result.exit_code}):\n{output}")
+    _events.debug(
+        "arangodump_output", dump_label=dump_label, output=output[-_MAX_TOOL_OUTPUT:]
+    )
 
     stream, _ = container.get_archive(container_out)
     with tempfile.TemporaryFile() as tmp:
@@ -543,8 +593,15 @@ def dump_arangodb(
                 member.name = str(Path(*parts[1:]))
                 tar.extract(member, dump_dir)
 
-    dump_files = list(dump_dir.glob("*"))
-    logger.info(f"Dump complete{tag}: {len(dump_files)} file(s) in {dump_dir.name}/")
+    dump_files = [f for f in dump_dir.rglob("*") if f.is_file()]
+    _events.info(
+        "arangodump_finished",
+        dump_label=dump_label,
+        file_count=len(dump_files),
+        bytes=sum(f.stat().st_size for f in dump_files),
+        rc=result.exit_code,
+        duration_ms=_ms(started),
+    )
 
 
 @task(name="export-graphs-and-analyzers", log_prints=True)
@@ -585,7 +642,6 @@ def export_graphs_and_analyzers(
     import base64
     import urllib.request
 
-    logger = get_run_logger()
     dump_dir = Path(dump_dir)
     failures: list[str] = []
 
@@ -606,6 +662,7 @@ def export_graphs_and_analyzers(
 
     for db in sorted(databases):
         db_dir = dump_dir / db
+        graph_count = analyzer_count = None
 
         try:
             data = _get(f"/_db/{db}/_api/gharial")
@@ -616,9 +673,15 @@ def export_graphs_and_analyzers(
             (db_dir / "ckn-graphs.ndjson").write_text(
                 "".join(json.dumps(g) + "\n" for g in graphs)
             )
-            logger.info(f"Exported {len(graphs)} graph(s) → {db}/ckn-graphs.ndjson")
+            graph_count = len(graphs)
         except Exception as exc:
-            logger.error(f"Could not export graphs for {db}: {exc}")
+            _events.error(
+                "graph_sidecar_export_failed",
+                database=db,
+                kind="graphs",
+                error_type=type(exc).__name__,
+                error=str(exc),
+            )
             failures.append(f"graphs for {db}")
 
         try:
@@ -628,12 +691,24 @@ def export_graphs_and_analyzers(
             (db_dir / "ckn-analyzers.ndjson").write_text(
                 "".join(json.dumps(a) + "\n" for a in analyzers)
             )
-            logger.info(
-                f"Exported {len(analyzers)} analyzer(s) → {db}/ckn-analyzers.ndjson"
-            )
+            analyzer_count = len(analyzers)
         except Exception as exc:
-            logger.error(f"Could not export analyzers for {db}: {exc}")
+            _events.error(
+                "graph_sidecar_export_failed",
+                database=db,
+                kind="analyzers",
+                error_type=type(exc).__name__,
+                error=str(exc),
+            )
             failures.append(f"analyzers for {db}")
+
+        if graph_count is not None and analyzer_count is not None:
+            _events.info(
+                "graph_sidecars_exported",
+                database=db,
+                graph_count=graph_count,
+                analyzer_count=analyzer_count,
+            )
 
     if failures:
         raise RuntimeError(f"Could not export {', '.join(failures)}")
@@ -670,7 +745,6 @@ def import_graphs_from_sidecar(dump_dir: Path, arango_db_password: str) -> None:
     import urllib.error
     import urllib.request
 
-    logger = get_run_logger()
     dump_dir = Path(dump_dir)
     failures: list[str] = []
 
@@ -713,19 +787,23 @@ def import_graphs_from_sidecar(dump_dir: Path, arango_db_password: str) -> None:
             try:
                 with urllib.request.urlopen(req, timeout=_ARANGO_TIMEOUT) as resp:
                     resp.read()
-                logger.info(f"Recreated graph {db}/{name}")
+                _events.info("graph_recreated", database=db, graph=name)
             except urllib.error.HTTPError as exc:
                 if exc.code == 409:
-                    logger.info(f"Graph {db}/{name} already exists — skipping")
+                    _events.info("graph_already_present", database=db, graph=name)
                 else:
                     detail = exc.read().decode(errors="ignore")
-                    logger.error(
-                        f"Could not recreate graph {db}/{name}: {exc} {detail}"
+                    _events.error(
+                        "graph_recreate_failed",
+                        database=db,
+                        graph=name,
+                        reason="http_error",
+                        status_code=exc.code,
+                        error=detail[:500],
                     )
                     failures.append(f"{db}/{name}")
     if failures:
         raise RuntimeError(f"Could not recreate graph(s): {', '.join(failures)}")
-    logger.info("Graph sidecar import complete")
 
 
 @task(name="restore-arangodb", log_prints=True)
@@ -746,14 +824,13 @@ def restore_arangodb(
     arango_db_password:
         ArangoDB root password.
     """
-    logger = get_run_logger()
+    started = time.monotonic()
     dump_dir = Path(dump_dir)
     if not dump_dir.is_dir():
         raise FileNotFoundError(
             f"Baseline dump not found: {dump_dir}\n"
             "Run the ontology stage first (--run-ontology) to create it."
         )
-    logger.info(f"Restoring ArangoDB from {dump_dir.relative_to(REPO_ROOT)}")
 
     container_in = f"/tmp/{dump_dir.name}"
     client = docker_sdk.from_env()
@@ -781,11 +858,37 @@ def restore_arangodb(
             "--create-database=true",
         ]
     )
+    output = result.output.decode(errors="replace")
     if result.exit_code != 0:
-        raise RuntimeError(
-            f"arangorestore failed (exit {result.exit_code}):\n{result.output.decode()}"
+        _events.error(
+            "arangorestore_failed",
+            dump_label=dump_dir.name,
+            reason="nonzero_exit",
+            rc=result.exit_code,
+            duration_ms=_ms(started),
+            output=output[-_MAX_TOOL_OUTPUT:],
         )
-    logger.info("ArangoDB restore complete")
+        raise RuntimeError(f"arangorestore failed (exit {result.exit_code}):\n{output}")
+    _events.debug(
+        "arangorestore_output",
+        dump_label=dump_dir.name,
+        output=output[-_MAX_TOOL_OUTPUT:],
+    )
+    error_lines = [line for line in output.splitlines() if _ERROR_LINE.search(line)]
+    if error_lines:
+        # arangorestore can report errors and still exit 0.
+        _events.warning(
+            "arangorestore_reported_errors",
+            dump_label=dump_dir.name,
+            error_lines=len(error_lines),
+            sample=error_lines[:3],
+        )
+    _events.info(
+        "arangorestore_finished",
+        dump_label=dump_dir.name,
+        rc=result.exit_code,
+        duration_ms=_ms(started),
+    )
 
 
 @task(name="validate-release-dir", log_prints=True)
@@ -1405,7 +1508,7 @@ def nlm_ckn_etl(
                 # clean slate.  The stopped container's data dir is removed so
                 # no stale collections carry over.
                 stop_arangodb()
-                _wipe_arangodb_data(arango_db_home, logger)
+                _wipe_arangodb_data(arango_db_home)
                 actual_port = start_arangodb(arango_db_home, arango_db_password)
                 _set_arango_port(actual_port)
                 phase1_started_arangodb = True
@@ -1478,7 +1581,7 @@ def nlm_ckn_etl(
         # Without this, ArangoDB ignores ARANGO_ROOT_PASSWORD on restart and
         # keeps the password baked into the existing data, causing a 401 if
         # the password was regenerated (e.g. in a new Batch container).
-        _wipe_arangodb_data(arango_db_home, logger)
+        _wipe_arangodb_data(arango_db_home)
         actual_port = start_arangodb(arango_db_home, arango_db_password)
         _set_arango_port(actual_port)
 

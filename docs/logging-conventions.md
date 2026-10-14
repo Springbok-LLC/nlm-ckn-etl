@@ -146,6 +146,7 @@ For `records_rejected` and `*_skipped` and `*_failed` lines. Lowercase
 | `rate_limited` | The upstream returned HTTP 429 |
 | `http_error` | The upstream returned a non-success status; add `status_code` |
 | `nonzero_exit` | A subprocess exited with a non-zero `rc` |
+| `no_owl_files` | `OntologyDownloader` exited 0 but left no `.owl` files in `data/obo/` |
 
 ## 6. Message vocabulary
 
@@ -279,16 +280,22 @@ reports give the source line each name replaces.
 
 | Message | Level | Fields |
 | --- | --- | --- |
-| `arangodb_container_started` | INFO | `port`, `volume_kind`, `duration_ms` |
+| `arangodb_container_started` | INFO | `port`, `volume_kind` (`named_volume` or `bind_mount`), `duration_ms` |
 | `arangodb_container_reused` | INFO | `container_id`, `port` |
 | `arangodb_container_removed` | INFO | `container_id`, `status` |
 | `arangodb_ready` | INFO | `port`, `duration_ms` |
 | `arangodb_endpoint_resolved` | INFO | `mode`, `host`, `port`, `container_id` |
-| `arangodb_data_wiped` | INFO | `kind`, `volume` or `path` |
+| `arangodb_data_wiped` | INFO | `kind` (`named_volume` or `bind_mount`), `volume` or `path` |
 | `arangodb_volume_removal_failed` | WARN | `volume`, `error_type`, `error` |
 | `docker_unreachable` | WARN | `error_type`, `error` |
 | `arangodump_finished` | INFO | `dump_label`, `file_count`, `bytes`, `rc`, `duration_ms` |
 | `arangorestore_finished` | INFO | `dump_label`, `rc`, `duration_ms` |
+| `arangodump_failed`, `arangorestore_failed` | ERROR | `dump_label`, `reason=nonzero_exit`, `rc`, `duration_ms`, `output` (last 32 KiB of the tool's output); logged before the task raises |
+| `arangodump_output`, `arangorestore_output` | DEBUG | `dump_label`, `output` (last 32 KiB); the tool's output on success |
+| `arangorestore_reported_errors` | WARN | `dump_label`, `error_lines`, `sample` (first three); `arangorestore` exited 0 but printed `ERROR` lines |
+| `arangodb_port_lookup_failed` | WARN | `container_id`, `port` (the fallback), `error_type`, `error` |
+| `graph_sidecar_export_failed` | ERROR | `database`, `kind` (`graphs` or `analyzers`), `error_type`, `error`; every database is still attempted before the task raises |
+| `ontologies_download_failed` | ERROR | `phase`, `reason=no_owl_files`, `path`; logged before the task raises |
 | `database_created` | INFO | `database` |
 | `database_dropped` | WARN | `database` |
 | `graph_created` | INFO | `database`, `graph` |
