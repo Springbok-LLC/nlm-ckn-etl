@@ -146,6 +146,7 @@ For `records_rejected` and `*_skipped` and `*_failed` lines. Lowercase
 | `rate_limited` | The upstream returned HTTP 429 |
 | `http_error` | The upstream returned a non-success status; add `status_code` |
 | `nonzero_exit` | A subprocess exited with a non-zero `rc` |
+| `missing_directory` | A directory an upload expects (`data/obo/`, the external cache) does not exist |
 | `no_owl_files` | `OntologyDownloader` exited 0 but left no `.owl` files in `data/obo/` |
 
 ## 6. Message vocabulary
@@ -159,12 +160,12 @@ reports give the source line each name replaces.
 | Message | Level | Fields |
 | --- | --- | --- |
 | `run_started` | INFO | `main_class` or `script`, effective config (`run_name`, dirs), `args` |
-| `run_finished` | INFO | `outcome`, `duration_ms`, summary counts |
-| `run_failed` | ERROR | `error_type`, `error`, `duration_ms` |
-| `config_resolved` | INFO | Once per flow: `run_name`, `release_tag`, `s3_enabled`, phase flags, `java_opts`, `jar_key`, `git_commit`, `fetch_code_hash` |
+| `run_finished` | INFO | `outcome`, `duration_ms`, summary counts. Pipeline: `phases_run`, `phases_skipped`, `phase_durations_ms` (an object keyed by phase) |
+| `run_failed` | ERROR | `error_type`, `error`, `duration_ms`; `phase` (the one in progress, or none) and, in the pipeline flow, `task` (the innermost function in `pipeline.py` on the stack) |
+| `config_resolved` | INFO | Once per flow: `run_name`, `release_tag`, `s3_enabled`, phase flags, `java_opts`, `jar_key`, `git_commit`, `fetch_code_hash`. The pipeline flow also logs `arango_local`, `flow_run_id` and, on Batch, `batch_job_id` |
 | `phase_started` | INFO | `phase` |
-| `phase_finished` | INFO | `phase`, `duration_ms`, counts |
-| `phase_skipped` | INFO | `phase`, `reason`, `force` |
+| `phase_finished` | INFO | `phase`, `duration_ms`, counts. Pipeline: `jar_key`, `run_name`, `dump` and `dump_bytes`; `tuple_files` and `tuple_bytes` for `results` |
+| `phase_skipped` | INFO | `phase`, `reason` (`dump_exists`), `force`, and `jar_key` or `run_name` where they identify the dump |
 | `subprocess_started` | INFO | `phase`, `argv`, `cwd`; no secrets in `argv` |
 | `subprocess_finished` | INFO | `phase`, `rc`, `duration_ms` |
 | `subprocess_failed` | ERROR | `phase`, `reason=nonzero_exit`, `rc`, `duration_ms`; `oom_suspected=true` when `rc` is 137 or -9 |
@@ -305,6 +306,7 @@ reports give the source line each name replaces.
 | `graph_recreate_failed` | ERROR | `database`, `graph`, `reason=http_error`, `status_code` |
 | `graph_sidecars_exported` | INFO | `database`, `graph_count`, `analyzer_count` |
 | `analyzers_and_views_created` | INFO | `database`, `duration_ms` |
+| `analyzers_delete_skipped` | DEBUG | `database`, `step` (`delete_view` or `delete_analyzers`), `error_type`, `error`; usually nothing existed to delete |
 | `view_link_skipped` | WARN | `collection`, `database` |
 | `collection_counted` | INFO | `database`, `collection`, `kind`, `records_out` (read back from `.count()`) |
 | `database_summary` | INFO | `database`, `vertex_total`, `edge_total` |
@@ -318,11 +320,14 @@ reports give the source line each name replaces.
 | `s3_upload_finished` | INFO | `artifact` when named, `s3_uri`, `bytes` (the archive), `files`, `members_skipped` (`.archive/` members left out), `kms_encrypted` (never the key id), `duration_ms` |
 | `s3_download_finished` | INFO | `artifact` when named, `s3_uri`, `bytes` (the archive), `files` extracted, `links_skipped`, `path_traversal_skipped`, `duration_ms` |
 | `tar_members_skipped` | WARN | `artifact` when named, `s3_uri`, `links`, `path_traversal`; only when something was skipped |
-| `artifact_cache_hit` | INFO | `artifact`, `path` |
+| `artifact_cache_hit` | INFO | `artifact`, `path`, and `jar_key` and `run_name` where they key the dump |
 | `artifact_upload_skipped` | WARN | `artifact`, `reason` |
+| `build_version_unavailable` | WARN | `component` (`java` or `python`), `error_type`, `error`; the version line is left out of `build-info.txt` |
+| `git_commit_unavailable` | WARN | `error_type`, `error`; the commit is then recorded as `unknown` |
 | `external_cache_promoted` | INFO | `objects_copied`, `src_prefix`, `duration_ms`; WARN when 0 |
 | `release_dir_validated` | INFO | `records_out` (NSForest files) |
-| `tuple_files_validated` | INFO | `records_out` (files) |
+| `tuple_files_validated` | INFO | `records_out` (files), `bytes` |
+| `tuple_file_empty` | WARN | `file`, `bytes` (2 or fewer: empty, or an empty JSON list) |
 | `production_promotion_finished` | INFO | `run_name`, `objects`, `bytes`, `duration_ms` |
 | `release_started` | INFO | `release_tag`, `run_name`, `github_repo`, `tar_source`, `max_fetch_age_hours`, `java_opts`, `hubmap_url_count` |
 | `release_tarball_fetched` | INFO | `source_kind` (`https`, `s3`, `local`), `uri` or `path`, `bytes`, `duration_ms` |
