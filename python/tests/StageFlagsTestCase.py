@@ -14,10 +14,9 @@ import pipeline  # noqa: E402
 
 class StageFlagsTestCase(unittest.TestCase):
     def test_no_stage_flags_raises(self):
-        with patch.object(pipeline, "get_run_logger", return_value=MagicMock()):
-            with patch.object(pipeline, "_get_or_create_arango_password") as password:
-                with self.assertRaises(ValueError) as ctx:
-                    pipeline.nlm_ckn_etl.fn()
+        with patch.object(pipeline, "_get_or_create_arango_password") as password:
+            with self.assertRaises(ValueError) as ctx:
+                pipeline.nlm_ckn_etl.fn()
         self.assertIn("No stage flags set", str(ctx.exception))
         password.assert_not_called()  # fails before touching ArangoDB or S3
 

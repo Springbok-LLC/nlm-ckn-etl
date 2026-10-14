@@ -34,9 +34,6 @@ class ExportGraphsAndAnalyzersTestCase(unittest.TestCase):
         self.dump_dir = Path(self._tmp.name)
         (self.dump_dir / "db1").mkdir()
         (self.dump_dir / "db2").mkdir()
-        patcher = patch.object(pipeline, "get_run_logger", return_value=MagicMock())
-        patcher.start()
-        self.addCleanup(patcher.stop)
         self.addCleanup(self._tmp.cleanup)
 
     def _run(self, urlopen):
@@ -105,9 +102,6 @@ class ImportGraphsFromSidecarTestCase(unittest.TestCase):
         (db_dir / "ckn-graphs.ndjson").write_text(
             json.dumps({"name": "g", "edgeDefinitions": []}) + "\n"
         )
-        patcher = patch.object(pipeline, "get_run_logger", return_value=MagicMock())
-        patcher.start()
-        self.addCleanup(patcher.stop)
         self.addCleanup(self._tmp.cleanup)
 
     def _http_error(self, code):

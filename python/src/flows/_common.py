@@ -464,6 +464,23 @@ def _fields(**fields) -> dict:
     return {k: v for k, v in fields.items() if v is not None}
 
 
+def _git_commit() -> str:
+    """Return the short git commit of the repo, or ``"unknown"``.
+
+    A failure is logged (``git_commit_unavailable``) rather than swallowed, since
+    the build info then loses its provenance.
+    """
+    try:
+        return subprocess.check_output(
+            ["git", "rev-parse", "--short", "HEAD"], cwd=REPO_ROOT, text=True
+        ).strip()
+    except Exception as exc:
+        _events.warning(
+            "git_commit_unavailable", error_type=type(exc).__name__, error=str(exc)
+        )
+        return "unknown"
+
+
 def _s3_upload_tar(
     local_dir: Path, s3_path: str, artifact: str | None = None
 ) -> dict[str, int]:

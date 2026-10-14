@@ -79,10 +79,11 @@ import tempfile
 import os
 import re
 import shutil
-import subprocess
 import sys
 import tarfile
 import time
+import traceback
+from contextlib import contextmanager
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -90,7 +91,7 @@ import boto3
 
 import docker as docker_sdk
 import structlog
-from prefect import flow, get_run_logger, task
+from prefect import flow, task
 
 import _common as _common_mod
 from _common import (
@@ -109,9 +110,13 @@ from _common import (
     _arango_env,
     _external_dir,
     _find_free_port,
+    _fetch_code_hash,
+    _fields,
+    _git_commit,
     _get_arangodb_id,
     _get_or_create_arango_password,
     _jar_key,
+    _log_env,
     _parse_s3_url,
     _run_logged,
     _run_python_script,
@@ -137,6 +142,77 @@ _ERROR_LINE = re.compile(r"\bERROR\b")
 def _ms(started: float) -> int:
     """Return the whole milliseconds elapsed since ``started`` (monotonic)."""
     return int((time.monotonic() - started) * 1000)
+
+
+def _dir_bytes(path: Path) -> int:
+    """Return the total size in bytes of the files under ``path`` (0 if absent)."""
+    path = Path(path)
+    if not path.is_dir():
+        return 0
+    return sum(f.stat().st_size for f in path.rglob("*") if f.is_file())
+
+
+@contextmanager
+def _phase(name: str, summary: dict, **fields):
+    """Log ``phase_started`` and ``phase_finished`` around a pipeline phase.
+
+    Binds ``phase`` for every line logged inside and records the phase in
+    ``summary`` (``phase`` is the one in progress, ``durations`` the finished
+    ones).  Yields a dict the caller fills with the counts to add to
+    ``phase_finished``.  No ``phase_finished`` is logged if the body raises; the
+    flow logs ``run_failed`` instead.
+    """
+    started = time.monotonic()
+    summary["phase"] = name
+    _events.info("phase_started", phase=name, **fields)
+    finish: dict = {}
+    with structlog.contextvars.bound_contextvars(phase=name):
+        yield finish
+    duration_ms = _ms(started)
+    summary["durations"][name] = duration_ms
+    summary["phase"] = None
+    _events.info("phase_finished", phase=name, duration_ms=duration_ms, **fields, **finish)
+
+
+def _failing_task(exc: BaseException) -> str | None:
+    """Return the name of the innermost function in this module on ``exc``'s stack.
+
+    For an error raised inside a task this is the task's function, so
+    ``run_failed`` can say which task failed.
+    """
+    name = None
+    for frame, _ in traceback.walk_tb(exc.__traceback__):
+        if frame.f_code.co_filename == __file__:
+            name = frame.f_code.co_name
+    return name
+
+
+def _log_source_versions(run_name: str) -> None:
+    """Log ``source_versions_resolved`` for each source that recorded a version.
+
+    Reads ``fetch-status.json``, which ``DataFetcher.py`` writes.  Logs nothing
+    for a source without a ``source_version``.
+    """
+    status_path = _external_dir(run_name) / "fetch-status.json"
+    if not status_path.exists():
+        return
+    try:
+        status = json.loads(status_path.read_text())
+    except Exception as exc:
+        _events.warning(
+            "fetch_status_unreadable",
+            path=status_path.name,
+            error_type=type(exc).__name__,
+            error=str(exc),
+        )
+        return
+    for source, entry in status.items():
+        if isinstance(entry, dict) and entry.get("source_version"):
+            _events.info(
+                "source_versions_resolved",
+                source=source,
+                source_version=entry["source_version"],
+            )
 
 # ── Tasks ──────────────────────────────────────────────────────────────────
 
@@ -906,7 +982,6 @@ def validate_release_dir(run_name: str = "") -> None:
         Run name (selects ``data/results-<name>/``).  Defaults to
         ``$CKN_RUN`` or ``'full'``.
     """
-    logger = get_run_logger()
     run_name = run_name or os.getenv("CKN_RUN", "full")
     results_dir = REPO_ROOT / "data" / f"results-{run_name}"
 
@@ -931,10 +1006,7 @@ def validate_release_dir(run_name: str = "") -> None:
             "The release zip is missing the HuBMAP URL list."
         )
 
-    logger.info(
-        f"Release dir OK: {results_dir.name}/ — "
-        f"{len(nsforest_files)} NSForest result file(s), hubmap_urls.txt present"
-    )
+    _events.info("release_dir_validated", records_out=len(nsforest_files))
 
 
 @task(name="sync-results-from-s3", log_prints=True)
@@ -956,17 +1028,13 @@ def sync_results_from_s3(run_name: str = "") -> None:
     run_name:
         Run name.  Defaults to ``$CKN_RUN`` or ``'full'``.
     """
-    logger = get_run_logger()
     if not S3_BUCKET:
-        logger.info("S3_BUCKET not set — skipping S3 sync (local mode)")
         return
     run_name = run_name or os.getenv("CKN_RUN", "full")
     results_dir = REPO_ROOT / "data" / f"results-{run_name}"
     results_dir.mkdir(parents=True, exist_ok=True)
     s3_src = f"s3://{S3_BUCKET}/runs/{run_name}/01-results/"
-    logger.info(f"Syncing {s3_src} → {results_dir.name}/")
-    _s3_sync(s3_src, str(results_dir))
-    logger.info("Release dir synced from S3")
+    _s3_sync(s3_src, str(results_dir), artifact="release_results")
 
 
 @task(name="write-tuples", log_prints=True)
@@ -982,8 +1050,6 @@ def write_tuples(arango_db_password: str, run_name: str = "") -> None:
         Run name passed as ``--run-name`` (selects ``data/results-<name>/``).
         Defaults to ``$CKN_RUN`` or ``'full'``.
     """
-    logger = get_run_logger()
-    logger.info("Writing all tuples (TupleWriterPipeline)")
     extra_args = ["--run-name", run_name] if run_name else None
     _run_python_script(
         "TupleWriterPipeline.py",
@@ -991,7 +1057,6 @@ def write_tuples(arango_db_password: str, run_name: str = "") -> None:
         extra_args=extra_args,
         phase="results",
     )
-    logger.info("All tuples written")
 
 
 @task(name="sync-tuples-to-s3", log_prints=True)
@@ -1006,16 +1071,12 @@ def sync_tuples_to_s3(run_name: str = "") -> None:
         Run name (selects ``data/tuples-<name>/``).  Defaults to
         ``$CKN_RUN`` or ``'full'``.
     """
-    logger = get_run_logger()
     if not S3_BUCKET:
-        logger.info("S3_BUCKET not set — skipping S3 sync (local mode)")
         return
     run_name = run_name or os.getenv("CKN_RUN", "full")
     tuples_dir = REPO_ROOT / "data" / f"tuples-{run_name}"
     s3_dest = f"s3://{S3_BUCKET}/runs/{run_name}/05-tuples.tar.gz"
-    logger.info(f"Compressing and uploading {tuples_dir.name}/ → {s3_dest}")
-    _s3_upload_tar(tuples_dir, s3_dest)
-    logger.info("Tuples pushed to S3")
+    _s3_upload_tar(tuples_dir, s3_dest, artifact="tuples")
 
 
 @task(name="validate-tuple-files", log_prints=True)
@@ -1028,16 +1089,22 @@ def validate_tuple_files(run_name: str = "") -> None:
         Run name (selects ``data/tuples-<name>/``).  Defaults to
         ``$CKN_RUN`` or ``'full'``.
     """
-    logger = get_run_logger()
     run_name = run_name or os.getenv("CKN_RUN", "full")
     tuples_dir = REPO_ROOT / "data" / f"tuples-{run_name}"
-    json_files = list(tuples_dir.glob("*.json"))
+    json_files = sorted(tuples_dir.glob("*.json"))
     if not json_files:
         raise FileNotFoundError(
             f"No JSON files in {tuples_dir.name}/ after tuple writers ran.\n"
             f"Ensure data/results-{run_name}/ contains NSForest results (results_ensg_*.csv)."
         )
-    logger.info(f"Tuple files: {len(json_files)} JSON file(s) in {tuples_dir.name}/")
+    sizes = {f.name: f.stat().st_size for f in json_files}
+    for name, size in sizes.items():
+        # An empty file or an empty JSON list: a writer ran but produced no rows.
+        if size <= 2:
+            _events.warning("tuple_file_empty", file=name, bytes=size)
+    _events.info(
+        "tuple_files_validated", records_out=len(json_files), bytes=sum(sizes.values())
+    )
 
 
 @task(name="sync-baseline-dump-to-s3", log_prints=True)
@@ -1048,14 +1115,10 @@ def sync_baseline_dump_to_s3(baseline_dump_dir: Path, jar_key: str) -> None:
     it, so Phase 2 always restores a dump that is compatible with the JAR
     currently in use.  No-op when ``S3_BUCKET`` is empty.
     """
-    logger = get_run_logger()
     if not S3_BUCKET:
-        logger.info("S3_BUCKET not set — skipping baseline dump upload (local mode)")
         return
     s3_dest = f"s3://{S3_BUCKET}/baselines/{jar_key}/baseline-dump.tar.gz"
-    logger.info(f"Compressing and uploading baseline dump → {s3_dest}")
-    _s3_upload_tar(baseline_dump_dir, s3_dest)
-    logger.info(f"Baseline dump uploaded to S3 (jar_key={jar_key})")
+    _s3_upload_tar(baseline_dump_dir, s3_dest, artifact="baseline_dump")
 
 
 @task(name="sync-baseline-dump-from-s3", log_prints=True)
@@ -1066,21 +1129,18 @@ def sync_baseline_dump_from_s3(baseline_dump_dir: Path, jar_key: str) -> None:
     that matches the JAR currently in use.  No-op when ``S3_BUCKET`` is empty
     or when the dump already exists locally.
     """
-    logger = get_run_logger()
     if not S3_BUCKET:
-        logger.info("S3_BUCKET not set — skipping baseline dump restore (local mode)")
         return
     if Path(baseline_dump_dir).is_dir():
-        logger.info(
-            f"Baseline dump already present locally: {Path(baseline_dump_dir).name}/"
+        _events.info(
+            "artifact_cache_hit",
+            artifact="baseline_dump",
+            path=Path(baseline_dump_dir).name,
+            jar_key=jar_key,
         )
         return
     s3_src = f"s3://{S3_BUCKET}/baselines/{jar_key}/baseline-dump.tar.gz"
-    logger.info(
-        f"Downloading and extracting baseline dump from {s3_src} (jar_key={jar_key})"
-    )
-    _s3_download_tar(s3_src, Path(baseline_dump_dir))
-    logger.info("Baseline dump restored from S3")
+    _s3_download_tar(s3_src, Path(baseline_dump_dir), artifact="baseline_dump")
 
 
 @task(name="sync-results-dump-to-s3", log_prints=True)
@@ -1094,14 +1154,10 @@ def sync_results_dump_to_s3(
     tuples.  Phase 3 restores this dump when archiving standalone.  No-op when
     ``S3_BUCKET`` is empty.
     """
-    logger = get_run_logger()
     if not S3_BUCKET:
-        logger.info("S3_BUCKET not set — skipping results dump upload (local mode)")
         return
     s3_dest = f"s3://{S3_BUCKET}/results/{jar_key}/{run_name}/results-dump.tar.gz"
-    logger.info(f"Compressing and uploading results dump → {s3_dest}")
-    _s3_upload_tar(results_dump_dir, s3_dest)
-    logger.info(f"Results dump uploaded to S3 (jar_key={jar_key}, run={run_name})")
+    _s3_upload_tar(results_dump_dir, s3_dest, artifact="results_dump")
 
 
 @task(name="sync-results-dump-from-s3", log_prints=True)
@@ -1114,22 +1170,19 @@ def sync_results_dump_from_s3(
     dump matching the JAR and run currently in use.  No-op when ``S3_BUCKET`` is
     empty or when the dump already exists locally.
     """
-    logger = get_run_logger()
     if not S3_BUCKET:
-        logger.info("S3_BUCKET not set — skipping results dump restore (local mode)")
         return
     if Path(results_dump_dir).is_dir():
-        logger.info(
-            f"Results dump already present locally: {Path(results_dump_dir).name}/"
+        _events.info(
+            "artifact_cache_hit",
+            artifact="results_dump",
+            path=Path(results_dump_dir).name,
+            jar_key=jar_key,
+            run_name=run_name,
         )
         return
     s3_src = f"s3://{S3_BUCKET}/results/{jar_key}/{run_name}/results-dump.tar.gz"
-    logger.info(
-        f"Downloading and extracting results dump from {s3_src} "
-        f"(jar_key={jar_key}, run={run_name})"
-    )
-    _s3_download_tar(s3_src, Path(results_dump_dir))
-    logger.info("Results dump restored from S3")
+    _s3_download_tar(s3_src, Path(results_dump_dir), artifact="results_dump")
 
 
 @task(name="build-results-graph", log_prints=True)
@@ -1139,18 +1192,13 @@ def build_results_graph(
     run_name: str = "",
 ) -> None:
     """Run ResultsGraphBuilder to load result tuples into ArangoDB."""
-    logger = get_run_logger()
     run_name = run_name or os.getenv("CKN_RUN", "full")
-    logger.info(
-        f"Building results graph (gov.nih.nlm.ResultsGraphBuilder, {java_opts})"
-    )
     _run_logged(
         _java_cmd("gov.nih.nlm.ResultsGraphBuilder", arango_db_password, java_opts),
         phase="results",
         cwd=REPO_ROOT,
         env={**os.environ, **_arango_env(arango_db_password), "CKN_RUN": run_name},
     )
-    logger.info("Results graph built")
 
 
 @task(name="build-induced-subgraph", log_prints=True)
@@ -1162,10 +1210,6 @@ def build_induced_subgraph(
 
     Must run after ``build_results_graph`` and before ``create_analyzers_and_views``.
     """
-    logger = get_run_logger()
-    logger.info(
-        f"Building induced subgraph (gov.nih.nlm.InducedSubgraphBuilder, {java_opts})"
-    )
     _run_logged(
         _java_cmd("gov.nih.nlm.InducedSubgraphBuilder", arango_db_password, java_opts),
         phase="results",
@@ -1179,7 +1223,6 @@ def build_induced_subgraph(
             "ARANGO_PHENOTYPE_GRAPH_NAME": "KN-Phenotypes-v2.0",
         },
     )
-    logger.info("Induced subgraph built")
 
 
 @task(name="create-analyzers-and-views", log_prints=True)
@@ -1193,7 +1236,7 @@ def create_analyzers_and_views(arango_db_password: str, database: str) -> None:
     subgraph is built (Phase 3).  Deletion of any pre-existing view/analyzers
     is best-effort so a freshly restored database is handled cleanly.
     """
-    logger = get_run_logger()
+    started = time.monotonic()
 
     # ArangoDbUtilities reads connection settings from the environment at call
     # time; export the live host/port (the port is assigned dynamically at
@@ -1205,15 +1248,24 @@ def create_analyzers_and_views(arango_db_password: str, database: str) -> None:
     import ArangoDbUtilities as adb
 
     collection_maps = REPO_ROOT / "data" / "nlm-ckn-collection-maps.json"
-    logger.info(f"Creating analyzers and views in {database}")
     for delete_fn in (adb.delete_view, adb.delete_analyzers):
         try:
             delete_fn(database)
-        except Exception:
-            logger.info(f"Nothing to delete in {database}")
+        except Exception as exc:
+            # Usually nothing to delete.  Any other cause (network, auth) shows
+            # again, as an error, when the create calls below fail.
+            _events.debug(
+                "analyzers_delete_skipped",
+                database=database,
+                step=delete_fn.__name__,
+                error_type=type(exc).__name__,
+                error=str(exc),
+            )
     adb.create_analyzers(database)
     adb.create_view(database, collection_maps_name=collection_maps)
-    logger.info(f"Analyzers and views created in {database}")
+    _events.info(
+        "analyzers_and_views_created", database=database, duration_ms=_ms(started)
+    )
 
 
 @task(name="promote-to-production", log_prints=True)
@@ -1250,11 +1302,10 @@ def promote_to_production(
         Run name (used to locate ``data/external-<name>/``).  Defaults to
         ``$CKN_RUN`` or ``'full'``.
     """
-    logger = get_run_logger()
     if not S3_BUCKET:
-        logger.info("S3_BUCKET not set — skipping production promotion (local mode)")
         return
 
+    started = time.monotonic()
     golden_dump_dir = Path(golden_dump_dir)
     if not golden_dump_dir.is_dir():
         raise FileNotFoundError(
@@ -1264,21 +1315,27 @@ def promote_to_production(
 
     run_name = run_name or os.getenv("CKN_RUN", "full")
     run_prefix = f"s3://{S3_BUCKET}/runs/{run_name}"
-    logger.info(f"Promoting artifacts to {run_prefix}/")
+    objects = 0
+    total_bytes = 0
 
     # Upload golden dump (06-golden-dump.tar.gz)
     s3_golden = f"{run_prefix}/06-golden-dump.tar.gz"
-    logger.info(f"Compressing and uploading golden dump → {s3_golden}")
-    _s3_upload_tar(golden_dump_dir, s3_golden)
+    stats = _s3_upload_tar(golden_dump_dir, s3_golden, artifact="golden")
+    objects += 1
+    total_bytes += stats["bytes"]
 
     # Snapshot OBO files into the run (03-obo.tar.gz)
     obo_dir = REPO_ROOT / "data" / "obo"
     if obo_dir.is_dir():
         s3_obo = f"{run_prefix}/03-obo.tar.gz"
-        logger.info(f"Compressing and uploading OBO files → {s3_obo}")
-        _s3_upload_tar(obo_dir, s3_obo)
+        stats = _s3_upload_tar(obo_dir, s3_obo, artifact="obo")
+        objects += 1
+        total_bytes += stats["bytes"]
     else:
-        logger.warning("data/obo/ not found — skipping OBO upload")
+        # Log and continue: the production promotion is incomplete without it.
+        _events.warning(
+            "artifact_upload_skipped", artifact="obo", reason="missing_directory"
+        )
 
     # Snapshot external API cache into the run (02-external.tar.gz).
     # The shared warm cache at s3://bucket/external/ is the source of truth for
@@ -1286,18 +1343,16 @@ def promote_to_production(
     ext_dir = _external_dir(run_name)
     if ext_dir.is_dir():
         s3_ext = f"{run_prefix}/02-external.tar.gz"
-        logger.info(f"Compressing and snapshotting external cache → {s3_ext}")
-        _s3_upload_tar(ext_dir, s3_ext)
+        stats = _s3_upload_tar(ext_dir, s3_ext, artifact="external")
+        objects += 1
+        total_bytes += stats["bytes"]
     else:
-        logger.warning(f"{ext_dir.name}/ not found — skipping external cache snapshot")
+        _events.warning(
+            "artifact_upload_skipped", artifact="external", reason="missing_directory"
+        )
 
     # Build and upload build-info.txt
-    try:
-        commit = subprocess.check_output(
-            ["git", "rev-parse", "--short", "HEAD"], cwd=REPO_ROOT, text=True
-        ).strip()
-    except Exception:
-        commit = "unknown"
+    commit = _git_commit()
 
     timestamp = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
     build_info_lines = [
@@ -1331,14 +1386,25 @@ def promote_to_production(
                 size_str = f"{size:,} bytes" if size is not None else "missing"
                 build_info_lines.append(f"  {fname}: {size_str}")
         except Exception as exc:
-            logger.warning(f"Could not read fetch-info.json: {exc}")
+            # Log and continue: build-info.txt then loses the fetch provenance.
+            _events.warning(
+                "fetch_info_unreadable",
+                source="local",
+                error_type=type(exc).__name__,
+                error=str(exc),
+            )
 
     try:
         pom = (REPO_ROOT / "pom.xml").read_text()
         java_version = re.search(r"<version>([^<]+)</version>", pom).group(1).strip()
         build_info_lines.append(f"Java version: {java_version}")
-    except Exception:
-        pass
+    except Exception as exc:
+        _events.warning(
+            "build_version_unavailable",
+            component="java",
+            error_type=type(exc).__name__,
+            error=str(exc),
+        )
     try:
         pyproject = (REPO_ROOT / "python" / "pyproject.toml").read_text()
         py_version = (
@@ -1347,8 +1413,13 @@ def promote_to_production(
             .strip()
         )
         build_info_lines.append(f"Python version: {py_version}")
-    except Exception:
-        pass
+    except Exception as exc:
+        _events.warning(
+            "build_version_unavailable",
+            component="python",
+            error_type=type(exc).__name__,
+            error=str(exc),
+        )
 
     build_info_path = REPO_ROOT / "build-info.txt"
     build_info_path.write_text("\n".join(build_info_lines) + "\n")
@@ -1365,8 +1436,16 @@ def promote_to_production(
             key,
             ExtraArgs={"ACL": "private", **sse_args},
         )
+        objects += 1
+        total_bytes += build_info_path.stat().st_size
 
-    logger.info(f"All artifacts promoted to {run_prefix}/")
+    _events.info(
+        "production_promotion_finished",
+        run_name=run_name,
+        objects=objects,
+        bytes=total_bytes,
+        duration_ms=_ms(started),
+    )
 
 
 # ── Flow ───────────────────────────────────────────────────────────────────
@@ -1382,6 +1461,308 @@ def _set_arango_port(port: int) -> None:
     """
     globals()["ARANGO_DB_PORT"] = port
     _common_mod.ARANGO_DB_PORT = port
+
+
+def _run_etl(
+    run_ontology: bool,
+    force_ontology: bool,
+    run_results: bool,
+    force_results: bool,
+    run_archive: bool,
+    force_archive: bool,
+    java_opts: str,
+    run_name: str,
+    summary: dict,
+) -> None:
+    """Run the phases of :func:`nlm_ckn_etl`, recording them in ``summary``.
+
+    Logs ``config_resolved`` once, then ``phase_started`` and ``phase_finished``
+    (or ``phase_skipped``) for each phase.  ``summary`` receives the ``phase`` in
+    progress, the finished phases' ``durations`` and the ``skipped`` phases.
+    """
+    if not any(
+        [
+            run_ontology,
+            force_ontology,
+            run_results,
+            force_results,
+            run_archive,
+            force_archive,
+        ]
+    ):
+        raise ValueError(
+            "No stage flags set — nothing to do.  Pass at least one of: "
+            "run_ontology, force_ontology, run_results, force_results, "
+            "run_archive, force_archive."
+        )
+
+    arango_db_password = _get_or_create_arango_password()
+    arango_db_home = ARANGO_DB_HOME
+    run_name = run_name or os.getenv("CKN_RUN", "full")
+
+    # Resolve the JAR and derive its content key upfront.  The key is used to
+    # locate the matching baseline dump in S3 — ensuring the dump and the JAR
+    # that produced it are always stored and retrieved together.
+    jar_key = ensure_jar()
+
+    _events.info(
+        "config_resolved",
+        run_name=run_name,
+        s3_enabled=bool(S3_BUCKET),
+        arango_local=ARANGO_DB_IS_LOCAL,
+        run_ontology=run_ontology,
+        force_ontology=force_ontology,
+        run_results=run_results,
+        force_results=force_results,
+        run_archive=run_archive,
+        force_archive=force_archive,
+        java_opts=java_opts,
+        jar_key=jar_key,
+        git_commit=_git_commit(),
+        fetch_code_hash=_fetch_code_hash(),
+        flow_run_id=_common_mod.flow_run.id,
+        **_fields(batch_job_id=os.getenv("AWS_BATCH_JOB_ID") or None),
+    )
+
+    # Baseline dump: keyed by JAR content hash so the dump and the JAR that
+    # produced it are always associated.  Written at the end of Phase 1;
+    # restored at the start of Phase 2.
+    baseline_dump_dir = REPO_ROOT / "data" / f"arangodump-baseline-{jar_key}"
+    # Results dump: ontology + results state, keyed by JAR hash and run name.
+    # Written at the end of Phase 2; restored at the start of Phase 3 when
+    # archiving standalone so each phase has its own restorable save point.
+    results_dump_dir = REPO_ROOT / "data" / f"arangodump-results-{jar_key}-{run_name}"
+    # Golden dump: written near the end of Phase 3; uploaded to production S3.
+    golden_dump_dir = REPO_ROOT / "data" / f"arangodump-golden-{run_name}"
+
+    # ── Phase 1: Upstream Build ────────────────────────────────────────────
+    phase1_started_arangodb = False
+    # Whether the live ArangoDB already holds this run's Phase 2 result state
+    # (set when Phase 2 runs in this same invocation).  Phase 3 uses it to skip
+    # a redundant restore of the results dump.
+    phase2_db_is_current = False
+    if run_ontology or force_ontology:
+        if baseline_dump_dir.is_dir() and not force_ontology:
+            # Use force_ontology=True to force a full rebuild.
+            summary["skipped"].append("ontology")
+            _events.info(
+                "phase_skipped",
+                phase="ontology",
+                reason="dump_exists",
+                force=False,
+                jar_key=jar_key,
+            )
+        else:
+            with _phase("ontology", summary, jar_key=jar_key) as finish:
+                post_github_deployment_status(
+                    state="in_progress",
+                    description="[3/3] ETL Phase 1: building ontology graph",
+                )
+                if ARANGO_DB_IS_LOCAL:
+                    # Wipe ArangoDB and start fresh so OntologyGraphBuilder has a
+                    # clean slate.  The stopped container's data dir is removed so
+                    # no stale collections carry over.
+                    stop_arangodb()
+                    _wipe_arangodb_data(arango_db_home)
+                    actual_port = start_arangodb(arango_db_home, arango_db_password)
+                    _set_arango_port(actual_port)
+                    phase1_started_arangodb = True
+                require_arangodb()
+                download_ontologies(arango_db_password, java_opts)
+                slim_ontologies(arango_db_password, java_opts)
+                build_ontology_graph(arango_db_password, java_opts)
+
+                # Save the ontology database state as the baseline dump, keyed by
+                # JAR hash.  Phase 2 restores from here, so repeated results runs
+                # are cheap and always use a compatible baseline.
+                if baseline_dump_dir.is_dir():
+                    shutil.rmtree(baseline_dump_dir)
+                dump_arangodb(baseline_dump_dir, arango_db_password, label="baseline")
+                # Capture the ontology named-graph (and analyzer) definitions next to
+                # the dump.  arangodump excludes the _graphs system collection, so
+                # without this sidecar the KN-Ontologies-v2.0 edge definitions are
+                # lost on restore and Phase 2 would rebuild the graph from results
+                # edges only — starving InducedSubgraphBuilder of the ontology edges.
+                export_graphs_and_analyzers(baseline_dump_dir, arango_db_password)
+                sync_baseline_dump_to_s3(baseline_dump_dir, jar_key)
+                finish["dump"] = baseline_dump_dir.name
+                finish["dump_bytes"] = _dir_bytes(baseline_dump_dir)
+
+    # Decide which phases actually run.  A phase is skipped when its dump
+    # already exists and the matching force flag is not set, so the ArangoDB
+    # start/wipe below and the phase body both no-op when there is nothing to
+    # rebuild (this is what makes --force-results / --force-archive meaningful).
+    run_phase2 = run_results or force_results
+    if run_phase2 and results_dump_dir.is_dir() and not force_results:
+        summary["skipped"].append("results")
+        _events.info(
+            "phase_skipped",
+            phase="results",
+            reason="dump_exists",
+            force=False,
+            jar_key=jar_key,
+            run_name=run_name,
+        )
+        run_phase2 = False
+
+    run_phase3 = run_archive or force_archive
+    if run_phase3 and golden_dump_dir.is_dir() and not force_archive:
+        summary["skipped"].append("archive")
+        _events.info(
+            "phase_skipped",
+            phase="archive",
+            reason="dump_exists",
+            force=False,
+            run_name=run_name,
+        )
+        run_phase3 = False
+
+    # ── Ensure ArangoDB is running for Phase 2/3 when Phase 1 didn't start it ──
+    # Covers --run-results and/or --run-archive, and --run-ontology when the
+    # baseline already existed and Phase 1 was a no-op.  Archive is included
+    # because Phase 3 now restores the results dump into a fresh instance, so
+    # archive-only no longer depends on Phase 2 having populated a live database.
+    if (
+        ARANGO_DB_IS_LOCAL
+        and not phase1_started_arangodb
+        and (run_phase2 or run_phase3)
+    ):
+        # Stop and remove any running container BEFORE wiping.  Otherwise the
+        # rmtree pulls the bind-mounted data dir out from under a live
+        # container (its mount goes stale → ArangoDB can no longer write), and
+        # start_arangodb would then reuse that broken container instead of
+        # starting fresh.  Mirrors the Phase 1 stop→wipe→start ordering.
+        stop_arangodb()
+        # Wipe ArangoDB data (bind-mount dir or named Docker volume) before
+        # starting so ArangoDB initialises fresh with the current password.
+        # Without this, ArangoDB ignores ARANGO_ROOT_PASSWORD on restart and
+        # keeps the password baked into the existing data, causing a 401 if
+        # the password was regenerated (e.g. in a new Batch container).
+        _wipe_arangodb_data(arango_db_home)
+        actual_port = start_arangodb(arango_db_home, arango_db_password)
+        _set_arango_port(actual_port)
+
+    # ── Phase 2: Iterative Refinement ─────────────────────────────────────
+    if run_phase2:
+        with _phase("results", summary, jar_key=jar_key, run_name=run_name) as finish:
+            post_github_deployment_status(
+                state="in_progress",
+                description="[3/3] ETL Phase 2: writing tuples and building graphs",
+            )
+
+            # Guard: require baseline dump before restoring — pull from S3 if missing locally.
+            # Uses jar_key so we always restore the dump produced by this exact JAR.
+            sync_baseline_dump_from_s3(baseline_dump_dir, jar_key)
+            if not baseline_dump_dir.is_dir():
+                raise RuntimeError(
+                    f"Baseline dump not found for jar_key={jar_key}: {baseline_dump_dir.name}/\n"
+                    "Run Phase 1 first (--run-ontology) to build and dump the "
+                    "ontology graph with the current JAR, then re-run with --run-results."
+                )
+
+            # Pull inputs from S3 (no-op in local mode)
+            sync_results_from_s3(run_name=run_name)  # flat release dir
+            sync_external_from_s3(run_name=run_name)  # external API cache from fetcher.py
+
+            validate_release_dir(run_name=run_name)
+            validate_external_files(run_name=run_name)
+            _log_source_versions(run_name)
+
+            require_arangodb()
+
+            # Restore the baseline so this phase is fully repeatable.
+            # Any data written by a previous Phase 2 run is discarded here.
+            restore_arangodb(baseline_dump_dir, arango_db_password)
+
+            # Recreate the ontology named graph from the baseline sidecar (the dump
+            # excludes _graphs).  Must run before build_results_graph so
+            # ResultsGraphBuilder.createOrGetGraph extends the full KN-Ontologies-v2.0
+            # definition instead of creating a results-only one.  Whether Phase 1 ran
+            # in this invocation or not, the graph definition is now complete.
+            import_graphs_from_sidecar(baseline_dump_dir, arango_db_password)
+
+            # Clear the tuples directory before writing fresh output
+            tuples_dir = REPO_ROOT / "data" / f"tuples-{run_name}"
+            tuples_dir.mkdir(parents=True, exist_ok=True)
+            for f in tuples_dir.glob("*.json"):
+                f.unlink()
+
+            write_tuples(arango_db_password, run_name=run_name)
+
+            sync_tuples_to_s3(run_name=run_name)  # persist tuple output
+            validate_tuple_files(run_name=run_name)
+            tuple_files = list(tuples_dir.glob("*.json"))
+            finish["tuple_files"] = len(tuple_files)
+            finish["tuple_bytes"] = sum(f.stat().st_size for f in tuple_files)
+
+            # Load result tuples into the ontology graph, then create its analyzers
+            # and views now that Cell-KN-Ontologies is fully populated.  The induced
+            # subgraph is built in Phase 3 from this state.
+            build_results_graph(arango_db_password, java_opts, run_name=run_name)
+            create_analyzers_and_views(arango_db_password, "Cell-KN-Ontologies")
+
+            # Save the ontology + results state as the results dump, keyed by
+            # jar_key + run, so Phase 3 can restore it without re-running Phase 2.
+            if results_dump_dir.is_dir():
+                shutil.rmtree(results_dump_dir)
+            dump_arangodb(results_dump_dir, arango_db_password, label="results")
+            # Capture named-graph definitions next to the dump (arangodump excludes
+            # the _graphs system collection); Phase 3 recreates them after restoring.
+            export_graphs_and_analyzers(results_dump_dir, arango_db_password)
+            sync_results_dump_to_s3(results_dump_dir, jar_key, run_name)
+            phase2_db_is_current = True
+            finish["dump"] = results_dump_dir.name
+            finish["dump_bytes"] = _dir_bytes(results_dump_dir)
+
+    # ── Phase 3: Production Handoff ────────────────────────────────────────
+    if run_phase3:
+        with _phase("archive", summary, jar_key=jar_key, run_name=run_name) as finish:
+            post_github_deployment_status(
+                state="in_progress",
+                description="[3/3] ETL Phase 3: inducing subgraph and promoting to production",
+            )
+            require_arangodb()
+
+            # When Phase 2 did not run in this invocation, restore the results dump
+            # so Phase 3 is self-contained (pull from S3 if missing locally).
+            # arangorestore does not reapply analyzers — they live in the _analyzers
+            # system collection, which the dump excludes — so recreate the ontology
+            # analyzers/views after restoring.
+            if not phase2_db_is_current:
+                sync_results_dump_from_s3(results_dump_dir, jar_key, run_name)
+                if not results_dump_dir.is_dir():
+                    raise RuntimeError(
+                        f"Results dump not found for jar_key={jar_key}, run={run_name}: "
+                        f"{results_dump_dir.name}/\n"
+                        "Run Phase 2 first (--run-results) to write tuples and build "
+                        "the results graph, then re-run with --run-archive."
+                    )
+                restore_arangodb(results_dump_dir, arango_db_password)
+                # Recreate named graphs the restore dropped (the _graphs system
+                # collection is excluded from the dump) so InducedSubgraphBuilder
+                # can load KN-Ontologies-v2.0 by name.
+                import_graphs_from_sidecar(results_dump_dir, arango_db_password)
+                create_analyzers_and_views(arango_db_password, "Cell-KN-Ontologies")
+
+            # Induce the phenotype subgraph from the ontology + results graph, then
+            # create its analyzers and views now that Cell-KN-Phenotypes is built.
+            build_induced_subgraph(arango_db_password, java_opts)
+            create_analyzers_and_views(arango_db_password, "Cell-KN-Phenotypes")
+
+            # Dump the final, fully-built database as the golden artifact.
+            if golden_dump_dir.is_dir():
+                shutil.rmtree(golden_dump_dir)
+            dump_arangodb(golden_dump_dir, arango_db_password, label="golden")
+            export_graphs_and_analyzers(golden_dump_dir, arango_db_password)
+
+            # Promote all production artifacts to a versioned S3 path.
+            # The baseline dump is NOT re-uploaded here — it lives permanently at
+            # s3://bucket/baselines/<jar_key>/ from the end of Phase 1.
+            promote_to_production(
+                golden_dump_dir, arango_db_password, jar_key=jar_key, run_name=run_name
+            )
+            finish["dump"] = golden_dump_dir.name
+            finish["dump_bytes"] = _dir_bytes(golden_dump_dir)
 
 
 @flow(name="nlm-ckn-etl", log_prints=True)
@@ -1442,269 +1823,38 @@ def nlm_ckn_etl(
         Run name (selects ``data/results-<name>/`` for tuple writers and
         results sources).  Defaults to ``$CKN_RUN`` or ``'full'``.
     """
-    logger = get_run_logger()
-
-    if not any(
-        [
+    started = time.monotonic()
+    summary: dict = {"phase": None, "durations": {}, "skipped": []}
+    try:
+        _run_etl(
             run_ontology,
             force_ontology,
             run_results,
             force_results,
             run_archive,
             force_archive,
-        ]
-    ):
-        raise ValueError(
-            "No stage flags set — nothing to do.  Pass at least one of: "
-            "run_ontology, force_ontology, run_results, force_results, "
-            "run_archive, force_archive."
+            java_opts,
+            run_name,
+            summary,
         )
-
-    arango_db_password = _get_or_create_arango_password()
-    arango_db_home = ARANGO_DB_HOME
-    run_name = run_name or os.getenv("CKN_RUN", "full")
-
-    if S3_BUCKET:
-        logger.info(f"S3 mode: bucket={S3_BUCKET}")
-    else:
-        logger.info("Local mode: S3_BUCKET not set")
-
-    # Resolve the JAR and derive its content key upfront.  The key is used to
-    # locate the matching baseline dump in S3 — ensuring the dump and the JAR
-    # that produced it are always stored and retrieved together.
-    jar_key = ensure_jar()
-
-    # Baseline dump: keyed by JAR content hash so the dump and the JAR that
-    # produced it are always associated.  Written at the end of Phase 1;
-    # restored at the start of Phase 2.
-    baseline_dump_dir = REPO_ROOT / "data" / f"arangodump-baseline-{jar_key}"
-    # Results dump: ontology + results state, keyed by JAR hash and run name.
-    # Written at the end of Phase 2; restored at the start of Phase 3 when
-    # archiving standalone so each phase has its own restorable save point.
-    results_dump_dir = REPO_ROOT / "data" / f"arangodump-results-{jar_key}-{run_name}"
-    # Golden dump: written near the end of Phase 3; uploaded to production S3.
-    golden_dump_dir = REPO_ROOT / "data" / f"arangodump-golden-{run_name}"
-
-    # ── Phase 1: Upstream Build ────────────────────────────────────────────
-    phase1_started_arangodb = False
-    # Whether the live ArangoDB already holds this run's Phase 2 result state
-    # (set when Phase 2 runs in this same invocation).  Phase 3 uses it to skip
-    # a redundant restore of the results dump.
-    phase2_db_is_current = False
-    if run_ontology or force_ontology:
-        if baseline_dump_dir.is_dir() and not force_ontology:
-            logger.info(
-                f"Baseline dump already exists at {baseline_dump_dir.name}/ "
-                f"(jar_key={jar_key}); use force_ontology=True to force a full rebuild"
-            )
-        else:
-            logger.info("=== Phase 1: Upstream Build (Ontology) ===")
-            post_github_deployment_status(
-                state="in_progress",
-                description="[3/3] ETL Phase 1: building ontology graph",
-            )
-            if ARANGO_DB_IS_LOCAL:
-                # Wipe ArangoDB and start fresh so OntologyGraphBuilder has a
-                # clean slate.  The stopped container's data dir is removed so
-                # no stale collections carry over.
-                stop_arangodb()
-                _wipe_arangodb_data(arango_db_home)
-                actual_port = start_arangodb(arango_db_home, arango_db_password)
-                _set_arango_port(actual_port)
-                phase1_started_arangodb = True
-            else:
-                logger.info(
-                    f"Remote ArangoDB at {ARANGO_DB_HOST}:{ARANGO_DB_PORT} — "
-                    "skipping container start/stop and data-dir wipe"
-                )
-            require_arangodb()
-            download_ontologies(arango_db_password, java_opts)
-            slim_ontologies(arango_db_password, java_opts)
-            build_ontology_graph(arango_db_password, java_opts)
-
-            # Save the ontology database state as the baseline dump, keyed by
-            # JAR hash.  Phase 2 restores from here, so repeated results runs
-            # are cheap and always use a compatible baseline.
-            if baseline_dump_dir.is_dir():
-                shutil.rmtree(baseline_dump_dir)
-            dump_arangodb(baseline_dump_dir, arango_db_password, label="baseline")
-            # Capture the ontology named-graph (and analyzer) definitions next to
-            # the dump.  arangodump excludes the _graphs system collection, so
-            # without this sidecar the KN-Ontologies-v2.0 edge definitions are
-            # lost on restore and Phase 2 would rebuild the graph from results
-            # edges only — starving InducedSubgraphBuilder of the ontology edges.
-            export_graphs_and_analyzers(baseline_dump_dir, arango_db_password)
-            sync_baseline_dump_to_s3(baseline_dump_dir, jar_key)
-            logger.info(
-                f"Phase 1 complete — baseline dump: {baseline_dump_dir.name}/ "
-                f"(jar_key={jar_key})"
-            )
-
-    # Decide which phases actually run.  A phase is skipped when its dump
-    # already exists and the matching force flag is not set, so the ArangoDB
-    # start/wipe below and the phase body both no-op when there is nothing to
-    # rebuild (this is what makes --force-results / --force-archive meaningful).
-    run_phase2 = run_results or force_results
-    if run_phase2 and results_dump_dir.is_dir() and not force_results:
-        logger.info(
-            f"Results dump already exists at {results_dump_dir.name}/ "
-            f"(jar_key={jar_key}, run={run_name}); use force_results=True to rebuild"
+    except Exception as exc:
+        _events.error(
+            "run_failed",
+            phase=summary["phase"],
+            task=_failing_task(exc),
+            error_type=type(exc).__name__,
+            error=str(exc),
+            duration_ms=_ms(started),
         )
-        run_phase2 = False
-
-    run_phase3 = run_archive or force_archive
-    if run_phase3 and golden_dump_dir.is_dir() and not force_archive:
-        logger.info(
-            f"Golden dump already exists at {golden_dump_dir.name}/ "
-            f"(run={run_name}); use force_archive=True to rebuild"
-        )
-        run_phase3 = False
-
-    # ── Ensure ArangoDB is running for Phase 2/3 when Phase 1 didn't start it ──
-    # Covers --run-results and/or --run-archive, and --run-ontology when the
-    # baseline already existed and Phase 1 was a no-op.  Archive is included
-    # because Phase 3 now restores the results dump into a fresh instance, so
-    # archive-only no longer depends on Phase 2 having populated a live database.
-    if (
-        ARANGO_DB_IS_LOCAL
-        and not phase1_started_arangodb
-        and (run_phase2 or run_phase3)
-    ):
-        # Stop and remove any running container BEFORE wiping.  Otherwise the
-        # rmtree pulls the bind-mounted data dir out from under a live
-        # container (its mount goes stale → ArangoDB can no longer write), and
-        # start_arangodb would then reuse that broken container instead of
-        # starting fresh.  Mirrors the Phase 1 stop→wipe→start ordering.
-        stop_arangodb()
-        # Wipe ArangoDB data (bind-mount dir or named Docker volume) before
-        # starting so ArangoDB initialises fresh with the current password.
-        # Without this, ArangoDB ignores ARANGO_ROOT_PASSWORD on restart and
-        # keeps the password baked into the existing data, causing a 401 if
-        # the password was regenerated (e.g. in a new Batch container).
-        _wipe_arangodb_data(arango_db_home)
-        actual_port = start_arangodb(arango_db_home, arango_db_password)
-        _set_arango_port(actual_port)
-
-    # ── Phase 2: Iterative Refinement ─────────────────────────────────────
-    if run_phase2:
-        logger.info("=== Phase 2: Iterative Refinement (Results) ===")
-        post_github_deployment_status(
-            state="in_progress",
-            description="[3/3] ETL Phase 2: writing tuples and building graphs",
-        )
-
-        # Guard: require baseline dump before restoring — pull from S3 if missing locally.
-        # Uses jar_key so we always restore the dump produced by this exact JAR.
-        sync_baseline_dump_from_s3(baseline_dump_dir, jar_key)
-        if not baseline_dump_dir.is_dir():
-            raise RuntimeError(
-                f"Baseline dump not found for jar_key={jar_key}: {baseline_dump_dir.name}/\n"
-                "Run Phase 1 first (--run-ontology) to build and dump the "
-                "ontology graph with the current JAR, then re-run with --run-results."
-            )
-
-        # Pull inputs from S3 (no-op in local mode)
-        sync_results_from_s3(run_name=run_name)  # flat release dir
-        sync_external_from_s3(run_name=run_name)  # external API cache from fetcher.py
-
-        validate_release_dir(run_name=run_name)
-        validate_external_files(run_name=run_name)
-
-        require_arangodb()
-
-        # Restore the baseline so this phase is fully repeatable.
-        # Any data written by a previous Phase 2 run is discarded here.
-        restore_arangodb(baseline_dump_dir, arango_db_password)
-
-        # Recreate the ontology named graph from the baseline sidecar (the dump
-        # excludes _graphs).  Must run before build_results_graph so
-        # ResultsGraphBuilder.createOrGetGraph extends the full KN-Ontologies-v2.0
-        # definition instead of creating a results-only one.  Whether Phase 1 ran
-        # in this invocation or not, the graph definition is now complete.
-        import_graphs_from_sidecar(baseline_dump_dir, arango_db_password)
-
-        # Clear the tuples directory before writing fresh output
-        tuples_dir = REPO_ROOT / "data" / f"tuples-{run_name}"
-        tuples_dir.mkdir(parents=True, exist_ok=True)
-        for f in tuples_dir.glob("*.json"):
-            f.unlink()
-
-        write_tuples(arango_db_password, run_name=run_name)
-
-        sync_tuples_to_s3(run_name=run_name)  # persist tuple output
-        validate_tuple_files(run_name=run_name)
-
-        # Load result tuples into the ontology graph, then create its analyzers
-        # and views now that Cell-KN-Ontologies is fully populated.  The induced
-        # subgraph is built in Phase 3 from this state.
-        build_results_graph(arango_db_password, java_opts, run_name=run_name)
-        create_analyzers_and_views(arango_db_password, "Cell-KN-Ontologies")
-
-        # Save the ontology + results state as the results dump, keyed by
-        # jar_key + run, so Phase 3 can restore it without re-running Phase 2.
-        if results_dump_dir.is_dir():
-            shutil.rmtree(results_dump_dir)
-        dump_arangodb(results_dump_dir, arango_db_password, label="results")
-        # Capture named-graph definitions next to the dump (arangodump excludes
-        # the _graphs system collection); Phase 3 recreates them after restoring.
-        export_graphs_and_analyzers(results_dump_dir, arango_db_password)
-        sync_results_dump_to_s3(results_dump_dir, jar_key, run_name)
-        phase2_db_is_current = True
-
-        logger.info(
-            f"Phase 2 complete — results dump: {results_dump_dir.name}/ "
-            f"(jar_key={jar_key}, run={run_name})"
-        )
-
-    # ── Phase 3: Production Handoff ────────────────────────────────────────
-    if run_phase3:
-        logger.info("=== Phase 3: Production Handoff ===")
-        post_github_deployment_status(
-            state="in_progress",
-            description="[3/3] ETL Phase 3: inducing subgraph and promoting to production",
-        )
-        require_arangodb()
-
-        # When Phase 2 did not run in this invocation, restore the results dump
-        # so Phase 3 is self-contained (pull from S3 if missing locally).
-        # arangorestore does not reapply analyzers — they live in the _analyzers
-        # system collection, which the dump excludes — so recreate the ontology
-        # analyzers/views after restoring.
-        if not phase2_db_is_current:
-            sync_results_dump_from_s3(results_dump_dir, jar_key, run_name)
-            if not results_dump_dir.is_dir():
-                raise RuntimeError(
-                    f"Results dump not found for jar_key={jar_key}, run={run_name}: "
-                    f"{results_dump_dir.name}/\n"
-                    "Run Phase 2 first (--run-results) to write tuples and build "
-                    "the results graph, then re-run with --run-archive."
-                )
-            restore_arangodb(results_dump_dir, arango_db_password)
-            # Recreate named graphs the restore dropped (the _graphs system
-            # collection is excluded from the dump) so InducedSubgraphBuilder
-            # can load KN-Ontologies-v2.0 by name.
-            import_graphs_from_sidecar(results_dump_dir, arango_db_password)
-            create_analyzers_and_views(arango_db_password, "Cell-KN-Ontologies")
-
-        # Induce the phenotype subgraph from the ontology + results graph, then
-        # create its analyzers and views now that Cell-KN-Phenotypes is built.
-        build_induced_subgraph(arango_db_password, java_opts)
-        create_analyzers_and_views(arango_db_password, "Cell-KN-Phenotypes")
-
-        # Dump the final, fully-built database as the golden artifact.
-        if golden_dump_dir.is_dir():
-            shutil.rmtree(golden_dump_dir)
-        dump_arangodb(golden_dump_dir, arango_db_password, label="golden")
-        export_graphs_and_analyzers(golden_dump_dir, arango_db_password)
-
-        # Promote all production artifacts to a versioned S3 path.
-        # The baseline dump is NOT re-uploaded here — it lives permanently at
-        # s3://bucket/baselines/<jar_key>/ from the end of Phase 1.
-        promote_to_production(
-            golden_dump_dir, arango_db_password, jar_key=jar_key, run_name=run_name
-        )
-
-        logger.info("Phase 3 complete")
+        raise
+    _events.info(
+        "run_finished",
+        outcome="success",
+        duration_ms=_ms(started),
+        phases_run=list(summary["durations"]),
+        phases_skipped=summary["skipped"],
+        phase_durations_ms=summary["durations"],
+    )
 
 
 # ── CLI entry point ────────────────────────────────────────────────────────
