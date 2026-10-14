@@ -90,8 +90,7 @@ class FetchForceTestCase(unittest.TestCase):
 
         with tempfile.TemporaryDirectory() as t:
             d = Path(t)
-            with patch("fetch.get_run_logger", return_value=MagicMock()), \
-                 patch("fetch._external_dir", return_value=d), \
+            with patch("fetch._external_dir", return_value=d), \
                  patch("fetch.REPO_ROOT", d), \
                  patch("fetch.create_markdown_artifact"):
                 fetch.record_fetch_artifact.fn(run_name="x", validated=False)
