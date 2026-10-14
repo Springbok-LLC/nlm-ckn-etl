@@ -301,8 +301,7 @@ def resolve_fetch_force(run_name: str = "", max_fetch_age_hours: float = 672.0) 
         Maximum acceptable cache age in hours.  Caches older than this trigger
         a full re-fetch.  Defaults to 672 (four weeks).
     """
-    logger = get_run_logger()
-    return should_force_fetch(run_name, max_fetch_age_hours, logger.info)
+    return should_force_fetch(run_name, max_fetch_age_hours)
 
 
 # ── Flow ───────────────────────────────────────────────────────────────────

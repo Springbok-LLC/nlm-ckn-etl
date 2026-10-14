@@ -34,7 +34,12 @@ name here is the `snake_case` form (`arangodb_ready`).
 5. **Per-item events become one count.** Thousands of "could not map gene X"
    lines become one summary line with `records_rejected` and a `reason`
    (section 5). Log the first few items at DEBUG with an id field.
-6. **A new name goes in the tables below in the same PR that first emits it.**
+6. **Log with structlog, not `get_run_logger()`.** In production the Prefect
+   server is ephemeral (its SQLite database lives on tmpfs and goes with the
+   container), so stdout is the only durable record and the Prefect UI is not
+   a sink worth bridging. The few lines that still use `get_run_logger()` are
+   converted as their phase 2 issue lands.
+7. **A new name goes in the tables below in the same PR that first emits it.**
    Reuse an existing name when the meaning matches.
 
 ## 2. Registries
@@ -183,14 +188,16 @@ reports give the source line each name replaces.
 | `fetch_checkpoint_resumed` | INFO | `source`, `path`, `records_loaded` |
 | `fetch_cache_loaded` | INFO | `source`, `path`, `records_loaded` |
 | `fetch_status_unreadable` | WARN | `path`, `error` |
-| `fetch_cache_decision` | INFO | `decision` (`force` or `resume`), `reason`, `age_hours`, `threshold_hours`, `cached_hash`, `current_hash` |
+| `fetch_cache_decision` | INFO (WARN for `reason=invalid_marker`) | `decision` (`force` or `resume`), `reason`, `source` (`s3` or `local`), `threshold_hours`, and when known `age_hours`, `cached_hash`, `current_hash` |
 | `fetch_info_written` | INFO | `validated`, `files_ok`, `files_missing`, `commit` |
-| `fetch_info_unreadable` | WARN | `source` (`s3` or `local`), `error` |
-| `cache_file_unreadable` | WARN | `file`, `error` |
-| `cache_file_removed` | WARN | `file`, `reason` |
+| `fetch_info_unreadable` | WARN | `source` (`s3` or `local`), `error_type`, `error` |
+| `cache_file_unreadable` | WARN | `file`, `error_type`, `error` |
+| `cache_file_removed` | WARN | `file`, `reason`, and `key` for `missing_sentinel` |
 | `cache_entries_cleared` | INFO | `records_out`, `files_touched` |
 | `external_source_empty` | ERROR | `file`, `source` |
 | `external_files_validated` | INFO | `files_ok`, `bytes` |
+| `external_files_invalid` | ERROR | `files`: a list of `{file, reason}`; logged before `validate_external_files` raises |
+| `external_cache_cleaned` | INFO | `records_out` (files removed, 0 when none) |
 | `hubmap_download_failed` | ERROR | `organ`, `version`, `reason=http_error`, `status_code`, `url` |
 | `hubmap_table_removed` | WARN | `path`, `reason` |
 | `hubmap_urls_unresolved` | WARN | `n_failed`, `failures` |

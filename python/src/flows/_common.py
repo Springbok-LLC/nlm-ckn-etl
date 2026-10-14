@@ -726,8 +726,18 @@ def _fetch_code_hash() -> str:
     return h.hexdigest()[:16]
 
 
+def _log_cache_decision(decision: str, reason: str, **fields) -> None:
+    """Emit the one ``fetch_cache_decision`` line for a fetch-cache check.
+
+    A malformed marker is WARN, since it points at a broken earlier run; every
+    other outcome is INFO.
+    """
+    log = _events.warning if reason == "invalid_marker" else _events.info
+    log("fetch_cache_decision", decision=decision, reason=reason, **fields)
+
+
 def should_force_fetch(
-    run_name: str = "", max_fetch_age_hours: float = 672.0, log=None
+    run_name: str = "", max_fetch_age_hours: float = 672.0
 ) -> bool:
     """Decide whether the external fetch should force a full re-fetch.
 
@@ -742,6 +752,11 @@ def should_force_fetch(
     Reads ``fetch-info.json`` from S3 (when ``S3_BUCKET`` is set) or from the
     local ``data/external-<name>/`` directory.
 
+    Logs one ``fetch_cache_decision`` line carrying the ``decision`` (``force``
+    or ``resume``), the ``reason`` (``no_marker``, ``invalid_marker``,
+    ``code_changed``, ``expired`` or ``fresh``) and the values it was based on.
+    A marker that cannot be read also logs ``fetch_info_unreadable``.
+
     Parameters
     ----------
     run_name:
@@ -749,11 +764,9 @@ def should_force_fetch(
     max_fetch_age_hours:
         Maximum acceptable cache age in hours before forcing a re-fetch.
         Defaults to 672 (four weeks).
-    log:
-        Optional ``callable(str)`` for progress messages (defaults to the
-        module logger so this works outside a Prefect run context).
     """
-    log = log or _log.info
+    source = "s3" if S3_BUCKET else "local"
+    context = {"source": source, "threshold_hours": max_fetch_age_hours}
     fetch_info = None
 
     if S3_BUCKET:
@@ -766,7 +779,12 @@ def should_force_fetch(
             )
             fetch_info = json.loads(tmp_path.read_text())
         except Exception as exc:
-            log(f"Could not read fetch-info.json from S3: {exc}")
+            _events.warning(
+                "fetch_info_unreadable",
+                source=source,
+                error_type=type(exc).__name__,
+                error=str(exc),
+            )
         finally:
             if tmp_path is not None:
                 tmp_path.unlink(missing_ok=True)
@@ -776,14 +794,19 @@ def should_force_fetch(
             try:
                 fetch_info = json.loads(info_path.read_text())
             except Exception as exc:
-                log(f"Could not parse fetch-info.json: {exc}")
+                _events.warning(
+                    "fetch_info_unreadable",
+                    source=source,
+                    error_type=type(exc).__name__,
+                    error=str(exc),
+                )
 
     if fetch_info is None:
         # No marker (first-ever fetch, or a prior run failed / was interrupted
         # before recording one).  Resume rather than wipe: the per-source caches
         # on disk are reused and only missing/failed entries are re-fetched (an
         # empty cache simply fetches everything).
-        log("No fetch-info.json found — resuming from on-disk cache")
+        _log_cache_decision("resume", "no_marker", **context)
         return False
 
     # Force if the fetch code changed since this cache was produced — even a
@@ -791,35 +814,30 @@ def should_force_fetch(
     cached_hash = fetch_info.get("fetch_code_hash")
     current_hash = _fetch_code_hash()
     if cached_hash != current_hash:
-        log(
-            f"Fetch code changed since cache was written "
-            f"(cached={cached_hash}, current={current_hash}) — forcing full re-fetch"
+        _log_cache_decision(
+            "force",
+            "code_changed",
+            cached_hash=cached_hash,
+            current_hash=current_hash,
+            **context,
         )
         return True
 
     try:
         fetched_at = datetime.fromisoformat(fetch_info["fetched_at"])
-    except (KeyError, TypeError, ValueError) as exc:
-        log(
-            f"Missing/invalid fetched_at in fetch-info.json ({exc!r}) — "
-            "resuming from on-disk cache"
-        )
+    except (KeyError, TypeError, ValueError):
+        _log_cache_decision("resume", "invalid_marker", **context)
         return False
     if fetched_at.tzinfo is None:  # tolerate naive timestamps
         fetched_at = fetched_at.replace(tzinfo=timezone.utc)
     age_hours = (datetime.now(timezone.utc) - fetched_at).total_seconds() / 3600
+    context["age_hours"] = round(age_hours, 1)
 
     if age_hours > max_fetch_age_hours:
-        log(
-            f"External cache is {age_hours:.1f}h old "
-            f"(threshold: {max_fetch_age_hours}h) — forcing full re-fetch"
-        )
+        _log_cache_decision("force", "expired", **context)
         return True
 
-    log(
-        f"External cache is {age_hours:.1f}h old (threshold: {max_fetch_age_hours}h)"
-        " — reusing cache, retrying any previous failures"
-    )
+    _log_cache_decision("resume", "fresh", **context)
     return False
 
 
@@ -858,21 +876,16 @@ def clean_empty_external_files(run_name: str = "") -> None:
         Run name (selects ``data/external-<name>/``).  Defaults to
         ``$CKN_RUN`` or ``'full'``.
     """
-    logger = get_run_logger()
     external_dir = _external_dir(run_name)
     external_dir.mkdir(parents=True, exist_ok=True)
+    removed = 0
 
     # 1. Remove zero-byte files
-    removed = [
-        f for f in external_dir.iterdir() if f.is_file() and f.stat().st_size == 0
-    ]
-    if removed:
-        for f in removed:
+    for f in external_dir.iterdir():
+        if f.is_file() and f.stat().st_size == 0:
             f.unlink()
-            logger.warning(f"Removed empty/corrupt external cache file: {f.name}")
-        logger.info(f"Cleaned {len(removed)} empty file(s) from {external_dir.name}/")
-    else:
-        logger.info(f"No empty files found in {external_dir.name}/")
+            removed += 1
+            _events.warning("cache_file_removed", file=f.name, reason="empty")
 
     # 2. Remove cache files missing their sentinel key
     sentinel_keys = {
@@ -884,14 +897,26 @@ def clean_empty_external_files(run_name: str = "") -> None:
         if path.exists() and path.stat().st_size > 0:
             try:
                 data = json.loads(path.read_text())
-                if key not in data:
-                    path.unlink()
-                    logger.warning(
-                        f"Removed {external_dir.name}/{filename}: "
-                        f"missing sentinel key '{key}' (would cause KeyError)"
-                    )
-            except json.JSONDecodeError:
-                pass  # already handled by the zero-byte check above
+            except json.JSONDecodeError as exc:
+                # Left in place: validate_external_files reports it as invalid.
+                _events.warning(
+                    "cache_file_unreadable",
+                    file=filename,
+                    error_type=type(exc).__name__,
+                    error=str(exc),
+                )
+                continue
+            if key not in data:
+                path.unlink()
+                removed += 1
+                _events.warning(
+                    "cache_file_removed",
+                    file=filename,
+                    reason="missing_sentinel",
+                    key=key,
+                )
+
+    _events.info("external_cache_cleaned", records_out=removed)
 
 
 @task(name="validate-external-files", log_prints=True)
@@ -913,7 +938,6 @@ def validate_external_files(run_name: str = "") -> None:
         Run name (selects ``data/external-<name>/``).  Defaults to
         ``$CKN_RUN`` or ``'full'``.
     """
-    logger = get_run_logger()
     external_dir = _external_dir(run_name)
     raw_required = [
         "cellxgene.json",
@@ -929,34 +953,44 @@ def validate_external_files(run_name: str = "") -> None:
     ]
 
     errors = []
+    problems = []
+    files_ok = 0
+    total_bytes = 0
     for filename in raw_required + transformed_required:
         path = external_dir / filename
         if not path.exists():
             errors.append(f"  {filename} — file not found")
+            problems.append({"file": filename, "reason": "not_found"})
         elif path.stat().st_size == 0:
             errors.append(f"  {filename} — empty (zero bytes)")
+            problems.append({"file": filename, "reason": "empty"})
         else:
             try:
                 data = json.loads(path.read_text())
-                if not data:
-                    logger.warning(
-                        f"{external_dir.name}/{filename} is valid JSON but contains no entries "
-                        f"— annotations from this source will be skipped. "
-                        f"Run flows/fetch.py to populate it."
-                    )
-                else:
-                    logger.info(
-                        f"OK: {external_dir.name}/{filename} ({path.stat().st_size:,} bytes)"
-                    )
             except json.JSONDecodeError as exc:
                 errors.append(f"  {filename} — invalid JSON: {exc}")
+                problems.append({"file": filename, "reason": "parse_failed"})
+                continue
+            if not data:
+                # Valid JSON with no entries: that source's annotations will be
+                # skipped. Reported as an error but, as before, not raised.
+                _events.error(
+                    "external_source_empty",
+                    file=filename,
+                    source=filename.removesuffix(".json").removesuffix("_transformed"),
+                )
+            else:
+                files_ok += 1
+                total_bytes += path.stat().st_size
 
     if errors:
+        _events.error("external_files_invalid", files=problems)
         raise RuntimeError(
             f"Required external cache files are missing or invalid in {external_dir.name}/.\n"
             "Run flows/fetch.py first (or set S3_BUCKET so the pipeline can sync them):\n"
             + "\n".join(errors)
         )
+    _events.info("external_files_validated", files_ok=files_ok, bytes=total_bytes)
 
 
 @task(name="sync-external-from-s3", log_prints=True)
