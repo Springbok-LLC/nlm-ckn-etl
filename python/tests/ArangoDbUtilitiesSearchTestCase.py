@@ -1,5 +1,7 @@
+import json
 from pathlib import Path
 import sys
+import tempfile
 import unittest
 from unittest.mock import MagicMock, patch
 
@@ -18,7 +20,9 @@ class ArangoDbUtilitiesSearchTestCase(unittest.TestCase):
 
     def setUp(self):
         self.db = MagicMock()
-        self.db.collections.return_value = [{"name": "CL"}, {"name": "CS"}]
+        self.db.collections.return_value = [
+            {"name": name} for name in ["CL", "CS", "CSD", "NCBITaxon", "PUB"]
+        ]
         patcher = patch.object(adb, "create_or_get_database", return_value=self.db)
         patcher.start()
         self.addCleanup(patcher.stop)
@@ -52,17 +56,76 @@ class ArangoDbUtilitiesSearchTestCase(unittest.TestCase):
     def test_create_view_indexes_search_with_norm_lower(self):
         adb.create_view("test-db", collection_maps_name=COLLECTION_MAPS)
         properties = self.db.create_view.call_args.kwargs["properties"]
-        self.assertEqual(set(properties["links"]), {"CL", "CS"})
+        self.assertEqual(
+            set(properties["links"]), {"CL", "CS", "CSD", "NCBITaxon", "PUB"}
+        )
         for link in properties["links"].values():
             self.assertEqual(link["fields"]["_search"], {"analyzers": ["norm-lower"]})
 
-    def test_create_view_keeps_per_field_indexing(self):
-        adb.create_view("test-db", collection_maps_name=COLLECTION_MAPS)
+    def fields(self, collection, maps_name=COLLECTION_MAPS):
+        adb.create_view("test-db", collection_maps_name=maps_name)
         properties = self.db.create_view.call_args.kwargs["properties"]
+        return properties["links"][collection]["fields"]
+
+    def analyzers(self, collection, field):
+        return set(self.fields(collection)[field]["analyzers"])
+
+    def test_create_view_links_fields_by_search_tier(self):
+        text = {"text_en", "text_en_no_stem", "n-gram", "identity"}
         self.assertEqual(
-            properties["links"]["CL"]["fields"]["label"],
-            {"analyzers": ["text_en", "text_en_no_stem", "n-gram", "identity"]},
+            self.analyzers("CL", "label"), text | {"norm-lower", "wildcard-lower"}
         )
+        self.assertEqual(self.analyzers("CL", "hasExactSynonym"), text | {"norm-lower"})
+        self.assertEqual(self.analyzers("CL", "definition"), text)
+        self.assertEqual(
+            self.analyzers("NCBITaxon", "_key"), text | {"norm-lower", "wildcard-lower"}
+        )
+
+    def test_create_view_skips_fields_without_a_tier(self):
+        self.assertNotIn("dataset_name", self.fields("CS"))
+        self.assertIn("dataset_name", self.fields("CSD"))
+        self.assertNotIn("cell_count", self.fields("CS"))
+        self.assertNotIn("f_beta_score", self.fields("CS"))
+        self.assertNotIn("year", self.fields("PUB"))
+
+    def write_maps(self, edit):
+        """Write the real maps, edited by edit(maps, CL label field), to a
+        temporary file and return its name."""
+        maps = json.loads(COLLECTION_MAPS.read_text())
+        edit(maps, dict(maps["maps"])["CL"]["individual_fields"][0])
+        tmp = tempfile.NamedTemporaryFile("w", suffix=".json", delete=False)
+        self.addCleanup(Path(tmp.name).unlink)
+        with tmp:
+            json.dump(maps, tmp)
+        return tmp.name
+
+    def test_create_view_rejects_unknown_tier(self):
+        maps = self.write_maps(lambda m, f: f.update(search_tier="headline"))
+        with self.assertRaisesRegex(ValueError, "CL.label"):
+            self.fields("CL", maps)
+
+    def test_create_view_rejects_missing_tier(self):
+        maps = self.write_maps(lambda m, f: f.pop("search_tier"))
+        with self.assertRaisesRegex(ValueError, "CL.label"):
+            self.fields("CL", maps)
+
+    def test_create_view_rejects_unknown_analyzer(self):
+        maps = self.write_maps(lambda m, f: m["search_tiers"]["label"].append("nope"))
+        with self.assertRaisesRegex(ValueError, "BGS.markers .*nope"):
+            self.fields("CL", maps)
+
+    def test_create_view_rejects_a_field_repeated_with_another_tier(self):
+        maps = self.write_maps(
+            lambda m, f: dict(m["maps"])["CL"]["individual_fields"].append(
+                {**f, "search_tier": None}
+            )
+        )
+        with self.assertRaisesRegex(ValueError, "CL.label has conflicting"):
+            self.fields("CL", maps)
+
+    def test_create_view_links_a_repeated_field_once(self):
+        self.db.collections.return_value.append({"name": "PR"})
+        self.assertEqual(self.analyzers("PR", "label"), self.analyzers("CL", "label"))
 
 
 if __name__ == "__main__":

@@ -450,3 +450,10 @@ FOR d IN indexed
 This matches whole identifiers only; partial identifiers are not matched.
 Databases built before this field was added need a rebuild, and the view must
 be recreated, to gain it.
+
+The view links every other field with the analyzers of its search tier. Each
+`individual_fields` entry in `data/nlm-ckn-collection-maps.json` has a
+`search_tier` (`label`, `synonym`, `identifier`, `text`, or `null`), and the
+top-level `search_tiers` lists the analyzers for each tier. Fields whose tier
+is `null` (numeric and score fields, cell-set `dataset_name`) are not indexed.
+`create_view` raises a `ValueError` for a field with a missing or unknown tier.
