@@ -113,9 +113,6 @@ class LaunchEnvTestCase(unittest.TestCase):
         patcher = patch.object(pipeline, "get_run_logger", return_value=MagicMock())
         patcher.start()
         self.addCleanup(patcher.stop)
-        patcher = patch.object(fetch, "get_run_logger", return_value=MagicMock())
-        patcher.start()
-        self.addCleanup(patcher.stop)
 
     def _env(self):
         self.run_mock.assert_called_once()

@@ -188,13 +188,15 @@ reports give the source line each name replaces.
 | `fetch_context_missing` | ERROR | `source`, `error` |
 | `fetch_checkpoint_resumed` | INFO | `source`, `path`, `records_loaded` |
 | `fetch_cache_loaded` | INFO | `source`, `path`, `records_loaded` |
-| `fetch_status_unreadable` | WARN | `path`, `error` |
+| `fetch_status_unreadable` | WARN | `path`, `error_type`, `error` |
 | `fetch_cache_decision` | INFO (WARN for `reason=invalid_marker`) | `decision` (`force` or `resume`), `reason`, `source` (`s3` or `local`), `threshold_hours`, and when known `age_hours`, `cached_hash`, `current_hash` |
 | `fetch_info_written` | INFO | `validated`, `files_ok`, `files_missing`, `commit` |
 | `fetch_info_unreadable` | WARN | `source` (`s3` or `local`), `error_type`, `error` |
 | `cache_file_unreadable` | WARN | `file`, `error_type`, `error` |
 | `cache_file_removed` | WARN | `file`, `reason`, and `key` for `missing_sentinel` |
 | `cache_entries_cleared` | INFO | `records_out`, `files_touched` |
+| `fetch_source_status` | INFO (WARN unless `outcome` is `ok`, `skipped` or `cached`) | `source`, `outcome` (the source's `last_outcome` in `fetch-status.json`, or `unknown`), `last_success_at`, `age_hours`; one per source at the end of the fetch flow, so a stale or failing source can alert |
+| `git_commit_unavailable` | WARN | `error_type`, `error`; the commit is then recorded as `unknown` |
 | `external_source_empty` | ERROR | `file`, `source` |
 | `external_files_validated` | INFO | `files_ok`, `bytes` |
 | `external_files_invalid` | ERROR | `files`: a list of `{file, reason}`; logged before `validate_external_files` raises |

@@ -85,11 +85,10 @@ class NegativeAgeFlowTestCase(unittest.TestCase):
                 release.nlm_ckn_release.fn("vX", max_fetch_age_hours=-1.0)
 
     def test_fetch_flow_rejects_negative(self):
-        with patch("fetch.get_run_logger", return_value=_noop_logger()):
-            with self.assertRaises(ValueError):
-                fetch.nlm_ckn_fetch.fn(
-                    ncbi_email="a@b.c", ncbi_api_key="k", max_source_age_hours=-1.0
-                )
+        with self.assertRaises(ValueError):
+            fetch.nlm_ckn_fetch.fn(
+                ncbi_email="a@b.c", ncbi_api_key="k", max_source_age_hours=-1.0
+            )
 
 
 class LoadReleaseJsonSeedingTestCase(unittest.TestCase):
