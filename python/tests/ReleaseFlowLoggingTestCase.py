@@ -2,6 +2,7 @@
 
 import io
 import os
+import subprocess
 import sys
 import tarfile
 import tempfile
@@ -20,6 +21,8 @@ sys.path.insert(0, str(_SRC / "flows"))
 sys.path.insert(0, str(_SRC))
 
 import _common  # noqa: E402
+import fetch  # noqa: E402
+import pipeline  # noqa: E402
 import release  # noqa: E402
 
 _LOG_KEYS = ("CORRELATION_ID", "PHASE", "GIT_SHA", "AWS_BATCH_JOB_ID")
@@ -32,6 +35,17 @@ def _one(logs, name):
 
 def _names(logs):
     return [e["event"] for e in logs]
+
+
+class _FakeProc:
+    """A finished child with no output, standing in for ``subprocess.Popen``."""
+
+    def __init__(self):
+        self.stdout = io.StringIO()
+        self.stderr = io.StringIO()
+
+    def wait(self):
+        return 0
 
 
 def _clean_env(**extra):
@@ -98,6 +112,74 @@ class CorrelationIdTestCase(unittest.TestCase):
     def test_id_is_unbound_after_the_flow(self):
         self._run_flow(_clean_env())
         self.assertNotIn("correlation_id", structlog.contextvars.get_contextvars())
+
+    def test_subprocesses_of_both_subflows_get_the_release_id(self):
+        """The id survives the last hop, into the env handed to ``Popen``.
+
+        The subflows are stand-ins that launch through the production fetch
+        and ETL tasks, so only what reaches ``subprocess.Popen`` is checked.
+        """
+        children = {}
+        bound = {}
+
+        def launching(name, launch):
+            def _sub(**kwargs):
+                with patch.object(
+                    subprocess, "Popen", side_effect=lambda *a, **k: _FakeProc()
+                ) as popen:
+                    launch()
+                children[name] = popen.call_args.kwargs["env"]
+                bound[name] = structlog.contextvars.get_contextvars()[
+                    "correlation_id"
+                ]
+
+            return _sub
+
+        with ExitStack() as stack:
+            stack.enter_context(patch.dict(os.environ, _clean_env(), clear=True))
+            for module in (fetch, pipeline):
+                stack.enter_context(
+                    patch.object(
+                        module, "get_run_logger", MagicMock(), create=True
+                    )
+                )
+            stack.enter_context(
+                patch.object(
+                    release,
+                    "nlm_ckn_fetch",
+                    launching("fetch", fetch.fetch_external_api_results.fn),
+                )
+            )
+            stack.enter_context(
+                patch.object(
+                    release,
+                    "nlm_ckn_etl",
+                    launching("etl", lambda: pipeline.write_tuples.fn("pw")),
+                )
+            )
+            for name in (
+                "extract_release_tarball",
+                "sync_release_dir_to_s3",
+                "promote_results_to_latest",
+                "post_github_deployment_status",
+            ):
+                stack.enter_context(patch.object(release, name))
+            stack.enter_context(
+                patch.object(release, "resolve_fetch_force", return_value=True)
+            )
+            stack.enter_context(
+                patch.object(
+                    release, "_read_release_json", return_value={"hubmap_urls": ["u"]}
+                )
+            )
+            release.nlm_ckn_release.fn("v1", ncbi_email="e", ncbi_api_key="k")
+
+        self.assertEqual(set(children), {"fetch", "etl"})
+        for name in ("fetch", "etl"):
+            self.assertEqual(children[name]["CORRELATION_ID"], bound[name])
+        self.assertEqual(bound["fetch"], bound["etl"])
+        self.assertEqual(children["fetch"]["PHASE"], "fetch")
+        self.assertEqual(children["etl"]["PHASE"], "results")
 
     def test_real_prefect_subflows_see_the_bound_id(self):
         seen = {}
@@ -194,6 +276,27 @@ class ReleaseEventsTestCase(unittest.TestCase):
         self.assertNotIn("release_finished", _names(logs))
         states = [c.kwargs["state"] for c in self.status.call_args_list]
         self.assertEqual(states[-1], "failure")
+
+    def test_retry_command_carries_every_effective_input(self):
+        logs, _ = self._run(
+            fetch_error=RuntimeError("x"),
+            run_name="rc 2",
+            github_repo="fork/nlm-ckn",
+            release_config="s3://b/release.json",
+        )
+        self.assertEqual(
+            _one(logs, "release_step_failed")["retry_command"],
+            "poetry run src/flows/release.py --nlm-ckn-tag v1 --run-name 'rc 2' "
+            "--github-repo fork/nlm-ckn --release-config s3://b/release.json",
+        )
+        logs, _ = self._run(
+            fetch_error=RuntimeError("x"), tar_source="/tmp/local.tar.gz"
+        )
+        self.assertEqual(
+            _one(logs, "release_step_failed")["retry_command"],
+            "poetry run src/flows/release.py --nlm-ckn-tag v1 "
+            "--tar-source /tmp/local.tar.gz",
+        )
 
     def test_promotion_failure_has_its_own_event(self):
         logs, err = self._run(promote_error=OSError("denied"))

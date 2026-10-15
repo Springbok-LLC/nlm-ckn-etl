@@ -47,6 +47,7 @@ import csv
 import io
 import json
 import os
+import shlex
 import shutil
 import tarfile
 import tempfile
@@ -407,12 +408,39 @@ def nlm_ckn_release(
         )
 
 
-def _retry_command(nlm_ckn_tag: str) -> str:
-    """Return the command that re-runs the release; completed work is reused."""
-    return f"poetry run src/flows/release.py --nlm-ckn-tag {nlm_ckn_tag}"
+_DEFAULT_GITHUB_REPO = "NIH-NLM/nlm-ckn"
 
 
-def _step_failed(step, exc: Exception, nlm_ckn_tag: str, run_name: str) -> None:
+def _retry_command(
+    nlm_ckn_tag: str,
+    run_name: str = "",
+    github_repo: str = _DEFAULT_GITHUB_REPO,
+    tar_source: str = "",
+    release_config: str = "",
+) -> str:
+    """Return the command that re-runs the release; completed work is reused.
+
+    Carries every input that selects the tarball, configuration or results
+    directory, so the retry reproduces the run.  Pass the values as given to
+    the flow: a ``run_name`` equal to the tag-derived default, and a
+    ``tar_source`` derived from the tag, are left out because the re-run
+    derives them again.
+    """
+    args = ["poetry", "run", "src/flows/release.py", "--nlm-ckn-tag", nlm_ckn_tag]
+    if run_name and run_name != nlm_ckn_tag.lstrip("v"):
+        args += ["--run-name", run_name]
+    if github_repo and github_repo != _DEFAULT_GITHUB_REPO:
+        args += ["--github-repo", github_repo]
+    if tar_source:
+        args += ["--tar-source", tar_source]
+    if release_config:
+        args += ["--release-config", release_config]
+    return shlex.join(args)
+
+
+def _step_failed(
+    step, exc: Exception, nlm_ckn_tag: str, run_name: str, retry_command: str
+) -> None:
     """Log the ``release_step_failed`` ERROR for ``step`` before the flow re-raises."""
     _events.error(
         "release_step_failed",
@@ -421,7 +449,7 @@ def _step_failed(step, exc: Exception, nlm_ckn_tag: str, run_name: str) -> None:
         run_name=run_name,
         error_type=type(exc).__name__,
         error=str(exc),
-        retry_command=_retry_command(nlm_ckn_tag),
+        retry_command=retry_command,
     )
 
 
@@ -443,6 +471,9 @@ def _run_release(
     ``release_finished``.
     """
     started = time.monotonic()
+    retry_command = _retry_command(
+        nlm_ckn_tag, run_name, github_repo, tar_source, release_config
+    )
     run_name = run_name or nlm_ckn_tag.lstrip("v")
     step_durations_ms: dict[str, int] = {}
 
@@ -478,7 +509,7 @@ def _run_release(
                 "Update tar_source to a real release URL or provide --tar-source."
             )
     except Exception as exc:
-        _step_failed("config", exc, nlm_ckn_tag, run_name)
+        _step_failed("config", exc, nlm_ckn_tag, run_name, retry_command)
         raise
 
     _events.info(
@@ -508,7 +539,7 @@ def _run_release(
         extract_release_tarball(tar_source, run_name, hubmap_urls)
         sync_release_dir_to_s3(run_name=run_name)
     except Exception as exc:
-        _step_failed(1, exc, nlm_ckn_tag, run_name)
+        _step_failed(1, exc, nlm_ckn_tag, run_name, retry_command)
         post_github_deployment_status(
             state="failure",
             description=f"[1/3] Failed extracting tarball: {exc}"[:140],
@@ -535,7 +566,7 @@ def _run_release(
             run_name=run_name,
         )
     except Exception as exc:
-        _step_failed(2, exc, nlm_ckn_tag, run_name)
+        _step_failed(2, exc, nlm_ckn_tag, run_name, retry_command)
         post_github_deployment_status(
             state="failure",
             description=f"[2/3] Failed fetching external APIs: {exc}"[:140],
@@ -562,7 +593,7 @@ def _run_release(
             run_name=run_name,
         )
     except Exception as exc:
-        _step_failed(3, exc, nlm_ckn_tag, run_name)
+        _step_failed(3, exc, nlm_ckn_tag, run_name, retry_command)
         post_github_deployment_status(
             state="failure",
             description=f"[3/3] ETL pipeline failed: {exc}"[:140],

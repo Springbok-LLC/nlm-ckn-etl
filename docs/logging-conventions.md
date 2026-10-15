@@ -330,7 +330,7 @@ reports give the source line each name replaces.
 | `release_manifest_merged` | INFO | `records_out` (rows in the unioned `master_s3_manifest.csv`) |
 | `results_promoted_to_latest` | INFO (WARN when 0) | `objects_copied` |
 | `release_config_saved` | INFO | `path` |
-| `release_step_failed` | ERROR | `step` (1, 2, 3, or `config` for validation before step 1), `release_tag`, `run_name`, `error_type`, `error`, `retry_command` (re-runs the whole release; finished work is reused); logged before the flow re-raises |
+| `release_step_failed` | ERROR | `step` (1, 2, 3, or `config` for validation before step 1), `release_tag`, `run_name`, `error_type`, `error`, `retry_command` (re-runs the whole release with its non-default `--run-name`, `--github-repo`, `--tar-source` and `--release-config`; finished work is reused); logged before the flow re-raises |
 | `release_promotion_failed` | ERROR | `release_tag`, `error_type`, `error` |
 | `release_finished` | INFO | `release_tag`, `run_name`, `duration_ms`, `force_fetch`, `step_durations_ms` (an object keyed `extract`, `fetch`, `etl`, `promote`) |
 | `github_status_posted` | INFO | `state`, `status_code`, `log_url_attached` |
