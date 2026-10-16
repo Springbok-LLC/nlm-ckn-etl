@@ -80,9 +80,8 @@ class NegativeAgeFlowTestCase(unittest.TestCase):
     """Flow-level guards reject negatives even when the CLI is bypassed."""
 
     def test_release_flow_rejects_negative(self):
-        with patch("release.get_run_logger", return_value=_noop_logger()):
-            with self.assertRaises(ValueError):
-                release.nlm_ckn_release.fn("vX", max_fetch_age_hours=-1.0)
+        with self.assertRaises(ValueError):
+            release.nlm_ckn_release.fn("vX", max_fetch_age_hours=-1.0)
 
     def test_fetch_flow_rejects_negative(self):
         with self.assertRaises(ValueError):

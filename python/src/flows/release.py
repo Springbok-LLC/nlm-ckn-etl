@@ -47,22 +47,27 @@ import csv
 import io
 import json
 import os
+import shlex
 import shutil
 import tarfile
 import tempfile
+import time
 import urllib.error
 import urllib.request
-from datetime import datetime, timezone
 from pathlib import Path
 
 import boto3
+import structlog
 
-from prefect import flow, get_run_logger, task
+from prefect import flow, task
 
 from _common import (
     DEFAULT_JAVA_OPTS,
     REPO_ROOT,
     S3_BUCKET,
+    _cloudwatch_log_url,
+    _fields,
+    _log_env,
     _s3_copy_prefix,
     _s3_sync,
     post_github_deployment_status,
@@ -70,6 +75,14 @@ from _common import (
 )
 from fetch import nlm_ckn_fetch
 from pipeline import nlm_ckn_etl
+
+_events = structlog.get_logger(__name__)
+
+
+def _ms(started: float) -> int:
+    """Return the whole milliseconds elapsed since ``started`` (monotonic)."""
+    return int((time.monotonic() - started) * 1000)
+
 
 # ── Tasks ──────────────────────────────────────────────────────────────────
 
@@ -108,15 +121,15 @@ def extract_release_tarball(
     Path
         The extracted results directory (``data/results-<run_name>/``).
     """
-    logger = get_run_logger()
     results_dir = REPO_ROOT / "data" / f"results-{run_name}"
+    started = time.monotonic()
 
     # Resolve/download the tarball BEFORE touching results_dir, so a bad
     # --nlm-ckn-tag / --github-repo / --tar-source (404 or missing file) fails without
     # wiping an existing results directory.
     if tar_source.startswith("http://") or tar_source.startswith("https://"):
         tar_path = REPO_ROOT / "data" / f"release-{run_name}.tar.gz"
-        logger.info(f"Downloading release tarball: {tar_source}")
+        source_kind = "https"
         headers = {}
         token = os.getenv("GITHUB_TOKEN", "")
         if token:
@@ -130,21 +143,28 @@ def extract_release_tarball(
                 f"Release tarball not found at {tar_source} (HTTP {exc.code}). "
                 "Check --nlm-ckn-tag, --github-repo, or --tar-source."
             ) from exc
-        logger.info(f"Downloaded to {tar_path.name}")
     elif tar_source.startswith("s3://"):
+        source_kind = "s3"
         tar_path = REPO_ROOT / "data" / f"release-{run_name}.tar.gz"
         without_scheme = tar_source[len("s3://"):]
         bucket, _, key = without_scheme.partition("/")
-        logger.info(f"Downloading s3://{bucket}/{key} → {tar_path.name}")
         boto3.client("s3").download_file(bucket, key, str(tar_path))
-        logger.info(f"Downloaded to {tar_path.name}")
     else:
+        source_kind = "local"
         tar_path = Path(tar_source)
         if not tar_path.is_file():
             raise FileNotFoundError(
                 f"Local release tarball not found: {tar_path}. Check --tar-source."
             )
-        logger.info(f"Using local tarball: {tar_path}")
+
+    _events.info(
+        "release_tarball_fetched",
+        source_kind=source_kind,
+        **({"path": str(tar_path)} if source_kind == "local" else {"uri": tar_source}),
+        bytes=tar_path.stat().st_size,
+        duration_ms=_ms(started),
+    )
+    started = time.monotonic()
 
     # Source confirmed reachable — only now (re)create the results directory.
     if results_dir.exists():
@@ -158,14 +178,18 @@ def extract_release_tarball(
     # silently reducing the downstream integrity check to a single organ; they are
     # intercepted below and unioned into one complete manifest instead. This keeps
     # results_dir flat, consistent with what LoaderUtilities expects.
-    logger.info(f"Extracting → {results_dir.name}/ (flat)")
+    links_skipped = 0
+    traversal_skipped = 0
     base_dir = results_dir.resolve()
     manifest_rows = {}  # filename -> s3_path, unioned across all per-organ manifests
     with tarfile.open(tar_path, "r:gz") as tf:
         for member in tf.getmembers():
             if not member.name.startswith(_TARBALL_PREFIX):
                 continue
-            if member.isdir() or member.issym() or member.islnk():
+            if member.isdir():
+                continue
+            if member.issym() or member.islnk():
+                links_skipped += 1
                 continue
             filename = Path(member.name).name
             if not filename:
@@ -183,6 +207,7 @@ def extract_release_tarball(
                 continue
             resolved = (results_dir / filename).resolve()
             if not str(resolved).startswith(str(base_dir) + os.sep):
+                traversal_skipped += 1
                 continue
             member.name = filename
             tf.extract(member, results_dir)
@@ -196,9 +221,7 @@ def extract_release_tarball(
             writer.writerow(["filename", "s3_path"])
             for fn in sorted(manifest_rows):
                 writer.writerow([fn, manifest_rows[fn]])
-        logger.info(
-            f"Unioned {len(manifest_rows)} manifest rows across all datasets"
-        )
+        _events.info("release_manifest_merged", records_out=len(manifest_rows))
 
     # Remove downloaded tarball — contents are now in results_dir.
     if tar_path.parent == REPO_ROOT / "data" and tar_path.name.startswith("release-"):
@@ -208,7 +231,6 @@ def extract_release_tarball(
     # from release.json — no separate file transfer needed.
     hubmap_dst = results_dir / "hubmap_urls.txt"
     hubmap_dst.write_text("\n".join(hubmap_urls) + "\n")
-    logger.info(f"HuBMap URLs written to {hubmap_dst.name} ({len(hubmap_urls)} entries)")
 
     # Validate that the extracted tarball actually contains NSForest result
     # files under the canonical results_ensg_*.csv naming.  An empty match means
@@ -216,14 +238,26 @@ def extract_release_tarball(
     # is otherwise malformed — fail here, before the expensive fetch + ETL steps,
     # rather than silently building an empty graph downstream.
     nsforest_paths = list(results_dir.glob("results_ensg_*.csv"))
+    if links_skipped or traversal_skipped:
+        _events.warning(
+            "tar_members_skipped",
+            artifact="release_tarball",
+            links=links_skipped,
+            path_traversal=traversal_skipped,
+        )
     if not nsforest_paths:
         raise FileNotFoundError(
             f"No results_ensg_*.csv files extracted to {results_dir.name}/ — the "
             "release tarball may use an outdated NSForest naming convention "
             "(pre results_ensg/symbols split) or be malformed."
         )
-    logger.info(
-        f"Extracted {len(nsforest_paths)} NSForest result files to {results_dir.name}/"
+    _events.info(
+        "release_tarball_extracted",
+        nsforest_files=len(nsforest_paths),
+        hubmap_urls=len(hubmap_urls),
+        manifest_rows=len(manifest_rows),
+        files_skipped=links_skipped + traversal_skipped,
+        duration_ms=_ms(started),
     )
     return results_dir
 
@@ -240,16 +274,12 @@ def sync_release_dir_to_s3(run_name: str = "") -> None:
     run_name:
         Run name.  Defaults to ``$CKN_RUN`` or ``'full'``.
     """
-    logger = get_run_logger()
     if not S3_BUCKET:
-        logger.info("S3_BUCKET not set — skipping (local mode)")
         return
     run_name = run_name or os.getenv("CKN_RUN", "full")
     results_dir = REPO_ROOT / "data" / f"results-{run_name}"
     s3_dst = f"s3://{S3_BUCKET}/runs/{run_name}/01-results/"
-    logger.info(f"Syncing {results_dir.name}/ → {s3_dst}")
-    _s3_sync(str(results_dir), s3_dst)
-    logger.info("Release dir pushed to S3")
+    _s3_sync(str(results_dir), s3_dst, artifact="release_results")
 
 
 @task(name="promote-results-to-latest", log_prints=True)
@@ -267,18 +297,15 @@ def promote_results_to_latest(run_name: str = "") -> None:
     run_name:
         Run name.  Defaults to ``$CKN_RUN`` or ``'full'``.
     """
-    logger = get_run_logger()
     if not S3_BUCKET:
-        logger.info("S3_BUCKET not set — skipping (local mode)")
         return
     run_name = run_name or os.getenv("CKN_RUN", "full")
     src_prefix = f"runs/{run_name}/01-results/"
     dst_prefix = "runs/latest/01-results/"
-    logger.info(
-        f"Promoting s3://{S3_BUCKET}/{src_prefix} → s3://{S3_BUCKET}/{dst_prefix}"
-    )
     count = _s3_copy_prefix(S3_BUCKET, src_prefix, dst_prefix)
-    logger.info(f"Promoted {count} result file(s) to runs/latest/01-results/")
+    # Zero objects means the scheduled fetch keeps reading the previous gene set.
+    log = _events.info if count else _events.warning
+    log("results_promoted_to_latest", objects_copied=count)
 
 
 @task(name="resolve-fetch-force", log_prints=True)
@@ -362,65 +389,167 @@ def nlm_ckn_release(
         JVM flags passed to every Java invocation (default: ``DEFAULT_JAVA_OPTS``,
         currently ``-Xmx32g``).
     """
-    logger = get_run_logger()
+    # One id for the whole release: the fetch and pipeline subflows run in this
+    # process, so binding it here puts them, their subprocesses (via ``_log_env``)
+    # and this flow's own lines under the same ``correlation_id``.  An id from
+    # the environment (Batch) or already bound by ``configure_logging`` is kept.
+    correlation_id = _log_env()["CORRELATION_ID"]
+    with structlog.contextvars.bound_contextvars(correlation_id=correlation_id):
+        _run_release(
+            nlm_ckn_tag,
+            ncbi_email,
+            ncbi_api_key,
+            run_name,
+            github_repo,
+            tar_source,
+            release_config,
+            max_fetch_age_hours,
+            java_opts,
+        )
 
-    # Validate here too (not only in the CLI): Prefect-deployment runs call the
-    # flow directly and would otherwise bypass the argparse check.
-    if max_fetch_age_hours < 0:
-        raise ValueError("max_fetch_age_hours must be non-negative")
 
+_DEFAULT_GITHUB_REPO = "NIH-NLM/nlm-ckn"
+
+
+def _retry_command(
+    nlm_ckn_tag: str,
+    run_name: str = "",
+    github_repo: str = _DEFAULT_GITHUB_REPO,
+    tar_source: str = "",
+    release_config: str = "",
+) -> str:
+    """Return the command that re-runs the release; completed work is reused.
+
+    Carries every input that selects the tarball, configuration or results
+    directory, so the retry reproduces the run.  Pass the values as given to
+    the flow: a ``run_name`` equal to the tag-derived default, and a
+    ``tar_source`` derived from the tag, are left out because the re-run
+    derives them again.
+    """
+    args = ["poetry", "run", "src/flows/release.py", "--nlm-ckn-tag", nlm_ckn_tag]
+    if run_name and run_name != nlm_ckn_tag.lstrip("v"):
+        args += ["--run-name", run_name]
+    if github_repo and github_repo != _DEFAULT_GITHUB_REPO:
+        args += ["--github-repo", github_repo]
+    if tar_source:
+        args += ["--tar-source", tar_source]
+    if release_config:
+        args += ["--release-config", release_config]
+    return shlex.join(args)
+
+
+def _step_failed(
+    step, exc: Exception, nlm_ckn_tag: str, run_name: str, retry_command: str
+) -> None:
+    """Log the ``release_step_failed`` ERROR for ``step`` before the flow re-raises."""
+    _events.error(
+        "release_step_failed",
+        step=step,
+        release_tag=nlm_ckn_tag,
+        run_name=run_name,
+        error_type=type(exc).__name__,
+        error=str(exc),
+        retry_command=retry_command,
+    )
+
+
+def _run_release(
+    nlm_ckn_tag: str,
+    ncbi_email: str,
+    ncbi_api_key: str,
+    run_name: str,
+    github_repo: str,
+    tar_source: str,
+    release_config: str,
+    max_fetch_age_hours: float,
+    java_opts: str,
+) -> None:
+    """Run the release steps of :func:`nlm_ckn_release` under its bound ids.
+
+    Logs ``release_started``, one ``release_step_failed`` for a failure in
+    validation (``step="config"``) or in step 1, 2 or 3, and
+    ``release_finished``.
+    """
+    started = time.monotonic()
+    retry_command = _retry_command(
+        nlm_ckn_tag, run_name, github_repo, tar_source, release_config
+    )
     run_name = run_name or nlm_ckn_tag.lstrip("v")
-    logger.info(f"Release: tag={nlm_ckn_tag}  run={run_name}")
+    step_durations_ms: dict[str, int] = {}
 
-    start = datetime.now(timezone.utc)
+    try:
+        # Validate here too (not only in the CLI): Prefect-deployment runs call the
+        # flow directly and would otherwise bypass the argparse check.
+        if max_fetch_age_hours < 0:
+            raise ValueError("max_fetch_age_hours must be non-negative")
 
-    cfg = _read_release_json(release_config)
-    hubmap_urls = cfg.get("hubmap_urls", [])
-    if not hubmap_urls:
-        raise ValueError("hubmap_urls is empty in release.json — cannot proceed")
+        cfg = _read_release_json(release_config)
+        hubmap_urls = cfg.get("hubmap_urls", [])
+        if not hubmap_urls:
+            raise ValueError("hubmap_urls is empty in release.json — cannot proceed")
 
-    # Guard against the default placeholder values being committed unchanged.
-    # Validate against the effective values after --nlm-ckn-tag/--tar-source overrides.
-    _PLACEHOLDER_TAG = "v0.0.0-alpha"
-    if nlm_ckn_tag == _PLACEHOLDER_TAG:
-        raise ValueError(
-            f"nlm_ckn_tag is still the default placeholder ({nlm_ckn_tag!r}). "
-            "Provide a real release tag via --nlm-ckn-tag or update nlm_ckn_tag in release.json."
-        )
-    # Derive tarball URL from tag if not explicitly provided.
-    if not tar_source:
-        tar_name = f"prod-data-{nlm_ckn_tag}.tar.gz"
-        tar_source = (
-            f"https://github.com/{github_repo}/releases/download"
-            f"/{nlm_ckn_tag}/{tar_name}"
-        )
-    if _PLACEHOLDER_TAG in tar_source:
-        raise ValueError(
-            f"tar_source still contains the default placeholder ({tar_source!r}). "
-            "Update tar_source to a real release URL or provide --tar-source."
-        )
+        # Guard against the default placeholder values being committed unchanged.
+        # Validate against the effective values after --nlm-ckn-tag/--tar-source overrides.
+        _PLACEHOLDER_TAG = "v0.0.0-alpha"
+        if nlm_ckn_tag == _PLACEHOLDER_TAG:
+            raise ValueError(
+                f"nlm_ckn_tag is still the default placeholder ({nlm_ckn_tag!r}). "
+                "Provide a real release tag via --nlm-ckn-tag or update nlm_ckn_tag in release.json."
+            )
+        # Derive tarball URL from tag if not explicitly provided.
+        if not tar_source:
+            tar_name = f"prod-data-{nlm_ckn_tag}.tar.gz"
+            tar_source = (
+                f"https://github.com/{github_repo}/releases/download"
+                f"/{nlm_ckn_tag}/{tar_name}"
+            )
+        if _PLACEHOLDER_TAG in tar_source:
+            raise ValueError(
+                f"tar_source still contains the default placeholder ({tar_source!r}). "
+                "Update tar_source to a real release URL or provide --tar-source."
+            )
+    except Exception as exc:
+        _step_failed("config", exc, nlm_ckn_tag, run_name, retry_command)
+        raise
+
+    _events.info(
+        "release_started",
+        release_tag=nlm_ckn_tag,
+        run_name=run_name,
+        github_repo=github_repo,
+        tar_source=tar_source,
+        release_config=release_config or "release.json",
+        max_fetch_age_hours=max_fetch_age_hours,
+        java_opts=java_opts,
+        hubmap_url_count=len(hubmap_urls),
+        s3_enabled=bool(S3_BUCKET),
+        **_fields(
+            batch_job_id=os.getenv("AWS_BATCH_JOB_ID") or None,
+            cloudwatch_log_url=_cloudwatch_log_url() or None,
+        ),
+    )
 
     # ── Step 1: Extract release tarball ──────────────────────────────────
     post_github_deployment_status(
         state="in_progress",
         description=f"[1/3] Extracting release tarball for {nlm_ckn_tag}",
     )
+    step_started = time.monotonic()
     try:
         extract_release_tarball(tar_source, run_name, hubmap_urls)
         sync_release_dir_to_s3(run_name=run_name)
     except Exception as exc:
-        logger.error(
-            "Step 1 (extract release tarball) failed.\n"
-            "To retry from this step:\n"
-            f"  poetry run src/flows/release.py --nlm-ckn-tag {nlm_ckn_tag}"
-        )
+        _step_failed(1, exc, nlm_ckn_tag, run_name, retry_command)
         post_github_deployment_status(
             state="failure",
             description=f"[1/3] Failed extracting tarball: {exc}"[:140],
         )
         raise
 
+    step_durations_ms["extract"] = _ms(step_started)
+
     # ── Step 2: Fetch external APIs ───────────────────────────────────────
+    step_started = time.monotonic()
     force_fetch = resolve_fetch_force(
         run_name=run_name, max_fetch_age_hours=max_fetch_age_hours
     )
@@ -437,24 +566,17 @@ def nlm_ckn_release(
             run_name=run_name,
         )
     except Exception as exc:
-        logger.error(
-            "Step 2 (fetch external APIs) failed.\n"
-            "Already-fetched files in data/external-%s/ are intact.\n"
-            "To resume fetching without re-downloading completed sources:\n"
-            "  poetry run python src/DataFetcher.py --run-name %s\n"
-            "Then re-run the full release to continue from Step 3:\n"
-            "  poetry run src/flows/release.py --nlm-ckn-tag %s",
-            run_name,
-            run_name,
-            nlm_ckn_tag,
-        )
+        _step_failed(2, exc, nlm_ckn_tag, run_name, retry_command)
         post_github_deployment_status(
             state="failure",
             description=f"[2/3] Failed fetching external APIs: {exc}"[:140],
         )
         raise
 
+    step_durations_ms["fetch"] = _ms(step_started)
+
     # ── Step 3: Three-phase ETL ───────────────────────────────────────────
+    step_started = time.monotonic()
     post_github_deployment_status(
         state="in_progress",
         description=f"[3/3] Running ETL pipeline for {nlm_ckn_tag}",
@@ -471,38 +593,44 @@ def nlm_ckn_release(
             run_name=run_name,
         )
     except Exception as exc:
-        logger.error(
-            "Step 3 (ETL pipeline) failed.\n"
-            "External data in data/external-%s/ is complete.\n"
-            "To retry the ETL without re-fetching:\n"
-            "  poetry run python src/DataFetcher.py --run-name %s  # (will skip completed sources)\n"
-            "  Then re-run the full release:\n"
-            "  poetry run src/flows/release.py --nlm-ckn-tag %s",
-            run_name,
-            run_name,
-            nlm_ckn_tag,
-        )
+        _step_failed(3, exc, nlm_ckn_tag, run_name, retry_command)
         post_github_deployment_status(
             state="failure",
             description=f"[3/3] ETL pipeline failed: {exc}"[:140],
         )
         raise
 
+    step_durations_ms["etl"] = _ms(step_started)
+
     # Promote this release's results to the stable latest/ pointer so the
     # scheduled fetch targets the new gene set going forward.
+    step_started = time.monotonic()
     try:
         promote_results_to_latest(run_name=run_name)
     except Exception as exc:
-        logger.error("Promotion of %s failed: %s", nlm_ckn_tag, exc)
+        _events.error(
+            "release_promotion_failed",
+            release_tag=nlm_ckn_tag,
+            error_type=type(exc).__name__,
+            error=str(exc),
+        )
         post_github_deployment_status(
             state="failure",
             description=f"Promotion of {nlm_ckn_tag} failed: {exc}"[:140],
         )
         raise
 
-    logger.info(f"Release {nlm_ckn_tag} complete (run={run_name})")
-    elapsed = datetime.now(timezone.utc) - start
-    minutes, seconds = divmod(int(elapsed.total_seconds()), 60)
+    step_durations_ms["promote"] = _ms(step_started)
+    duration_ms = _ms(started)
+    _events.info(
+        "release_finished",
+        release_tag=nlm_ckn_tag,
+        run_name=run_name,
+        duration_ms=duration_ms,
+        force_fetch=force_fetch,
+        step_durations_ms=step_durations_ms,
+    )
+    minutes, seconds = divmod(duration_ms // 1000, 60)
     post_github_deployment_status(
         state="success",
         description=f"Released {nlm_ckn_tag} in {minutes}m {seconds}s",
@@ -552,7 +680,7 @@ def _save_release_json(updates: dict) -> None:
     data = json.loads(config_path.read_text()) if config_path.exists() else {}
     data.update({k: v for k, v in updates.items() if v is not None})
     config_path.write_text(json.dumps(data, indent=4) + "\n")
-    print(f"[release] Saved config to {config_path}")
+    _events.info("release_config_saved", path=str(config_path))
 
 
 def _parse_args(argv=None):
