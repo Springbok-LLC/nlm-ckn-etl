@@ -1,3 +1,4 @@
+import ipaddress
 import json
 import os
 from pprint import pprint
@@ -5,16 +6,62 @@ import random
 
 from arango import ArangoClient
 
+
+def is_loopback_host(host):
+    """Return whether ``host`` is ``localhost`` (any case) or a loopback IP
+    literal.  Any other hostname is not loopback; it is never resolved.
+    """
+    if host.lower() == "localhost":
+        return True
+    try:
+        addr = ipaddress.ip_address(host)
+    except ValueError:
+        return False
+    # ``::ffff:127.0.0.1`` is not ``is_loopback`` before Python 3.13
+    return addr.is_loopback or bool(
+        getattr(addr, "ipv4_mapped", None) and addr.ipv4_mapped.is_loopback
+    )
+
+
+def arango_scheme(host):
+    """Return ``ARANGO_DB_SCHEME`` if set, else ``http`` only for loopback.
+
+    The local container serves plain HTTP; any other host defaults to
+    ``https`` so root credentials never cross the network in clear.  An
+    explicit value is stripped, lowercased, and rejected unless it is
+    ``http`` or ``https``, so a typo cannot silently downgrade the
+    connection (see ``flows/_common.py``).
+    """
+    scheme = os.getenv("ARANGO_DB_SCHEME", "").strip().lower()
+    if not scheme:
+        return "http" if is_loopback_host(host) else "https"
+    if scheme not in ("http", "https"):
+        raise ValueError(
+            f"ARANGO_DB_SCHEME must be http or https, not "
+            f"{os.environ['ARANGO_DB_SCHEME']!r}"
+        )
+    return scheme
+
+
+def arango_url(scheme, host, port):
+    """Return the ArangoDB base URL, bracketing an IPv6 literal ``host``."""
+    if ":" in host:
+        host = f"[{host}]"
+    return f"{scheme}://{host}:{port}"
+
+
 def _client():
     """Build an ArangoDB client from the environment at call time.
 
-    Connection settings are read from ``ARANGO_DB_HOST``/``ARANGO_DB_PORT``
-    on each call rather than at import, so callers that assign the port
-    dynamically (e.g. the Prefect pipeline) connect to the live endpoint.
+    Connection settings are read from ``ARANGO_DB_SCHEME``/``ARANGO_DB_HOST``/
+    ``ARANGO_DB_PORT`` on each call rather than at import, so callers that
+    assign the port dynamically (e.g. the Prefect pipeline) connect to the
+    live endpoint.  The pipeline always sets the scheme (see
+    ``flows/_common.py``); see ``arango_scheme`` for the standalone default.
     """
     host = os.getenv("ARANGO_DB_HOST", "localhost")
     port = os.getenv("ARANGO_DB_PORT", "8529")
-    return ArangoClient(hosts=f"http://{host}:{port}")
+    return ArangoClient(hosts=arango_url(arango_scheme(host), host, port))
 
 
 def _sys_db():
@@ -268,6 +315,18 @@ def print_summary(database_name):
     return {"vertex": vertex_counts, "edge": edge_counts}
 
 
+# Analyzers a search tier may name: those create_analyzers creates, plus
+# the ArangoDB built-ins
+SEARCH_ANALYZERS = {
+    "identity",
+    "text_en",
+    "n-gram",
+    "text_en_no_stem",
+    "norm-lower",
+    "wildcard-lower",
+}
+
+
 def create_analyzers(database_name):
     """Create n-gram, text, norm, and wildcard analyzers in the named database.
 
@@ -361,10 +420,41 @@ def delete_analyzers(database_name):
     db.delete_analyzer(f"{database_name}::wildcard-lower", ignore_missing=True)
 
 
+def _field_links(vertex_name, collection_map, search_tiers):
+    """Link each searched field of a vertex collection with the analyzers
+    of its search tier; fields whose tier is null are not linked.
+
+    Raises ValueError for a field with no search_tier, an unknown tier,
+    a tier naming an analyzer not in SEARCH_ANALYZERS, or a field listed
+    twice with different tiers.
+    """
+    fields, tiers = {}, {}
+    for d in collection_map["individual_fields"]:
+        field = d["field_to_display"]
+        if "search_tier" not in d:
+            raise ValueError(f"{vertex_name}.{field} has no search_tier")
+        tier = d["search_tier"]
+        if tiers.setdefault(field, tier) != tier:
+            raise ValueError(f"{vertex_name}.{field} has conflicting search tiers")
+        if tier is None:
+            continue
+        if tier not in search_tiers:
+            raise ValueError(f"{vertex_name}.{field} has unknown search_tier {tier!r}")
+        unknown = set(search_tiers[tier]) - SEARCH_ANALYZERS
+        if unknown:
+            raise ValueError(
+                f"{vertex_name}.{field} search_tier {tier!r} names unknown"
+                f" analyzers {sorted(unknown)}"
+            )
+        fields[field] = {"analyzers": list(search_tiers[tier])}
+    return fields
+
+
 def create_view(database_name, collection_maps_name):
     """Create views in the Evidence and Knowledge graphs in the
     specified database based on the specified collection_maps JSON
-    file.
+    file. Each field is linked with the analyzers its search_tier
+    names in the file's search_tiers.
 
     Parameters
     ----------
@@ -408,16 +498,11 @@ def create_view(database_name, collection_maps_name):
         # TODO: Restructure collection_maps to separate vertices and edges
         if vertex_name in ["edges", "TEST_DOCUMENT_COLLECTION", "TEST_EDGE_COLLECTION"]:
             continue
-        vertex_fields = [
-            d["field_to_display"] for d in collection_map[1]["individual_fields"]
-        ]
         properties["links"][vertex_name] = {}
         properties["links"][vertex_name]["analyzers"] = ["identity"]
-        properties["links"][vertex_name]["fields"] = {}
-        for vertex_field in vertex_fields:
-            properties["links"][vertex_name]["fields"][vertex_field] = {
-                "analyzers": ["text_en", "text_en_no_stem", "n-gram", "identity"]
-            }
+        properties["links"][vertex_name]["fields"] = _field_links(
+            vertex_name, collection_map[1], collection_maps["search_tiers"]
+        )
         # Identifier forms of each vertex, matched without regard to case
         properties["links"][vertex_name]["fields"]["_search"] = {
             "analyzers": ["norm-lower"]
@@ -428,9 +513,10 @@ def create_view(database_name, collection_maps_name):
 
     db = create_or_get_database(database_name)
     if database_name == "Cell-KN-Phenotypes":
-        # No GO: excluded from the induced phenotype graph itself
-        # (InducedSubgraphFinder.IGNORED_VERTEX_COLLECTIONS), so it is never
-        # populated here either (Springbok-LLC/nlm-ckn-etl#119).
+        # No GO, HsapDv or PATO: excluded from the induced phenotype graph
+        # itself (InducedSubgraphFinder.IGNORED_VERTEX_COLLECTIONS), so they
+        # are never populated here either (Springbok-LLC/nlm-ckn-etl#119,
+        # #155).
         keys = list(properties["links"].keys())
         for key in keys:
             if key not in [
@@ -443,7 +529,6 @@ def create_view(database_name, collection_maps_name):
                 "GS",
                 "MONDO",
                 "NCBITaxon",
-                "PATO",
                 "PUB",
                 "PR",
                 "RS",

@@ -14,28 +14,29 @@ import java.util.stream.Collectors;
 
 public class InducedSubgraphFinder {
 
-    // Vertex collections to skip during BFS traversal. GO is excluded because GO terms and
-    // associations, as carried into the induced phenotype graph, do not provide meaningful
-    // biological information (decided in the team's weekly meeting; Springbok-LLC/nlm-ckn-etl#119).
-    private static final Set<String> IGNORED_VERTEX_COLLECTIONS = Set.of("CHEBI", "GO", "NCT");
+    // Vertex collections to skip during BFS traversal. GO, HsapDv and PATO are excluded because
+    // their terms and associations, as carried into the induced phenotype graph, do not provide
+    // meaningful biological information (GO: Springbok-LLC/nlm-ckn-etl#119; HsapDv and PATO:
+    // Springbok-LLC/nlm-ckn-etl#155).
+    private static final Set<String> IGNORED_VERTEX_COLLECTIONS =
+            Set.of("CHEBI", "GO", "HsapDv", "NCT", "PATO");
 
     // Edge collections to skip entirely during BFS traversal. Use this to cut specific
     // high-fanout connections (e.g., PR-NCBITaxon pulls in most of UniProt's PR vertices
     // because every protein is annotated with its source organism).
     private static final Set<String> IGNORED_EDGE_COLLECTIONS = Set.of("PR-NCBITaxon");
-    // No entry for GO: it is excluded above, so it never reaches the induced graph for
-    // this config to apply to.
+    // No entry for GO, HsapDv or PATO: they are excluded above, so they never reach the induced
+    // graph for this config to apply to.
     private static final Map<String, HierarchyConfig> HIERARCHY_CONFIG = Map.ofEntries(Map.entry("CL",
-                    new HierarchyConfig("all", null)),
-            Map.entry("MONDO", new HierarchyConfig("walk", "SUB_CLASS_OF")),
-            Map.entry("HP", new HierarchyConfig("walk", "SUB_CLASS_OF")),
-            Map.entry("PATO", new HierarchyConfig("walk", "SUB_CLASS_OF")),
-            Map.entry("HsapDv", new HierarchyConfig("walk", "SUB_CLASS_OF")),
-            Map.entry("NCBITaxon", new HierarchyConfig("walk", "SUB_CLASS_OF")),
-            Map.entry("Orphanet", new HierarchyConfig("walk", "SUB_CLASS_OF")),
-            Map.entry("PR", new HierarchyConfig("none", "SUB_CLASS_OF")),
-            Map.entry("CHEBI", new HierarchyConfig("walk", "SUB_CLASS_OF")),
-            Map.entry("UBERON", new HierarchyConfig("walk", "PART_OF")));
+                    new HierarchyConfig("all", Set.of())),
+            Map.entry("MONDO", new HierarchyConfig("walk", Set.of("SUB_CLASS_OF"))),
+            Map.entry("HP", new HierarchyConfig("walk", Set.of("SUB_CLASS_OF"))),
+            Map.entry("NCBITaxon", new HierarchyConfig("walk", Set.of("SUB_CLASS_OF"))),
+            Map.entry("Orphanet", new HierarchyConfig("walk", Set.of("SUB_CLASS_OF"))),
+            Map.entry("PR", new HierarchyConfig("none", Set.of())),
+            Map.entry("CHEBI", new HierarchyConfig("walk", Set.of("SUB_CLASS_OF"))),
+            Map.entry("UBERON",
+                    new HierarchyConfig("walk", Set.of("PART_OF", "CONTRIBUTES_TO_MORPHOLOGY_OF"))));
 
     /**
      * Multi-source BFS up to maxDepth, then extract the induced subgraph.
@@ -90,7 +91,8 @@ public class InducedSubgraphFinder {
             if ("none".equals(config.strategy)) {
                 System.out.println("Skipping hierarchy paths for " + prefix + " (strategy: " + config.strategy() + ")");
             } else {
-                System.out.println("Adding hierarchy paths for " + prefix + " (strategy: " + config.strategy() + ")");
+                System.out.println("Adding hierarchy paths for " + prefix + " (strategy: " + config.strategy() + (
+                        config.labels().isEmpty() ? "" : ", labels: " + new TreeSet<>(config.labels())) + ")");
             }
 
             if ("all".equals(config.strategy())) {
@@ -103,7 +105,7 @@ public class InducedSubgraphFinder {
                         prefix)).collect(Collectors.toSet());
 
                 for (ArangoVertex vertex : ontologyVertices) {
-                    HierarchyResult result = walkHierarchyToRoot(fullGraph, vertex, prefix, config.label());
+                    HierarchyResult result = walkHierarchyToRoot(fullGraph, vertex, prefix, config.labels());
                     verticesToAdd.addAll(result.ancestors());
                     edgesToAdd.addAll(result.edges());
                 }
@@ -134,12 +136,13 @@ public class InducedSubgraphFinder {
     }
 
     /**
-     * BFS walk from startNode to root, following only self-referential edges (e.g., GO-GO) with the specified Label.
+     * BFS walk from startNode to root, following only self-referential edges (e.g., GO-GO) whose Label is one of the
+     * specified labels. The labels are followed together, so a walk can mix them at every step.
      */
     private HierarchyResult walkHierarchyToRoot(DirectedPseudograph<ArangoVertex, ArangoEdge> fullGraph,
                                                 ArangoVertex startNode,
                                                 String ontologyPrefix,
-                                                String labelFilter) {
+                                                Set<String> labels) {
 
         String edgeCollection = ontologyPrefix + "-" + ontologyPrefix;
         Set<ArangoVertex> ancestors = new HashSet<>();
@@ -153,7 +156,9 @@ public class InducedSubgraphFinder {
             ArangoVertex node = queue.poll();
             for (ArangoEdge edge : fullGraph.outgoingEdgesOf(node)) {
                 if (!edge.collection().equals(edgeCollection)) continue;
-                if (!labelFilter.equals(edge.properties().get("Label"))) continue;
+                // Set.of(...).contains(null) throws, and an edge need not carry a Label
+                Object label = edge.properties().get("Label");
+                if (label == null || !labels.contains(label)) continue;
 
                 ArangoVertex target = fullGraph.getEdgeTarget(edge);
                 if (!target.collection().equals(ontologyPrefix)) continue;
@@ -268,8 +273,10 @@ public class InducedSubgraphFinder {
 
     // Ontology hierarchy traversal configuration
     // "all": include entire vertex and edge collection (CL special case)
-    // "walk": BFS walk following edges with the given Label to root
-    private record HierarchyConfig(String strategy, String label) {
+    // "walk": BFS walk following edges with any of the given labels to root
+    // "none": no hierarchy paths are added
+    // The labels are used only by "walk"; "all" and "none" take an empty set.
+    private record HierarchyConfig(String strategy, Set<String> labels) {
     }
 
     private record HierarchyResult(Set<ArangoVertex> ancestors, Set<ArangoEdge> edges) {

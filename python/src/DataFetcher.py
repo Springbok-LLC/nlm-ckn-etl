@@ -464,6 +464,12 @@ class CellxGeneFetcher(DataFetcher):
     def fetch_one(self, dataset_version_id):
         """Fetch dataset and collection JSON for a dataset version ID.
 
+        The current collection is fetched, and so is the collection version
+        the dataset version belongs to.  The two differ once a collection is
+        revised: the current one describes the latest publication, the version
+        the one the dataset version was published with (e.g. a bioRxiv
+        preprint later replaced by its journal paper).
+
         Parameters
         ----------
         dataset_version_id : str
@@ -472,7 +478,9 @@ class CellxGeneFetcher(DataFetcher):
         Returns
         -------
         dict
-            Raw response with keys 'dataset_json' and 'collection_json'
+            Raw response with keys 'dataset_json', 'collection_json' and
+            'collection_version_json'; the latter is None when the dataset
+            names no collection version or the API does not serve it
         """
         dataset_url = f"{self.BASE_URL}/dataset_versions/{dataset_version_id}"
         response = requests.get(dataset_url, timeout=REQUEST_TIMEOUT)
@@ -488,9 +496,21 @@ class CellxGeneFetcher(DataFetcher):
             resp.raise_for_status()
             collection_json = resp.json()
 
+        collection_version_json = None
+        collection_version_id = dataset_json.get("collection_version_id")
+        if collection_version_id:
+            version_url = f"{self.BASE_URL}/collection_versions/{collection_version_id}"
+            resp = requests.get(version_url, timeout=REQUEST_TIMEOUT)
+            # A version the API does not serve is not an error: the transformer
+            # falls back to the current collection.  Anything else is retried.
+            if resp.status_code not in (403, 404):
+                resp.raise_for_status()
+                collection_version_json = resp.json()
+
         return {
             "dataset_json": dataset_json,
             "collection_json": collection_json,
+            "collection_version_json": collection_version_json,
         }
 
 

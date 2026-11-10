@@ -487,6 +487,73 @@ class CellxGeneFetcherTestCase(unittest.TestCase):
         self.assertEqual(mock_get.call_count, 2)
 
     @patch("DataFetcher.requests.get")
+    def test_fetch_one_fetches_the_datasets_collection_version(self, mock_get):
+        """The collection version the dataset version belongs to is fetched too."""
+        dataset_json = {"collection_id": "coll1", "collection_version_id": "cv1"}
+        collection_json = {"doi": "10.1038/current"}
+        version_json = {"doi": "10.1101/preprint"}
+        mock_get.side_effect = [
+            MagicMock(status_code=200, json=MagicMock(return_value=dataset_json)),
+            MagicMock(status_code=200, json=MagicMock(return_value=collection_json)),
+            MagicMock(status_code=200, json=MagicMock(return_value=version_json)),
+        ]
+
+        result = CellxGeneFetcher().fetch_one("dv1")
+
+        self.assertEqual(result["collection_json"], collection_json)
+        self.assertEqual(result["collection_version_json"], version_json)
+        self.assertTrue(mock_get.call_args_list[2][0][0].endswith("/collection_versions/cv1"))
+
+    @patch("DataFetcher.requests.get")
+    def test_fetch_one_without_a_collection_version_id(self, mock_get):
+        """A dataset naming no collection version has no version JSON, and no extra call."""
+        mock_get.side_effect = [
+            MagicMock(status_code=200, json=MagicMock(return_value={"collection_id": "c"})),
+            MagicMock(status_code=200, json=MagicMock(return_value={})),
+        ]
+
+        result = CellxGeneFetcher().fetch_one("dv1")
+
+        self.assertIsNone(result["collection_version_json"])
+        self.assertEqual(mock_get.call_count, 2)
+
+    @patch("DataFetcher.requests.get")
+    def test_fetch_one_collection_version_not_served(self, mock_get):
+        """A collection version the API does not serve falls back to the current collection."""
+        for status in (403, 404):
+            mock_get.reset_mock()
+            mock_get.side_effect = [
+                MagicMock(
+                    status_code=200,
+                    json=MagicMock(return_value={"collection_id": "c", "collection_version_id": "cv"}),
+                ),
+                MagicMock(status_code=200, json=MagicMock(return_value={"doi": "d"})),
+                MagicMock(status_code=status),
+            ]
+
+            result = CellxGeneFetcher().fetch_one("dv1")
+
+            self.assertIsNone(result["collection_version_json"])
+            self.assertEqual(result["collection_json"], {"doi": "d"})
+
+    @patch("DataFetcher.requests.get")
+    def test_fetch_one_collection_version_server_error_is_raised(self, mock_get):
+        """Any other failure raises, so the fetch is retried rather than cached."""
+        server_error = MagicMock(status_code=500)
+        server_error.raise_for_status.side_effect = requests.HTTPError("500")
+        mock_get.side_effect = [
+            MagicMock(
+                status_code=200,
+                json=MagicMock(return_value={"collection_id": "c", "collection_version_id": "cv"}),
+            ),
+            MagicMock(status_code=200, json=MagicMock(return_value={})),
+            server_error,
+        ]
+
+        with self.assertRaises(requests.HTTPError):
+            CellxGeneFetcher().fetch_one("dv1")
+
+    @patch("DataFetcher.requests.get")
     def test_fetch_one_dataset_failure(self, mock_get):
         """fetch_one raises HTTPError when dataset request fails."""
         mock_response = MagicMock(status_code=404)

@@ -64,12 +64,14 @@ from prefect import flow, task
 from _common import (
     DEFAULT_JAVA_OPTS,
     REPO_ROOT,
+    FETCH_MODES,
     S3_BUCKET,
     _cloudwatch_log_url,
     _fields,
     _log_env,
     _s3_copy_prefix,
     _s3_sync,
+    parse_refresh_sources,
     post_github_deployment_status,
     should_force_fetch,
 )
@@ -345,6 +347,8 @@ def nlm_ckn_release(
     release_config: str = "",
     max_fetch_age_hours: float = 672.0,
     java_opts: str = DEFAULT_JAVA_OPTS,
+    fetch_mode: str = "auto",
+    refresh_sources: list[str] | str | None = None,
 ) -> None:
     """End-to-end NLM-CKN release pipeline driven by an nlm-ckn GitHub tag.
 
@@ -388,6 +392,16 @@ def nlm_ckn_release(
     java_opts:
         JVM flags passed to every Java invocation (default: ``DEFAULT_JAVA_OPTS``,
         currently ``-Xmx32g``).
+    fetch_mode:
+        ``"auto"`` (default) lets the cache's age and fetch code hash decide
+        whether to re-fetch everything.  ``"resume"`` reuses the cache
+        whatever the hash, so a change to the fetch code that does not
+        invalidate cached data does not cost a full re-fetch; the run records
+        the current hash afterwards, so the next one is ``auto`` again.
+    refresh_sources:
+        Sources (``cellxgene``, ``opentargets``, ``gene``, ``uniprot``), as a
+        list or comma-separated, to re-fetch and re-transform from scratch
+        while the rest of the cache is reused.
     """
     # One id for the whole release: the fetch and pipeline subflows run in this
     # process, so binding it here puts them, their subprocesses (via ``_log_env``)
@@ -405,6 +419,8 @@ def nlm_ckn_release(
             release_config,
             max_fetch_age_hours,
             java_opts,
+            fetch_mode,
+            refresh_sources,
         )
 
 
@@ -463,6 +479,8 @@ def _run_release(
     release_config: str,
     max_fetch_age_hours: float,
     java_opts: str,
+    fetch_mode: str,
+    refresh_sources: list[str] | str | None,
 ) -> None:
     """Run the release steps of :func:`nlm_ckn_release` under its bound ids.
 
@@ -482,6 +500,11 @@ def _run_release(
         # flow directly and would otherwise bypass the argparse check.
         if max_fetch_age_hours < 0:
             raise ValueError("max_fetch_age_hours must be non-negative")
+        if fetch_mode not in FETCH_MODES:
+            raise ValueError(
+                f"fetch_mode must be one of {', '.join(FETCH_MODES)}, not {fetch_mode!r}"
+            )
+        refresh_sources = parse_refresh_sources(refresh_sources)
 
         cfg = _read_release_json(release_config)
         hubmap_urls = cfg.get("hubmap_urls", [])
@@ -520,6 +543,8 @@ def _run_release(
         tar_source=tar_source,
         release_config=release_config or "release.json",
         max_fetch_age_hours=max_fetch_age_hours,
+        fetch_mode=fetch_mode,
+        refresh_sources=refresh_sources,
         java_opts=java_opts,
         hubmap_url_count=len(hubmap_urls),
         s3_enabled=bool(S3_BUCKET),
@@ -550,12 +575,19 @@ def _run_release(
 
     # ── Step 2: Fetch external APIs ───────────────────────────────────────
     step_started = time.monotonic()
-    force_fetch = resolve_fetch_force(
-        run_name=run_name, max_fetch_age_hours=max_fetch_age_hours
-    )
+    if fetch_mode == "resume":
+        # Reuse the cache without a hash check (fetch_mode is in release_started).
+        force_fetch = False
+    else:
+        force_fetch = resolve_fetch_force(
+            run_name=run_name, max_fetch_age_hours=max_fetch_age_hours
+        )
+    fetch_label = "force" if force_fetch else "incremental"
+    if refresh_sources and not force_fetch:
+        fetch_label += f", refreshing {', '.join(refresh_sources)}"
     post_github_deployment_status(
         state="in_progress",
-        description=f"[2/3] Fetching external APIs ({'force' if force_fetch else 'incremental'})",
+        description=f"[2/3] Fetching external APIs ({fetch_label})",
     )
     try:
         nlm_ckn_fetch(
@@ -564,6 +596,7 @@ def _run_release(
             force=force_fetch,
             retry_empty=not force_fetch,
             run_name=run_name,
+            refresh_sources=refresh_sources,
         )
     except Exception as exc:
         _step_failed(2, exc, nlm_ckn_tag, run_name, retry_command)
@@ -671,6 +704,14 @@ def _load_release_json(release_config: str = "") -> dict:
     os.environ.setdefault("TAR_SOURCE", str(data.get("tar_source") or ""))
     if data.get("max_fetch_age_hours") is not None:
         os.environ.setdefault("MAX_FETCH_AGE_HOURS", str(data["max_fetch_age_hours"]))
+    if data.get("fetch_mode"):
+        os.environ.setdefault("FETCH_MODE", str(data["fetch_mode"]))
+    if data.get("refresh_sources"):
+        sources = data["refresh_sources"]
+        os.environ.setdefault(
+            "REFRESH_SOURCES",
+            ",".join(sources) if isinstance(sources, list) else str(sources),
+        )
     return data
 
 
@@ -737,6 +778,25 @@ def _parse_args(argv=None):
         help="Maximum external cache age in hours before forcing a re-fetch (default: max_fetch_age_hours from release.json, or 672 = four weeks)",
     )
     parser.add_argument(
+        "--fetch-mode",
+        choices=FETCH_MODES,
+        default=os.getenv("FETCH_MODE") or "auto",
+        help=(
+            "auto: the cache's age and fetch code hash decide whether to re-fetch "
+            "everything. resume: reuse the cache whatever the hash (default: "
+            "fetch_mode from release.json, or auto)"
+        ),
+    )
+    parser.add_argument(
+        "--refresh-sources",
+        default=os.getenv("REFRESH_SOURCES", ""),
+        help=(
+            "Comma-separated sources (cellxgene, opentargets, gene, uniprot) to "
+            "re-fetch and re-transform from scratch, keeping the rest of the cache "
+            "(default: refresh_sources from release.json)"
+        ),
+    )
+    parser.add_argument(
         "--java-opts",
         default=DEFAULT_JAVA_OPTS,
         help=f"JVM flags (default: '{DEFAULT_JAVA_OPTS}')",
@@ -753,6 +813,10 @@ def _parse_args(argv=None):
 
     if args.max_fetch_age_hours < 0:
         parser.error("--max-fetch-age-hours must be non-negative")
+    try:
+        args.refresh_sources = parse_refresh_sources(args.refresh_sources)
+    except ValueError as exc:
+        parser.error(f"--refresh-sources: {exc}")
     return args
 
 
@@ -788,4 +852,6 @@ if __name__ == "__main__":
         release_config=args.release_config,
         max_fetch_age_hours=args.max_fetch_age_hours,
         java_opts=args.java_opts,
+        fetch_mode=args.fetch_mode,
+        refresh_sources=args.refresh_sources,
     )

@@ -161,7 +161,7 @@ reports give the source line each name replaces.
 | `run_started` | INFO | `main_class` or `script`, effective config (`run_name`, dirs), `args` |
 | `run_finished` | INFO | `outcome`, `duration_ms`, summary counts |
 | `run_failed` | ERROR | `error_type`, `error`, `duration_ms` |
-| `config_resolved` | INFO | Once per flow: `run_name`, `release_tag`, `s3_enabled`, phase flags, `java_opts`, `jar_key`, `git_commit`, `fetch_code_hash` |
+| `config_resolved` | INFO | Once per flow: `run_name`, `release_tag`, `s3_enabled`, phase flags, `refresh_sources` (fetch), `java_opts`, `jar_key`, `git_commit`, `fetch_code_hash` |
 | `phase_started` | INFO | `phase` |
 | `phase_finished` | INFO | `phase`, `duration_ms`, counts |
 | `phase_skipped` | INFO | `phase`, `reason`, `force` |
@@ -286,7 +286,8 @@ reports give the source line each name replaces.
 | `arangodb_container_reused` | INFO | `container_id`, `port` |
 | `arangodb_container_removed` | INFO | `container_id`, `status` |
 | `arangodb_ready` | INFO | `port`, `duration_ms` |
-| `arangodb_endpoint_resolved` | INFO | `mode`, `host`, `port`, `container_id` |
+| `arangodb_endpoint_resolved` | INFO | `mode`, `scheme` (remote only), `host`, `port`, `container_id` |
+| `arangodb_insecure_scheme` | WARN | `reason=unencrypted_credentials`, `host`; remote mode with `ARANGO_DB_SCHEME=http`, so root credentials cross the network unencrypted |
 | `arangodb_data_wiped` | INFO | `kind` (`named_volume` or `bind_mount`), `volume` or `path` |
 | `arangodb_volume_removal_failed` | WARN | `volume`, `error_type`, `error` |
 | `docker_unreachable` | WARN | `error_type`, `error` |
@@ -326,7 +327,7 @@ reports give the source line each name replaces.
 | `release_dir_validated` | INFO | `records_out` (NSForest files) |
 | `tuple_files_validated` | INFO | `records_out` (files) |
 | `production_promotion_finished` | INFO | `run_name`, `objects`, `bytes`, `duration_ms` |
-| `release_started` | INFO | `release_tag`, `run_name`, `github_repo`, `tar_source`, `release_config` (path or URL), `max_fetch_age_hours`, `java_opts`, `hubmap_url_count`, `s3_enabled`; once per run, and only on Batch, `batch_job_id` and `cloudwatch_log_url` (the log group, not a stream) |
+| `release_started` | INFO | `release_tag`, `run_name`, `github_repo`, `tar_source`, `release_config` (path or URL), `max_fetch_age_hours`, `fetch_mode`, `refresh_sources`, `java_opts`, `hubmap_url_count`, `s3_enabled`; once per run, and only on Batch, `batch_job_id` and `cloudwatch_log_url` (the log group, not a stream) |
 | `release_tarball_fetched` | INFO | `source_kind` (`https`, `s3`, `local`), `uri` or `path`, `bytes`, `duration_ms` |
 | `release_tarball_extracted` | INFO | `nsforest_files`, `hubmap_urls` (count written), `manifest_rows`, `files_skipped` (links and path-traversal members), `duration_ms`; a `tar_members_skipped` WARN (`artifact=release_tarball`) precedes it when `files_skipped` is not 0 |
 | `release_manifest_merged` | INFO | `records_out` (rows in the unioned `master_s3_manifest.csv`) |

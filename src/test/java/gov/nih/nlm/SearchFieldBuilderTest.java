@@ -12,7 +12,8 @@ class SearchFieldBuilderTest {
     void build_oboCollection() {
         assertEquals(List.of("UBERON:0002405",
                         "UBERON_0002405",
-                        "http://purl.obolibrary.org/obo/UBERON_0002405"),
+                        "http://purl.obolibrary.org/obo/UBERON_0002405",
+                        "https://purl.obolibrary.org/obo/UBERON_0002405"),
                 SearchFieldBuilder.build("UBERON", "0002405"));
     }
 
@@ -20,7 +21,8 @@ class SearchFieldBuilderTest {
     void build_oboCollectionKeepsMixedCase() {
         assertEquals(List.of("NCBITaxon:9606",
                         "NCBITaxon_9606",
-                        "http://purl.obolibrary.org/obo/NCBITaxon_9606"),
+                        "http://purl.obolibrary.org/obo/NCBITaxon_9606",
+                        "https://purl.obolibrary.org/obo/NCBITaxon_9606"),
                 SearchFieldBuilder.build("NCBITaxon", "9606"));
     }
 

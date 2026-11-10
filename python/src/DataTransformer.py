@@ -118,6 +118,14 @@ class BaseTransformer:
         return results
 
 
+def _publication_in(citation):
+    """Return the publication link in a CELLxGENE citation string, or None."""
+    if not citation:
+        return None
+    m = re.search(r"Publication:\s*(\S*)\s*Dataset Version:", citation)
+    return m.group(1) if m and m.group(1) else None
+
+
 class CellxGeneTransformer(BaseTransformer):
     """Extracts Citation, links, tissue, organism, and other metadata
     fields from raw CELLxGENE dataset and collection JSON."""
@@ -131,7 +139,8 @@ class CellxGeneTransformer(BaseTransformer):
         ----------
         raw_results : dict
             Keyed by dataset_version_id, each value has
-            'dataset_json' and 'collection_json'
+            'dataset_json' and 'collection_json', and, once fetched,
+            'collection_version_json'
 
         Returns
         -------
@@ -142,8 +151,15 @@ class CellxGeneTransformer(BaseTransformer):
         for dataset_version_id, raw in raw_results.items():
             dataset_json = raw.get("dataset_json", {})
             collection_json = raw.get("collection_json")
+            # The collection as of the version the dataset version belongs to.
+            # The current collection can describe a later publication (a
+            # preprint replaced by its journal paper), so the publication
+            # fields come from the version, and from the current collection
+            # only for a cache entry fetched before the version was kept.
+            collection_version_json = raw.get("collection_version_json")
+            publication_json = collection_version_json or collection_json
 
-            if not dataset_json or not collection_json:
+            if not dataset_json or not publication_json:
                 print(
                     f"[{self.name}] Skipping dataset_version_id "
                     f"{dataset_version_id} (missing data)"
@@ -153,12 +169,12 @@ class CellxGeneTransformer(BaseTransformer):
             entry = {}
 
             # Publication metadata
-            pub_meta = collection_json.get("publisher_metadata", {})
+            pub_meta = publication_json.get("publisher_metadata", {})
             authors = pub_meta.get("authors", [])
             first_author = authors[0]["family"] if authors else None
             published_year = pub_meta.get("published_year")
             journal = pub_meta.get("journal")
-            title = collection_json.get("name")
+            title = publication_json.get("name")
 
             entry["Citation"] = build_citation(first_author, published_year, journal)
             # A consortium author carries a single "name" rather than a
@@ -179,24 +195,31 @@ class CellxGeneTransformer(BaseTransformer):
             entry["Title"] = title
             entry["Journal"] = journal
 
-            # Publication and collection links. The collection's doi field
-            # is authoritative, and is the only source for collections whose
+            # Publication and collection links. The dataset version's own
+            # citation names the publication it was published with, so it
+            # comes first; the current collection's doi describes the latest
+            # publication, which can be a later one. The doi of the collection
+            # version, then the current collection's citation and doi, are
+            # the fallbacks, and the only source for collections whose
             # citation string is absent or carries no publication (e.g.
-            # Jorstad (2023) Science), so prefer it and fall back to the
-            # citation.
-            entry["Link_to_publication"] = None
+            # Jorstad (2023) Science).
+            current = collection_json or {}
+            version = collection_version_json or {}
+            dataset_citation = dataset_json.get("citation")
+            collection_citation = current.get("citation")
+            version_doi = version.get("doi")
+            current_doi = current.get("doi")
+            link = _publication_in(dataset_citation)
+            if not link and version_doi:
+                link = f"https://doi.org/{version_doi}"
+            if not link:
+                link = _publication_in(collection_citation)
+            if not link and current_doi:
+                link = f"https://doi.org/{current_doi}"
+            entry["Link_to_publication"] = link
             entry["Link_to_CELLxGENE_collection"] = None
-            doi = get_value_or_none(collection_json, ["doi"])
-            if doi:
-                entry["Link_to_publication"] = f"https://doi.org/{doi}"
-            citation = get_value_or_none(dataset_json, ["citation"])
-            if not citation:
-                citation = get_value_or_none(collection_json, ["citation"])
+            citation = dataset_citation or collection_citation
             if citation:
-                if not entry["Link_to_publication"]:
-                    m = re.search(r"Publication:\s*(\S*)\s*Dataset Version:", citation)
-                    if m:
-                        entry["Link_to_publication"] = m.group(1)
                 m = re.search(r"Collection:\s*(\S*)$", citation)
                 if m:
                     entry["Link_to_CELLxGENE_collection"] = m.group(1)
