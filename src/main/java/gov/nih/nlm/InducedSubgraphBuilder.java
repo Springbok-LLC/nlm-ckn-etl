@@ -70,6 +70,7 @@ public class InducedSubgraphBuilder {
 
         ArangoDB arango = new ArangoDB.Builder()
                 .host(host, port)
+                .useSsl(ArangoDbUtilities.useSsl(env))
                 .user(user)
                 .password(password)
                 .build();

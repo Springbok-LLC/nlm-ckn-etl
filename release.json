@@ -1,9 +1,13 @@
 {
     "_comment": "Checked-in release config. Update nlm_ckn_tag and tar_source when starting a new release cycle, then commit alongside your code changes. See README for details.",
-    "nlm_ckn_tag": "v1.0.0-rc.10",
+    "nlm_ckn_tag": "v1.0.0-rc.14",
     "github_repo": "Springbok-LLC/nlm-ckn",
-    "tar_source": "https://github.com/Springbok-LLC/nlm-ckn/releases/download/v1.0.0-rc.10/prod-data-v1.0.0-rc.10.tar.gz",
-    "max_fetch_age_hours": 672,
+    "tar_source": "https://github.com/Springbok-LLC/nlm-ckn/releases/download/v1.0.0-rc.14/prod-data-v1.0.0-rc.14.tar.gz",
+    "max_fetch_age_hours": 1344,
+    "fetch_mode": "resume",
+    "refresh_sources": [
+        "cellxgene"
+    ],
     "hubmap_urls": [
         "https://lod.humanatlas.io/asct-b/allen-brain/latest/",
         "https://lod.humanatlas.io/asct-b/bone-marrow/latest/",

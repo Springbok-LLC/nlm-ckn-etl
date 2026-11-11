@@ -47,6 +47,8 @@ class InducedSubgraphFinderTest {
      *   CL/1 --[CL-GO]--> GO/1  (GO blocked: excluded from the induced phenotype
      *       graph entirely — GO terms and associations do not provide
      *       meaningful biological information there; Springbok-LLC/nlm-ckn-etl#119)
+     *   CL/1 --[CL-PATO]--> PATO/1 and CL/1 --[CL-HsapDv]--> HsapDv/1  (PATO and HsapDv
+     *       blocked like GO; Springbok-LLC/nlm-ckn-etl#155)
      *   CS/1 --[CS-UBERON]--> UBERON/1
      *   UBERON/1 --[UBERON-UBERON, PART_OF]--> UBERON/2  (self-referential)
      */
@@ -72,11 +74,13 @@ class InducedSubgraphFinderTest {
         ArangoVertex chebi1 = vertex("CHEBI", "1");
         ArangoVertex nct1 = vertex("NCT", "1");
         ArangoVertex go1 = vertex("GO", "1");
+        ArangoVertex pato1 = vertex("PATO", "1");
+        ArangoVertex hsapdv1 = vertex("HsapDv", "1");
         ArangoVertex uberon1 = vertex("UBERON", "1");
         ArangoVertex uberon2 = vertex("UBERON", "2");
 
         for (ArangoVertex v : new ArangoVertex[]{cs1, cl1, cl2, mondo1, mondo2, chembl1, pr1, pr2,
-                chebi1, nct1, go1, uberon1, uberon2}) {
+                chebi1, nct1, go1, pato1, hsapdv1, uberon1, uberon2}) {
             g.addVertex(v);
         }
 
@@ -93,6 +97,8 @@ class InducedSubgraphFinderTest {
         g.addEdge(uberon1, uberon2, edge("e11", uberon1, uberon2, "UBERON-UBERON",
                 Map.of("Label", "PART_OF")));
         g.addEdge(cl1, go1, edge("e12", cl1, go1, "CL-GO"));
+        g.addEdge(cl1, pato1, edge("e13", cl1, pato1, "CL-PATO"));
+        g.addEdge(cl1, hsapdv1, edge("e14", cl1, hsapdv1, "CL-HsapDv"));
 
         return new TestGraph(g, cs1, cl1, cl2, mondo1, mondo2, chembl1, pr1, pr2, chebi1, nct1, go1,
                 uberon1, uberon2);
@@ -140,6 +146,18 @@ class InducedSubgraphFinderTest {
         TestGraph tg = buildTestGraph();
         DirectedPseudograph<ArangoVertex, ArangoEdge> induced = finder.find(tg.graph(), "CS", 10);
         assertFalse(vertexIds(induced).contains("NCT/1"), "NCT vertices should be excluded");
+    }
+
+    @Test
+    void find_ignoredCollections_hsapdvAndPatoExcluded() {
+        // Like GO, HsapDv and PATO do not provide meaningful biological information in the
+        // induced phenotype graph (Springbok-LLC/nlm-ckn-etl#155).
+        TestGraph tg = buildTestGraph();
+        DirectedPseudograph<ArangoVertex, ArangoEdge> induced = finder.find(tg.graph(), "CS", 10);
+        assertFalse(vertexIds(induced).contains("PATO/1"), "PATO vertices should be excluded");
+        assertFalse(vertexIds(induced).contains("HsapDv/1"), "HsapDv vertices should be excluded");
+        assertFalse(edgeKeys(induced).contains("e13"), "CL-PATO edge should be excluded");
+        assertFalse(edgeKeys(induced).contains("e14"), "CL-HsapDv edge should be excluded");
     }
 
     @Test
@@ -247,6 +265,17 @@ class InducedSubgraphFinderTest {
     }
 
     @Test
+    void addOntologyHierarchyPaths_doesNotBackfillHsapdvOrPato() {
+        // Neither has a HIERARCHY_CONFIG entry, as for GO; confirm enrichment does not
+        // reintroduce them.
+        TestGraph tg = buildTestGraph();
+        DirectedPseudograph<ArangoVertex, ArangoEdge> induced = finder.find(tg.graph(), "CS", 10);
+        finder.addOntologyHierarchyPaths(tg.graph(), induced);
+        assertFalse(vertexIds(induced).contains("PATO/1"));
+        assertFalse(vertexIds(induced).contains("HsapDv/1"));
+    }
+
+    @Test
     void addOntologyHierarchyPaths_walkAddsUberonAncestors() {
         TestGraph tg = buildTestGraph();
         DirectedPseudograph<ArangoVertex, ArangoEdge> induced = finder.find(tg.graph(), "CS", 10);
@@ -255,6 +284,61 @@ class InducedSubgraphFinderTest {
                 "UBERON/2 should be added by hierarchy walk following PART_OF");
         assertTrue(edgeKeys(induced).contains("e11"),
                 "UBERON-UBERON PART_OF edge should be added by hierarchy enrichment");
+    }
+
+    // -- UBERON hierarchy labels --
+
+    /**
+     * UBERON/1 is reached from CS/1; the walk then continues over UBERON-UBERON edges whose labels are given.
+     *
+     *   CS/1 --[CS-UBERON]--> UBERON/1
+     *   UBERON/1 --[CONTRIBUTES_TO_MORPHOLOGY_OF]--> UBERON/2 --[PART_OF]--> UBERON/3
+     *   UBERON/1 --[DEVELOPS_FROM]--> UBERON/4  (a label the walk does not follow)
+     *   UBERON/1 --[no Label]--> UBERON/5
+     */
+    private DirectedPseudograph<ArangoVertex, ArangoEdge> uberonLabelGraph() {
+        DirectedPseudograph<ArangoVertex, ArangoEdge> g = new DirectedPseudograph<>(ArangoEdge.class);
+        ArangoVertex cs1 = vertex("CS", "1");
+        ArangoVertex[] u = new ArangoVertex[6];
+        for (int i = 1; i <= 5; i++) {
+            u[i] = vertex("UBERON", String.valueOf(i));
+            g.addVertex(u[i]);
+        }
+        g.addVertex(cs1);
+        g.addEdge(cs1, u[1], edge("c1", cs1, u[1], "CS-UBERON"));
+        g.addEdge(u[1], u[2], edge("m1", u[1], u[2], "UBERON-UBERON", Map.of("Label", "CONTRIBUTES_TO_MORPHOLOGY_OF")));
+        g.addEdge(u[2], u[3], edge("p1", u[2], u[3], "UBERON-UBERON", Map.of("Label", "PART_OF")));
+        g.addEdge(u[1], u[4], edge("d1", u[1], u[4], "UBERON-UBERON", Map.of("Label", "DEVELOPS_FROM")));
+        g.addEdge(u[1], u[5], edge("n1", u[1], u[5], "UBERON-UBERON"));
+        return g;
+    }
+
+    @Test
+    void addOntologyHierarchyPaths_uberonFollowsContributesToMorphologyOf() {
+        DirectedPseudograph<ArangoVertex, ArangoEdge> g = uberonLabelGraph();
+        DirectedPseudograph<ArangoVertex, ArangoEdge> induced = finder.find(g, "CS", 10);
+        finder.addOntologyHierarchyPaths(g, induced);
+        assertTrue(vertexIds(induced).contains("UBERON/2"), "UBERON/2 via CONTRIBUTES_TO_MORPHOLOGY_OF");
+        assertTrue(edgeKeys(induced).contains("m1"));
+    }
+
+    @Test
+    void addOntologyHierarchyPaths_uberonMixesLabelsInOneWalk() {
+        DirectedPseudograph<ArangoVertex, ArangoEdge> g = uberonLabelGraph();
+        DirectedPseudograph<ArangoVertex, ArangoEdge> induced = finder.find(g, "CS", 10);
+        finder.addOntologyHierarchyPaths(g, induced);
+        assertTrue(vertexIds(induced).contains("UBERON/3"),
+                "PART_OF parent of a CONTRIBUTES_TO_MORPHOLOGY_OF target should be reached");
+        assertTrue(edgeKeys(induced).contains("p1"));
+    }
+
+    @Test
+    void addOntologyHierarchyPaths_uberonIgnoresOtherAndMissingLabels() {
+        DirectedPseudograph<ArangoVertex, ArangoEdge> g = uberonLabelGraph();
+        DirectedPseudograph<ArangoVertex, ArangoEdge> induced = finder.find(g, "CS", 10);
+        finder.addOntologyHierarchyPaths(g, induced);
+        assertFalse(vertexIds(induced).contains("UBERON/4"), "DEVELOPS_FROM is not followed");
+        assertFalse(vertexIds(induced).contains("UBERON/5"), "an edge without a Label is not followed");
     }
 
     @Test

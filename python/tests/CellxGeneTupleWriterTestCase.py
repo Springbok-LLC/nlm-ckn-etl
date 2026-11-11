@@ -38,12 +38,12 @@ class CellxGeneTupleWriterTestCase(unittest.TestCase):
             "dvid-003": self._make_dataset("dvid-003", "https://doi.org/10.5678/other"),
         }
 
-    def _attributed_to_edges(self, tuples):
-        """Return the (subject, object) terms of the was_attributed_to edges."""
+    def _described_in_edges(self, tuples):
+        """Return the (subject, object) terms of the described_in edges."""
         return {
             (str(t[0]).rsplit("/", 1)[-1], str(t[2]).rsplit("/", 1)[-1])
             for t in tuples
-            if str(t[1]).endswith("wasAttributedTo")
+            if str(t[1]).endswith("describedIn")
         }
 
     def _annotations(self, tuples, prefix, attribute):
@@ -63,7 +63,31 @@ class CellxGeneTupleWriterTestCase(unittest.TestCase):
     def test_no_organ_map_keeps_source_keyed_vertex(self):
         # Without a dataset->organs map, the vertex keys on the source id.
         tuples = create_tuples(self._make_data())
-        subjects = {s for s, _ in self._attributed_to_edges(tuples)}
+        subjects = {s for s, _ in self._described_in_edges(tuples)}
+        self.assertEqual(subjects, {"CSD_dvid-001"})
+
+    def test_skips_cached_dataset_absent_from_the_summaries(self):
+        # The cache outlives a dataset a release drops; with a map in hand,
+        # a source no summary mentions gets no vertex and no edge.
+        data = self._make_multi_dataset_data()
+        dataset_organs = {"dvid-001": {"kidney"}, "dvid-003": {"liver"}}
+        tuples = create_tuples(data, dataset_organs)
+        self.assertEqual(
+            self._described_in_edges(tuples),
+            {
+                ("CSD_dvid-001__kidney", "PUB_10.1234-test"),
+                ("CSD_dvid-003__liver", "PUB_10.5678-other"),
+            },
+        )
+        self.assertFalse(
+            any("dvid-002" in str(term) for t in tuples for term in t),
+        )
+
+    def test_dataset_in_summaries_without_organ_keeps_source_keyed_vertex(self):
+        # Present in the map with no organ: still the source id alone.
+        dataset_organs = {"dvid-001": set()}
+        tuples = create_tuples(self._make_data(), dataset_organs)
+        subjects = {s for s, _ in self._described_in_edges(tuples)}
         self.assertEqual(subjects, {"CSD_dvid-001"})
 
     def test_fans_out_one_vertex_per_organ(self):
@@ -71,7 +95,7 @@ class CellxGeneTupleWriterTestCase(unittest.TestCase):
         # once per organ, each with a composite (source__organ) key.
         dataset_organs = {"dvid-001": {"kidney", "liver"}}
         tuples = create_tuples(self._make_data(), dataset_organs)
-        subjects = {s for s, _ in self._attributed_to_edges(tuples)}
+        subjects = {s for s, _ in self._described_in_edges(tuples)}
         self.assertEqual(
             subjects, {"CSD_dvid-001__kidney", "CSD_dvid-001__liver"}
         )
@@ -83,7 +107,7 @@ class CellxGeneTupleWriterTestCase(unittest.TestCase):
 
         dataset_organs = {"dvid-001": {"kidney"}}
         tuples = create_tuples(self._make_data(), dataset_organs)
-        subjects = {s for s, _ in self._attributed_to_edges(tuples)}
+        subjects = {s for s, _ in self._described_in_edges(tuples)}
         self.assertEqual(
             subjects, {f"CSD_{cell_set_dataset_identifier('dvid-001', 'kidney')}"}
         )
@@ -138,14 +162,14 @@ class CellxGeneTupleWriterTestCase(unittest.TestCase):
     def test_publication_keyed_by_doi(self):
         tuples = create_tuples(self._make_data())
         self.assertEqual(
-            self._attributed_to_edges(tuples),
+            self._described_in_edges(tuples),
             {("CSD_dvid-001", "PUB_10.1234-test")},
         )
 
     def test_datasets_of_one_paper_share_one_publication(self):
         tuples = create_tuples(self._make_multi_dataset_data())
         self.assertEqual(
-            self._attributed_to_edges(tuples),
+            self._described_in_edges(tuples),
             {
                 ("CSD_dvid-001", "PUB_10.1234-test"),
                 ("CSD_dvid-002", "PUB_10.1234-test"),

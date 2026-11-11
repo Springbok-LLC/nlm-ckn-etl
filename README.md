@@ -315,6 +315,13 @@ The Batch job runs `release.py` end-to-end (fetch + full ETL) on EC2 and returns
 
 Release settings (`nlm_ckn_tag`, `tar_source`, etc.) come from `release.json` at the repo root, not from this repo's release tag.
 
+Two optional `release.json` keys change how a release treats the cached external fetch (`s3://…/external/`). Both are for one release; remove them afterwards.
+
+- `"refresh_sources": ["cellxgene"]` re-fetches and re-transforms only the named sources (`cellxgene`, `opentargets`, `gene`, `uniprot`) and reuses the rest of the cache.
+- `"fetch_mode": "resume"` reuses the cache without comparing the fetch code hash. By default (`"auto"`) a change to `DataFetcher.py`, `DataTransformer.py`, `E_Utilities.py` or `flows/fetch.py` forces a full re-fetch of every source. Use `resume` when the change does not invalidate cached data, or only the sources in `refresh_sources`. The run records the new hash, so the next release is `auto` again.
+
+`release.py` takes the same settings as `--fetch-mode` and `--refresh-sources`.
+
 Required secrets: `AWS_RELEASE_ROLE_ARN`, `AWS_REGION`, `S3_BUCKET`, `DEPLOYMENTS_TOKEN` (classic PAT with `repo:deployments` scope).
 
 ### `on-release-deactivate.yml` — On Release Removed: Delete Deployment
@@ -450,3 +457,10 @@ FOR d IN indexed
 This matches whole identifiers only; partial identifiers are not matched.
 Databases built before this field was added need a rebuild, and the view must
 be recreated, to gain it.
+
+The view links every other field with the analyzers of its search tier. Each
+`individual_fields` entry in `data/nlm-ckn-collection-maps.json` has a
+`search_tier` (`label`, `synonym`, `identifier`, `text`, or `null`), and the
+top-level `search_tiers` lists the analyzers for each tier. Fields whose tier
+is `null` (numeric and score fields, cell-set `dataset_name`) are not indexed.
+`create_view` raises a `ValueError` for a field with a missing or unknown tier.

@@ -1729,13 +1729,13 @@ files = [
 
 [[package]]
 name = "ckn-schema"
-version = "0.0.0a6"
+version = "0.0.0a8"
 description = "LinkML data model for cell phenotypes and biological entities."
 optional = false
 python-versions = ">=3.9"
 groups = ["main"]
 files = [
-    {file = "ckn_schema-0.0.0a6-py3-none-any.whl", hash = "sha256:a0756d101087a3a3ac884f36b0c96f1771a6c6098c8eaa9b998d554b19bc5e72"},
+    {file = "ckn_schema-0.0.0a8-py3-none-any.whl", hash = "sha256:b942aac74c52c9fea03c889ba20e97f21c544f42a18dc092a8eb5d98e070d0db"},
 ]
 
 [package.dependencies]
@@ -1746,7 +1746,7 @@ dev = ["jsonschema", "linkml (>=1.8,<2)", "rdflib"]
 
 [package.source]
 type = "url"
-url = "https://github.com/Springbok-LLC/nlm-ckn-schema/releases/download/v0.0.0-alpha.6/ckn_schema-0.0.0a6-py3-none-any.whl"
+url = "https://github.com/Springbok-LLC/nlm-ckn-schema/releases/download/v0.0.0-alpha.8/ckn_schema-0.0.0a8-py3-none-any.whl"
 
 [[package]]
 name = "class-resolver"
@@ -12274,4 +12274,4 @@ type = ["pytest-mypy (>=1.0.1) ; platform_python_implementation != \"PyPy\""]
 [metadata]
 lock-version = "2.1"
 python-versions = ">=3.10,<3.13"
-content-hash = "d0cbdc06ac640b7d9ed71fd046d9c68680525a37cd4c0155bce2c6b41d3313cf"
+content-hash = "b90be7af64ddba6404fe8eeaaa15b7772fbe2af5087fe81dd44805a930ab9eab"
