@@ -1,8 +1,13 @@
+import contextlib
+import io
+import json
+import os
 import sys
 import tempfile
 import unittest
 from dataclasses import dataclass
 from pathlib import Path
+from unittest import mock
 
 sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 
@@ -460,6 +465,106 @@ class ValidatorFixtureTestCase(unittest.TestCase):
             self.assertTrue(
                 any(f.check == "multidataset-cluster-unresolved" for f in report.errors())
             )
+
+    # -- GitHub annotations ---------------------------------------------------
+
+    def _run_main(self, data_dir, env, *extra):
+        """Run the CLI with *env* as the only GitHub variables set.
+
+        Returns ``(exit_code, stdout, stderr)``.
+        """
+        out, err = io.StringIO(), io.StringIO()
+        with mock.patch.dict(os.environ):
+            for key in ("GITHUB_ACTIONS", "GITHUB_WORKSPACE"):
+                os.environ.pop(key, None)
+            os.environ.update(env)
+            with contextlib.redirect_stdout(out), contextlib.redirect_stderr(err):
+                rc = v.main(["--data-dir", str(data_dir), *extra])
+        return rc, out.getvalue(), err.getvalue()
+
+    def _workspace_tree(self):
+        """Build the fixture at ``<workspace>/data/prod`` with one ERROR."""
+        workspace = self.root / "ws"
+        tree = self._build(workspace / "data" / "prod")
+        tree.summary.unlink()  # -> companion-missing on the results file
+        return workspace, tree
+
+    def test_annotations_on_stderr_under_github_actions(self):
+        workspace, tree = self._workspace_tree()
+        env = {"GITHUB_ACTIONS": "true", "GITHUB_WORKSPACE": str(workspace)}
+        rc, out, err = self._run_main(tree.root, env)
+        rc0, out0, err0 = self._run_main(tree.root, {})
+        self.assertEqual((rc, out), (rc0, out0))  # stdout and exit unchanged
+        self.assertEqual(rc, 1)
+        self.assertNotIn("::", out)
+        rel = tree.results.relative_to(workspace).as_posix()
+        self.assertTrue(
+            any(
+                line.startswith(f"::error file={rel},title=companion-missing::")
+                for line in err.splitlines()
+            ),
+            err,
+        )
+        self.assertTrue(rel.startswith("data/prod/"))
+
+    def test_annotations_keep_json_stdout(self):
+        workspace, tree = self._workspace_tree()
+        env = {"GITHUB_ACTIONS": "true", "GITHUB_WORKSPACE": str(workspace)}
+        _, out, err = self._run_main(tree.root, env, "--json")
+        self.assertEqual(json.loads(out)["errors"], 1)
+        self.assertIn("::error ", err)
+
+    def test_no_annotations_without_github_actions(self):
+        workspace, tree = self._workspace_tree()
+        _, _, err = self._run_main(tree.root, {"GITHUB_WORKSPACE": str(workspace)})
+        self.assertEqual(err, "")
+
+    def test_no_annotations_flag(self):
+        workspace, tree = self._workspace_tree()
+        env = {"GITHUB_ACTIONS": "true", "GITHUB_WORKSPACE": str(workspace)}
+        _, _, err = self._run_main(tree.root, env, "--no-annotations")
+        self.assertEqual(err, "")
+
+    def test_annotations_omit_file_outside_workspace(self):
+        _, tree = self._workspace_tree()
+        with tempfile.TemporaryDirectory() as other:
+            env = {"GITHUB_ACTIONS": "true", "GITHUB_WORKSPACE": other}
+            _, _, err = self._run_main(tree.root, env)
+        self.assertIn("::error title=companion-missing::", err)
+        self.assertNotIn("file=", err)
+
+
+class AnnotationHelpersTestCase(unittest.TestCase):
+    """Prefix derivation and workflow-command escaping."""
+
+    def test_workspace_prefix(self):
+        with tempfile.TemporaryDirectory() as d:
+            ws = Path(d)
+            self.assertEqual(v._workspace_prefix(ws / "data" / "prod", ws), "data/prod/")
+            self.assertEqual(v._workspace_prefix(ws, ws), "")
+            self.assertIsNone(v._workspace_prefix(ws / "x", None))
+            self.assertIsNone(v._workspace_prefix(ws / "x", ""))
+            self.assertIsNone(v._workspace_prefix(ws.parent, ws))
+
+    def test_escape(self):
+        self.assertEqual(v._escape("50% a:b,c\r\nd"), "50%25 a:b,c%0D%0Ad")
+        self.assertEqual(
+            v._escape("50% a:b,c\r\nd", prop=True), "50%25 a%3Ab%2Cc%0D%0Ad"
+        )
+
+    def test_annotation_line_escaped(self):
+        report = v.Report(data_dir=Path("."))
+        report.add(v.WARN, "chk", "bad: 1,2\nnext", "a,b:c.csv")
+        report.add(v.ERROR, "nopath", "msg")
+        buf = io.StringIO()
+        v._print_annotations(report, "data/prod/", buf)
+        self.assertEqual(
+            buf.getvalue().splitlines(),
+            [
+                "::warning file=data/prod/a%2Cb%3Ac.csv,title=chk::bad: 1,2%0Anext",
+                "::error title=nopath::msg",
+            ],
+        )
 
 
 if __name__ == "__main__":

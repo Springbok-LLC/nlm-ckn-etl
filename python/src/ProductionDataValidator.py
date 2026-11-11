@@ -35,11 +35,17 @@ Usage
 
 Exit status is non-zero when any ERROR (or, with ``--strict``, any WARN)
 is found.
+
+Under GitHub Actions (``GITHUB_ACTIONS=true``) each finding is also written
+to stderr as an ``::error``/``::warning`` workflow command, with ``file=``
+relative to ``$GITHUB_WORKSPACE`` when the data dir is inside it.  stdout is
+unchanged.  ``--no-annotations`` turns this off.
 """
 
 import argparse
 import ast
 import json
+import os
 import sys
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -698,6 +704,43 @@ def _print_report(report):
     print(f"\n{len(errs)} error(s), {len(warns)} warning(s) in {report.data_dir}")
 
 
+def _escape(value, prop=False):
+    """Escape *value* for a GitHub workflow command (message or property)."""
+    s = str(value).replace("%", "%25").replace("\r", "%0D").replace("\n", "%0A")
+    if prop:
+        s = s.replace(":", "%3A").replace(",", "%2C")
+    return s
+
+
+def _workspace_prefix(data_dir, workspace):
+    """Return *data_dir* relative to *workspace* as ``"data/prod/"``.
+
+    Returns ``None`` when *workspace* is unset or *data_dir* is outside it,
+    so annotations then carry no ``file=`` property.
+    """
+    if not workspace:
+        return None
+    try:
+        rel = Path(data_dir).resolve().relative_to(Path(workspace).resolve())
+    except ValueError:
+        return None
+    return "" if rel == Path(".") else f"{rel.as_posix()}/"
+
+
+def _print_annotations(report, prefix, stream):
+    """Write one ``::error``/``::warning`` workflow command per finding.
+
+    Written to stderr so a workflow that tees stdout into the step summary
+    gets annotations without raw command lines in the summary.
+    """
+    for f in report.findings:
+        level = "error" if f.severity == ERROR else "warning"
+        props = [f"title={_escape(f.check, prop=True)}"]
+        if f.path and prefix is not None:
+            props.insert(0, f"file={_escape(prefix + f.path, prop=True)}")
+        print(f"::{level} {','.join(props)}::{_escape(f.message)}", file=stream)
+
+
 def main(argv=None):
     """CLI entry point."""
     parser = argparse.ArgumentParser(
@@ -715,6 +758,11 @@ def main(argv=None):
         "--strict",
         action="store_true",
         help="Exit non-zero on warnings as well as errors.",
+    )
+    parser.add_argument(
+        "--no-annotations",
+        action="store_true",
+        help="Do not emit GitHub annotations to stderr under GitHub Actions.",
     )
     args = parser.parse_args(argv)
 
@@ -738,6 +786,10 @@ def main(argv=None):
         )
     else:
         _print_report(report)
+
+    if os.environ.get("GITHUB_ACTIONS") == "true" and not args.no_annotations:
+        prefix = _workspace_prefix(data_dir, os.environ.get("GITHUB_WORKSPACE"))
+        _print_annotations(report, prefix, sys.stderr)
 
     failed = bool(report.errors()) or (args.strict and bool(report.warnings()))
     return 1 if failed else 0
