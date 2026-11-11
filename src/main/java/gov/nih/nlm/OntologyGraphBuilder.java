@@ -425,7 +425,8 @@ public class OntologyGraphBuilder {
             case "exactMatch" -> "EXACT_MATCH";
             case "equivalentClass" -> "EQUIVALENT_CLASS";
             case "seeAlso" -> "SEE_ALSO";
-            case "wasAttributedTo" -> "WAS_ATTRIBUTED_TO";
+            // The ckn-schema described_in relation, currently mapped to the PROV placeholder PROV:describedIn
+            case "describedIn" -> "DESCRIBED_IN";
             default -> label.toUpperCase().replace(" ", "_");
         };
     }

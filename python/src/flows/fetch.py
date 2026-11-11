@@ -35,9 +35,11 @@ import argparse
 import json
 import os
 import subprocess
+import time
 from datetime import datetime, timezone
 
-from prefect import flow, get_run_logger, task
+import structlog
+from prefect import flow, task
 from prefect.artifacts import create_markdown_artifact
 
 from _common import (
@@ -45,8 +47,10 @@ from _common import (
     S3_BUCKET,
     _external_dir,
     _fetch_code_hash,
+    REFRESHABLE_SOURCES,
     _run_python_script,
     clean_empty_external_files,
+    parse_refresh_sources,
     promote_external_staging,
     should_force_fetch,
     sync_external_from_s3,
@@ -54,6 +58,49 @@ from _common import (
     validate_external_files,
 )
 from pipeline import sync_results_from_s3, validate_release_dir
+
+_events = structlog.get_logger(__name__)
+
+_SOURCE_NAMES = ["cellxgene", "opentargets", "gene", "uniprot", "hubmap"]
+# Outcomes that need no attention; anything else is logged at WARN.
+_HEALTHY_OUTCOMES = {"ok", "skipped", "cached"}
+
+
+def _git_commit() -> str:
+    """Return the short git commit of the repo, or ``"unknown"``.
+
+    A failure is logged (``git_commit_unavailable``) rather than swallowed, since
+    ``fetch-info.json`` and the build info then lose their provenance.
+    """
+    try:
+        return subprocess.check_output(
+            ["git", "rev-parse", "--short", "HEAD"],
+            cwd=REPO_ROOT,
+            text=True,
+        ).strip()
+    except Exception as exc:
+        _events.warning(
+            "git_commit_unavailable", error_type=type(exc).__name__, error=str(exc)
+        )
+        return "unknown"
+
+
+def _ms(started: float) -> int:
+    """Return the whole milliseconds elapsed since ``started`` (monotonic)."""
+    return int((time.monotonic() - started) * 1000)
+
+
+def _age_hours(timestamp: str | None) -> float | None:
+    """Return the hours since an ISO-8601 ``timestamp``, or ``None`` if unusable."""
+    if not timestamp:
+        return None
+    try:
+        then = datetime.fromisoformat(timestamp)
+    except ValueError:
+        return None
+    if then.tzinfo is None:
+        then = then.replace(tzinfo=timezone.utc)
+    return round((datetime.now(timezone.utc) - then).total_seconds() / 3600, 1)
 
 # ── Tasks ──────────────────────────────────────────────────────────────────
 
@@ -79,18 +126,20 @@ def retry_failed_cache_entries(run_name: str = "") -> None:
         Run name (selects ``data/external-<name>/``).  Defaults to
         ``$CKN_RUN`` or ``'full'``.
     """
-    logger = get_run_logger()
     external_dir = _external_dir(run_name)
-    if not external_dir.is_dir():
-        logger.info(f"{external_dir.name}/ does not exist — nothing to clean")
-        return
-
     total_removed = 0
-    for json_file in sorted(external_dir.glob("*.json")):
+    files_touched = 0
+    json_files = sorted(external_dir.glob("*.json")) if external_dir.is_dir() else []
+    for json_file in json_files:
         try:
             data = json.loads(json_file.read_text())
         except (json.JSONDecodeError, OSError) as exc:
-            logger.warning(f"Skipping {json_file.name}: {exc}")
+            _events.warning(
+                "cache_file_unreadable",
+                file=json_file.name,
+                error_type=type(exc).__name__,
+                error=str(exc),
+            )
             continue
 
         if not isinstance(data, dict):
@@ -103,18 +152,17 @@ def retry_failed_cache_entries(run_name: str = "") -> None:
             if isinstance(v, dict) and not v and not k.endswith("_ids")
         ]
         if not empty_keys:
-            logger.info(f"{json_file.name}: no empty entries")
             continue
 
         for k in empty_keys:
             del data[k]
         json_file.write_text(json.dumps(data, indent=4))
-        logger.info(
-            f"{json_file.name}: removed {len(empty_keys)} empty entr{'y' if len(empty_keys) == 1 else 'ies'}"
-        )
         total_removed += len(empty_keys)
+        files_touched += 1
 
-    logger.info(f"Total empty entries removed: {total_removed}")
+    _events.info(
+        "cache_entries_cleared", records_out=total_removed, files_touched=files_touched
+    )
 
 
 @task(name="fetch-external-api-results", log_prints=True)
@@ -125,6 +173,7 @@ def fetch_external_api_results(
     force: bool = False,
     max_source_age_hours: float = 0.0,
     run_name: str = "",
+    force_sources: list[str] | None = None,
 ) -> None:
     """Run ``DataFetcher.py`` using the host Python interpreter.
 
@@ -145,18 +194,15 @@ def fetch_external_api_results(
     run_name:
         Run name passed as ``--run-name`` to ``DataFetcher.py`` (selects
         ``data/results-<name>/``).  Defaults to ``$CKN_RUN`` or ``'full'``.
+    force_sources:
+        Sources to re-fetch from scratch while the rest of the cache is kept
+        (``--force-<name>``).  Redundant with ``force``.
     """
-    logger = get_run_logger()
-    if force:
-        logger.info("Force mode: ignoring on-disk cache, re-fetching all sources")
-    if max_source_age_hours > 0:
-        logger.info(
-            f"Source max age: {max_source_age_hours}h — fresh sources will be skipped"
-        )
-    logger.info("Fetching external API results (DataFetcher)")
     extra_args = []
     if force:
         extra_args.append("--force-all")
+    else:
+        extra_args.extend(f"--force-{name}" for name in force_sources or [])
     if max_source_age_hours > 0:
         extra_args.extend(["--max-source-age-hours", str(max_source_age_hours)])
     if run_name:
@@ -171,7 +217,6 @@ def fetch_external_api_results(
         extra_args=extra_args or None,
         phase="fetch",
     )
-    logger.info("External API results fetched")
 
 
 @task(name="transform-external-api-results", log_prints=True)
@@ -179,6 +224,7 @@ def transform_external_api_results(
     arango_db_password: str = "",
     force: bool = False,
     run_name: str = "",
+    force_sources: list[str] | None = None,
 ) -> None:
     """Run ``DataTransformer.py`` to convert raw fetcher JSON into
     ``*_transformed.json`` files consumed by the tuple writers.
@@ -192,28 +238,39 @@ def transform_external_api_results(
     force:
         Pass ``--force`` to re-run all transformers even when outputs are
         up to date.
+    force_sources:
+        Sources whose transformer is re-run even when its output looks up to
+        date.  An output restored from S3 can look newer than the raw data it
+        was made from, so a source whose raw data was just re-fetched is named
+        here.  The other sources are transformed with the usual freshness
+        check, as the fetcher may have updated them too.  Redundant with
+        ``force``.
     run_name:
         Run name passed as ``--run-name`` (selects ``data/results-<name>/``).
         Defaults to ``$CKN_RUN`` or ``'full'``.
     """
-    logger = get_run_logger()
-    logger.info("Transforming external API results (DataTransformer)")
-    extra_args = []
+    run_args = ["--run-name", run_name] if run_name else []
     if force:
-        extra_args.append("--force")
-    if run_name:
-        extra_args.extend(["--run-name", run_name])
-    _run_python_script(
-        "DataTransformer.py",
-        arango_db_password=arango_db_password,
-        extra_args=extra_args or None,
-        phase="fetch",
-    )
-    logger.info("External API results transformed")
+        runs = [["--force", *run_args]]
+    elif force_sources:
+        # Naming sources restricts a run to them, so the rest get a run of
+        # their own, without --force.
+        others = [s for s in REFRESHABLE_SOURCES if s not in force_sources]
+        runs = [[*others, *run_args]] if others else []
+        runs.append([*force_sources, "--force", *run_args])
+    else:
+        runs = [run_args]
+    for extra_args in runs:
+        _run_python_script(
+            "DataTransformer.py",
+            arango_db_password=arango_db_password,
+            extra_args=extra_args or None,
+            phase="fetch",
+        )
 
 
 @task(name="record-fetch-artifact", log_prints=True)
-def record_fetch_artifact(run_name: str = "", validated: bool = True) -> None:
+def record_fetch_artifact(run_name: str = "", validated: bool = True) -> dict[str, str]:
     """Write ``fetch-info.json`` and a Prefect UI artifact summarising the run.
 
     ``fetch-info.json`` is stored alongside the cache files in
@@ -237,8 +294,13 @@ def record_fetch_artifact(run_name: str = "", validated: bool = True) -> None:
     validated:
         ``False`` when recorded after a validation failure, so the data is kept
         (the next run resumes + re-validates) without being marked complete.
+
+    Returns
+    -------
+    dict[str, str]
+        Each source's ``last_outcome`` from ``fetch-status.json`` (``"unknown"``
+        when the source has no entry), for the flow's end-of-phase summary.
     """
-    logger = get_run_logger()
     external_dir = _external_dir(run_name)
 
     # Collect file sizes for the required raw + transformed cache files
@@ -258,14 +320,7 @@ def record_fetch_artifact(run_name: str = "", validated: bool = True) -> None:
         files_info[name] = path.stat().st_size if path.exists() else None
 
     # Current git commit hash (best-effort; falls back to "unknown")
-    try:
-        commit = subprocess.check_output(
-            ["git", "rev-parse", "--short", "HEAD"],
-            cwd=REPO_ROOT,
-            text=True,
-        ).strip()
-    except Exception:
-        commit = "unknown"
+    commit = _git_commit()
 
     info = {
         "fetched_at": datetime.now(timezone.utc).isoformat(),
@@ -277,7 +332,13 @@ def record_fetch_artifact(run_name: str = "", validated: bool = True) -> None:
 
     info_path = external_dir / "fetch-info.json"
     info_path.write_text(json.dumps(info, indent=2))
-    logger.info(f"Fetch artifact written to {info_path.relative_to(REPO_ROOT)}")
+    _events.info(
+        "fetch_info_written",
+        validated=validated,
+        files_ok=sum(size is not None for size in files_info.values()),
+        files_missing=sum(size is None for size in files_info.values()),
+        commit=commit,
+    )
 
     # Per-source status written by DataFetcher.py
     status_path = external_dir / "fetch-status.json"
@@ -285,8 +346,34 @@ def record_fetch_artifact(run_name: str = "", validated: bool = True) -> None:
     if status_path.exists():
         try:
             source_status = json.loads(status_path.read_text())
-        except Exception:
-            pass
+        except Exception as exc:
+            _events.warning(
+                "fetch_status_unreadable",
+                path=status_path.name,
+                error_type=type(exc).__name__,
+                error=str(exc),
+            )
+
+    # One line per source, so a stale or failing source can alert.
+    outcomes: dict[str, str] = {}
+    for name in _SOURCE_NAMES:
+        entry = source_status.get(name, {})
+        outcome = entry.get("last_outcome", "unknown")
+        outcomes[name] = outcome
+        log = _events.info if outcome in _HEALTHY_OUTCOMES else _events.warning
+        log(
+            "fetch_source_status",
+            source=name,
+            outcome=outcome,
+            last_success_at=entry.get("last_success_at"),
+            age_hours=_age_hours(entry.get("last_success_at")),
+        )
+        if entry.get("source_version"):
+            _events.info(
+                "source_versions_resolved",
+                source=name,
+                source_version=entry["source_version"],
+            )
 
     # Prefect UI artifact — summary table visible in the flow-run page
     outcome_icon = {"ok": "✓", "partial": "◐", "failed": "✗", "skipped": "⏭"}
@@ -296,7 +383,6 @@ def record_fetch_artifact(run_name: str = "", validated: bool = True) -> None:
         else f"| `{name}` | ⚠ missing |"
         for name, size in files_info.items()
     )
-    source_names = ["cellxgene", "opentargets", "gene", "uniprot", "hubmap"]
     source_rows = "\n".join(
         "| `{name}` | {icon} {outcome} | {last_success} |".format(
             name=name,
@@ -306,7 +392,7 @@ def record_fetch_artifact(run_name: str = "", validated: bool = True) -> None:
             outcome=source_status.get(name, {}).get("last_outcome", "unknown"),
             last_success=source_status.get(name, {}).get("last_success_at", "—"),
         )
-        for name in source_names
+        for name in _SOURCE_NAMES
     )
     s3_note = (
         f"**S3 destination (shared cache):** `s3://{S3_BUCKET}/external/`"
@@ -333,6 +419,7 @@ def record_fetch_artifact(run_name: str = "", validated: bool = True) -> None:
 """,
         description="External API fetch results",
     )
+    return outcomes
 
 
 # ── Flow ───────────────────────────────────────────────────────────────────
@@ -347,6 +434,7 @@ def nlm_ckn_fetch(
     max_source_age_hours: float = 0.0,
     max_fetch_age_hours: float = 0.0,
     run_name: str = "",
+    refresh_sources: list[str] | None = None,
 ) -> None:
     """NLM-CKN external API fetch flow.
 
@@ -391,84 +479,118 @@ def nlm_ckn_fetch(
     run_name:
         Run name passed to ``DataFetcher.py`` (selects
         ``data/results-<name>/``).  Defaults to ``$CKN_RUN`` or ``'full'``.
+    refresh_sources:
+        Sources (``cellxgene``, ``opentargets``, ``gene``, ``uniprot``) to
+        re-fetch and re-transform from scratch while the rest of the cache is
+        reused.  Redundant with ``force``.
     """
-    logger = get_run_logger()
-
-    # Validate here too (not only in the CLI): Prefect-deployment runs call the
-    # flow directly and would otherwise bypass the argparse check.
-    if max_source_age_hours < 0:
-        raise ValueError("max_source_age_hours must be non-negative")
-    if max_fetch_age_hours < 0:
-        raise ValueError("max_fetch_age_hours must be non-negative")
-
-    # Resolve credentials: explicit parameters take priority, then env vars
-    ncbi_email = ncbi_email or os.getenv("NCBI_EMAIL", "")
-    ncbi_api_key = ncbi_api_key or os.getenv("NCBI_API_KEY", "")
-
-    missing = [
-        name
-        for name, val in [("NCBI_EMAIL", ncbi_email), ("NCBI_API_KEY", ncbi_api_key)]
-        if not val
-    ]
-    if missing:
-        raise RuntimeError(
-            f"Required NCBI credential(s) not set: {', '.join(missing)}.\n"
-            "Provide them via --ncbi-email / --ncbi-api-key flags, or set the "
-            "NCBI_EMAIL / NCBI_API_KEY environment variables."
-        )
-
-    # ArangoDB password is not used by the fetcher but is forwarded to the
-    # container env for forward-compatibility; ignore if unset.
-    arango_db_password = os.getenv("ARANGO_DB_PASSWORD", "")
-
-    # Resolve the run name once and thread the resolved value to every task.
-    run_name = run_name or os.getenv("CKN_RUN", "full")
-
-    if S3_BUCKET:
-        logger.info(f"S3 mode: bucket={S3_BUCKET}")
-    else:
-        logger.info("Local mode: S3_BUCKET not set, writing to data/external/ only")
-
-    # Auto-resolve force from cache age + fetch-code hash when a whole-cache max
-    # age is given (the scheduled fetch) and force was not requested explicitly.
-    if max_fetch_age_hours > 0 and not force:
-        force = should_force_fetch(run_name, max_fetch_age_hours)
-        retry_empty = not force
-
-    sync_results_from_s3(run_name=run_name)  # ensure release results are available
-    # Fail fast if the release results are missing: the NSForest results drive
-    # which genes the cellxgene/gene/uniprot/opentargets fetchers retrieve, so a
-    # missing results dir means a silently incomplete fetch.
-    validate_release_dir(run_name=run_name)
-    sync_external_from_s3(run_name=run_name)  # restore external cache (no-op if no S3)
-    clean_empty_external_files(run_name=run_name)
-    if retry_empty and not force:
-        retry_failed_cache_entries(run_name=run_name)
-    fetch_external_api_results(
-        arango_db_password=arango_db_password,
-        ncbi_email=ncbi_email,
-        ncbi_api_key=ncbi_api_key,
-        force=force,
-        max_source_age_hours=max_source_age_hours,
-        run_name=run_name,
-    )
-    transform_external_api_results(
-        arango_db_password=arango_db_password,
-        force=force,
-        run_name=run_name,
-    )
-    # Record the artifact even when validation fails, so the fetched data is not
-    # discarded: the next run resumes + re-validates (see should_force_fetch)
-    # instead of re-fetching from scratch.  A failed validation still re-raises
-    # (and skips promotion below), so invalid data is never pushed to S3.
+    started = time.monotonic()
     try:
-        validate_external_files(run_name=run_name)
-    except Exception:
-        record_fetch_artifact(run_name=run_name, validated=False)
+        with structlog.contextvars.bound_contextvars(phase="fetch"):
+            refresh_sources = parse_refresh_sources(refresh_sources)
+
+            # Validate here too (not only in the CLI): Prefect-deployment runs call the
+            # flow directly and would otherwise bypass the argparse check.
+            if max_source_age_hours < 0:
+                raise ValueError("max_source_age_hours must be non-negative")
+            if max_fetch_age_hours < 0:
+                raise ValueError("max_fetch_age_hours must be non-negative")
+
+            # Resolve credentials: explicit parameters take priority, then env vars
+            ncbi_email = ncbi_email or os.getenv("NCBI_EMAIL", "")
+            ncbi_api_key = ncbi_api_key or os.getenv("NCBI_API_KEY", "")
+
+            missing = [
+                name
+                for name, val in [("NCBI_EMAIL", ncbi_email), ("NCBI_API_KEY", ncbi_api_key)]
+                if not val
+            ]
+            if missing:
+                raise RuntimeError(
+                    f"Required NCBI credential(s) not set: {', '.join(missing)}.\n"
+                    "Provide them via --ncbi-email / --ncbi-api-key flags, or set the "
+                    "NCBI_EMAIL / NCBI_API_KEY environment variables."
+                )
+
+            # ArangoDB password is not used by the fetcher but is forwarded to the
+            # container env for forward-compatibility; ignore if unset.
+            arango_db_password = os.getenv("ARANGO_DB_PASSWORD", "")
+
+            # Resolve the run name once and thread the resolved value to every task.
+            run_name = run_name or os.getenv("CKN_RUN", "full")
+
+            # Auto-resolve force from cache age + fetch-code hash when a whole-cache max
+            # age is given (the scheduled fetch) and force was not requested explicitly.
+            if max_fetch_age_hours > 0 and not force:
+                force = should_force_fetch(run_name, max_fetch_age_hours)
+                retry_empty = not force
+
+            _events.info(
+                "config_resolved",
+                run_name=run_name,
+                s3_enabled=bool(S3_BUCKET),
+                force=force,
+                retry_empty=retry_empty,
+                refresh_sources=refresh_sources,
+                max_source_age_hours=max_source_age_hours,
+                max_fetch_age_hours=max_fetch_age_hours,
+                git_commit=_git_commit(),
+                fetch_code_hash=_fetch_code_hash(),
+            )
+            _events.info("phase_started", phase="fetch")
+
+            sync_results_from_s3(run_name=run_name)  # ensure release results are available
+            # Fail fast if the release results are missing: the NSForest results drive
+            # which genes the cellxgene/gene/uniprot/opentargets fetchers retrieve, so a
+            # missing results dir means a silently incomplete fetch.
+            validate_release_dir(run_name=run_name)
+            sync_external_from_s3(run_name=run_name)  # restore external cache (no-op if no S3)
+            clean_empty_external_files(run_name=run_name)
+            if retry_empty and not force:
+                retry_failed_cache_entries(run_name=run_name)
+            fetch_external_api_results(
+                arango_db_password=arango_db_password,
+                ncbi_email=ncbi_email,
+                ncbi_api_key=ncbi_api_key,
+                force=force,
+                max_source_age_hours=max_source_age_hours,
+                run_name=run_name,
+                force_sources=refresh_sources,
+            )
+            transform_external_api_results(
+                arango_db_password=arango_db_password,
+                force=force,
+                run_name=run_name,
+                force_sources=refresh_sources,
+            )
+            # Record the artifact even when validation fails, so the fetched data is not
+            # discarded: the next run resumes + re-validates (see should_force_fetch)
+            # instead of re-fetching from scratch.  A failed validation still re-raises
+            # (and skips promotion below), so invalid data is never pushed to S3.
+            try:
+                validate_external_files(run_name=run_name)
+            except Exception:
+                record_fetch_artifact(run_name=run_name, validated=False)
+                raise
+            outcomes = record_fetch_artifact(run_name=run_name, validated=True)
+            sync_external_to_s3_staging(run_name=run_name)  # write to staging; pipeline.py is unaffected
+            promote_external_staging(run_name=run_name)  # server-side copy runs/{run}/external-staging/ → external/
+            counts = {
+                f"sources_{outcome}": list(outcomes.values()).count(outcome)
+                for outcome in ("ok", "partial", "failed", "skipped", "cached", "unknown")
+            }
+            _events.info(
+                "phase_finished", phase="fetch", duration_ms=_ms(started), **counts
+            )
+    except Exception as exc:
+        _events.error(
+            "run_failed",
+            phase="fetch",
+            error_type=type(exc).__name__,
+            error=str(exc),
+            duration_ms=_ms(started),
+        )
         raise
-    record_fetch_artifact(run_name=run_name, validated=True)
-    sync_external_to_s3_staging(run_name=run_name)  # write to staging; pipeline.py is unaffected
-    promote_external_staging(run_name=run_name)  # server-side copy runs/{run}/external-staging/ → external/
 
 
 # ── CLI entry point ────────────────────────────────────────────────────────
@@ -542,8 +664,20 @@ def _parse_args(argv=None):
             "Defaults to $CKN_RUN or 'full'."
         ),
     )
+    parser.add_argument(
+        "--refresh-sources",
+        default="",
+        help=(
+            "Comma-separated sources (cellxgene, opentargets, gene, uniprot) to "
+            "re-fetch and re-transform from scratch, keeping the rest of the cache."
+        ),
+    )
     args = parser.parse_args(argv)
 
+    try:
+        args.refresh_sources = parse_refresh_sources(args.refresh_sources)
+    except ValueError as exc:
+        parser.error(f"--refresh-sources: {exc}")
     if args.max_source_age_hours < 0:
         parser.error("--max-source-age-hours must be non-negative")
     if args.max_fetch_age_hours < 0:
@@ -570,4 +704,5 @@ if __name__ == "__main__":
         max_source_age_hours=args.max_source_age_hours,
         max_fetch_age_hours=args.max_fetch_age_hours,
         run_name=args.run_name,
+        refresh_sources=args.refresh_sources,
     )

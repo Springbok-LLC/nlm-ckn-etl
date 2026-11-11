@@ -23,12 +23,16 @@ public class SearchFieldBuilder {
     // Assign the historically correct OBO PURL prefix
     static final String OBO_PURL_PREFIX = "http://purl.obolibrary.org/obo/";
 
+    // The same PURL over https, the form browsers and shared links use; purl.obolibrary.org serves both
+    static final String OBO_PURL_HTTPS_PREFIX = "https://purl.obolibrary.org/obo/";
+
     /**
      * Build the {@code _search} values for a vertex. The collection case is preserved; matching without regard to case
      * is left to the analyzer.
      * <p>
-     * OBO ontology terms are searchable by CURIE, underscore form, and PURL, e.g. {@code UBERON:0002405},
-     * {@code UBERON_0002405}, and {@code http://purl.obolibrary.org/obo/UBERON_0002405}. All other vertices are
+     * OBO ontology terms are searchable by CURIE, underscore form, and PURL over http or https, e.g.
+     * {@code UBERON:0002405}, {@code UBERON_0002405}, {@code http://purl.obolibrary.org/obo/UBERON_0002405}, and
+     * {@code https://purl.obolibrary.org/obo/UBERON_0002405}. All other vertices are
      * searchable by the colon and underscore forms of the collection and key, as displayed in the UI.
      *
      * @param collection Vertex collection name, e.g. "UBERON"
@@ -39,7 +43,7 @@ public class SearchFieldBuilder {
         String curie = collection + ":" + key;
         String underscored = collection + "_" + key;
         if (OBO_COLLECTIONS.contains(collection)) {
-            return List.of(curie, underscored, OBO_PURL_PREFIX + underscored);
+            return List.of(curie, underscored, OBO_PURL_PREFIX + underscored, OBO_PURL_HTTPS_PREFIX + underscored);
         }
         return List.of(curie, underscored);
     }

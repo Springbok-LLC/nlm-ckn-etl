@@ -162,7 +162,7 @@ reports give the source line each name replaces.
 | `run_started` | INFO | `main_class` or `script`, effective config (`run_name`, dirs), `args` |
 | `run_finished` | INFO | `outcome`, `duration_ms`, summary counts. Pipeline: `phases_run`, `phases_skipped`, `phase_durations_ms` (an object keyed by phase) |
 | `run_failed` | ERROR | `error_type`, `error`, `duration_ms`; `phase` (the one in progress, or none) and, in the pipeline flow, `task` (the innermost function in `pipeline.py` on the stack) |
-| `config_resolved` | INFO | Once per flow: `run_name`, `release_tag`, `s3_enabled`, phase flags, `java_opts`, `jar_key`, `git_commit`, `fetch_code_hash`. The pipeline flow also logs `arango_local`, `flow_run_id` and, on Batch, `batch_job_id` |
+| `config_resolved` | INFO | Once per flow: `run_name`, `release_tag`, `s3_enabled`, phase flags, `refresh_sources` (fetch), `java_opts`, `jar_key`, `git_commit`, `fetch_code_hash`. The pipeline flow also logs `arango_local`, `flow_run_id` and, on Batch, `batch_job_id` |
 | `phase_started` | INFO | `phase` |
 | `phase_finished` | INFO | `phase`, `duration_ms`, counts. Pipeline: `jar_key`, `run_name`, `dump` and `dump_bytes`; `tuple_files` and `tuple_bytes` for `results` |
 | `phase_skipped` | INFO | `phase`, `reason` (`dump_exists`), `force`, and `jar_key` or `run_name` where they identify the dump |
@@ -189,13 +189,15 @@ reports give the source line each name replaces.
 | `fetch_context_missing` | ERROR | `source`, `error` |
 | `fetch_checkpoint_resumed` | INFO | `source`, `path`, `records_loaded` |
 | `fetch_cache_loaded` | INFO | `source`, `path`, `records_loaded` |
-| `fetch_status_unreadable` | WARN | `path`, `error` |
+| `fetch_status_unreadable` | WARN | `path`, `error_type`, `error` |
 | `fetch_cache_decision` | INFO (WARN for `reason=invalid_marker`) | `decision` (`force` or `resume`), `reason`, `source` (`s3` or `local`), `threshold_hours`, and when known `age_hours`, `cached_hash`, `current_hash` |
 | `fetch_info_written` | INFO | `validated`, `files_ok`, `files_missing`, `commit` |
 | `fetch_info_unreadable` | WARN | `source` (`s3` or `local`), `error_type`, `error` |
 | `cache_file_unreadable` | WARN | `file`, `error_type`, `error` |
 | `cache_file_removed` | WARN | `file`, `reason`, and `key` for `missing_sentinel` |
 | `cache_entries_cleared` | INFO | `records_out`, `files_touched` |
+| `fetch_source_status` | INFO (WARN unless `outcome` is `ok`, `skipped` or `cached`) | `source`, `outcome` (the source's `last_outcome` in `fetch-status.json`, or `unknown`), `last_success_at`, `age_hours`; one per source at the end of the fetch flow, so a stale or failing source can alert |
+| `git_commit_unavailable` | WARN | `error_type`, `error`; the commit is then recorded as `unknown` |
 | `external_source_empty` | ERROR | `file`, `source` |
 | `external_files_validated` | INFO | `files_ok`, `bytes` |
 | `external_files_invalid` | ERROR | `files`: a list of `{file, reason}`; logged before `validate_external_files` raises |
@@ -285,7 +287,8 @@ reports give the source line each name replaces.
 | `arangodb_container_reused` | INFO | `container_id`, `port` |
 | `arangodb_container_removed` | INFO | `container_id`, `status` |
 | `arangodb_ready` | INFO | `port`, `duration_ms` |
-| `arangodb_endpoint_resolved` | INFO | `mode`, `host`, `port`, `container_id` |
+| `arangodb_endpoint_resolved` | INFO | `mode`, `scheme` (remote only), `host`, `port`, `container_id` |
+| `arangodb_insecure_scheme` | WARN | `reason=unencrypted_credentials`, `host`; remote mode with `ARANGO_DB_SCHEME=http`, so root credentials cross the network unencrypted |
 | `arangodb_data_wiped` | INFO | `kind` (`named_volume` or `bind_mount`), `volume` or `path` |
 | `arangodb_volume_removal_failed` | WARN | `volume`, `error_type`, `error` |
 | `docker_unreachable` | WARN | `error_type`, `error` |
@@ -329,15 +332,15 @@ reports give the source line each name replaces.
 | `tuple_files_validated` | INFO | `records_out` (files), `bytes` |
 | `tuple_file_empty` | WARN | `file`, `bytes` (2 or fewer: empty, or an empty JSON list) |
 | `production_promotion_finished` | INFO | `run_name`, `objects`, `bytes`, `duration_ms` |
-| `release_started` | INFO | `release_tag`, `run_name`, `github_repo`, `tar_source`, `max_fetch_age_hours`, `java_opts`, `hubmap_url_count` |
+| `release_started` | INFO | `release_tag`, `run_name`, `github_repo`, `tar_source`, `release_config` (path or URL), `max_fetch_age_hours`, `fetch_mode`, `refresh_sources`, `java_opts`, `hubmap_url_count`, `s3_enabled`; once per run, and only on Batch, `batch_job_id` and `cloudwatch_log_url` (the log group, not a stream) |
 | `release_tarball_fetched` | INFO | `source_kind` (`https`, `s3`, `local`), `uri` or `path`, `bytes`, `duration_ms` |
-| `release_tarball_extracted` | INFO | `nsforest_files`, `hubmap_urls`, `manifest_rows`, `files_skipped`, `duration_ms` |
-| `release_manifest_merged` | INFO | `records_out` |
-| `results_promoted_to_latest` | INFO | `objects_copied`; WARN when 0 |
+| `release_tarball_extracted` | INFO | `nsforest_files`, `hubmap_urls` (count written), `manifest_rows`, `files_skipped` (links and path-traversal members), `duration_ms`; a `tar_members_skipped` WARN (`artifact=release_tarball`) precedes it when `files_skipped` is not 0 |
+| `release_manifest_merged` | INFO | `records_out` (rows in the unioned `master_s3_manifest.csv`) |
+| `results_promoted_to_latest` | INFO (WARN when 0) | `objects_copied` |
 | `release_config_saved` | INFO | `path` |
-| `release_step_failed` | ERROR | `step`, `error_type`, `error`, `retry_command` |
+| `release_step_failed` | ERROR | `step` (1, 2, 3, or `config` for validation before step 1), `release_tag`, `run_name`, `error_type`, `error`, `retry_command` (re-runs the whole release with its non-default `--run-name`, `--github-repo`, `--tar-source` and `--release-config`; finished work is reused); logged before the flow re-raises |
 | `release_promotion_failed` | ERROR | `release_tag`, `error_type`, `error` |
-| `release_finished` | INFO | `release_tag`, `run_name`, `duration_ms`, `force_fetch`, per-step durations |
+| `release_finished` | INFO | `release_tag`, `run_name`, `duration_ms`, `force_fetch`, `step_durations_ms` (an object keyed `extract`, `fetch`, `etl`, `promote`) |
 | `github_status_posted` | INFO | `state`, `status_code`, `log_url_attached` |
 | `github_status_skipped` | WARN | `state`, `missing_vars` (names only, never values) |
 | `github_status_failed` | WARN | `state`, then `reason=http_error`, `status_code` and `error` (response body, 500 characters), or `error_type` and `error` for other failures |

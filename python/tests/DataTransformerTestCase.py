@@ -110,6 +110,103 @@ class CellxGeneTransformerTestCase(unittest.TestCase):
             "https://doi.org/10.1126/science.adf6812",
         )
 
+    def _li_like(self, **overrides):
+        """A dataset whose collection was later revised to a journal paper."""
+        raw = {
+            "dataset_json": {
+                "citation": (
+                    "Publication: https://doi.org/10.1101/2023.11.07.566105 "
+                    "Dataset Version: https://datasets.cellxgene.cziscience.com/dv-1.h5ad "
+                    "curated and distributed by CZ CELLxGENE Discover in Collection: "
+                    "https://cellxgene.cziscience.com/collections/coll-1"
+                ),
+                "collection_version_id": "cv-1",
+                "assets": [{"url": "https://cellxgene.cziscience.com/e/dv-1.cxg/"}],
+            },
+            "collection_json": {
+                "doi": "10.1038/s41588-025-02454-1",
+                "name": "Single cell atlas",
+                "citation": None,
+                "publisher_metadata": {
+                    "authors": [{"family": "Li", "given": "Jin"}, {"family": "Wang"}, {"family": "Chen"}],
+                    "journal": "Nat Genet",
+                    "published_year": 2026,
+                },
+            },
+            "collection_version_json": {
+                "doi": "10.1101/2023.11.07.566105",
+                "name": "Single cell atlas",
+                "publisher_metadata": {
+                    "authors": [{"family": "Li", "given": "Jin"}, {"family": "Wang"}],
+                    "journal": "bioRxiv",
+                    "published_year": 2023,
+                },
+            },
+        }
+        raw.update(overrides)
+        return {"dv-1": raw}
+
+    def test_transform_uses_the_dataset_version_publication(self):
+        """A revised collection does not move a dataset version to the later paper."""
+        entry = CellxGeneTransformer().transform(self._li_like())["dv-1"]
+
+        self.assertEqual(
+            entry["Link_to_publication"], "https://doi.org/10.1101/2023.11.07.566105"
+        )
+        self.assertEqual(entry["Citation"], "Li (2023) bioRxiv")
+        self.assertEqual(entry["Journal"], "bioRxiv")
+        self.assertEqual(entry["Year"], "2023")
+        self.assertEqual(entry["Author_list"], "Li, Jin, Wang")
+
+    def test_transform_prefers_the_dataset_citation_without_a_collection_version(self):
+        """An entry cached before the version was kept still gets the dataset DOI."""
+        raw = self._li_like()
+        del raw["dv-1"]["collection_version_json"]
+
+        entry = CellxGeneTransformer().transform(raw)["dv-1"]
+
+        self.assertEqual(
+            entry["Link_to_publication"], "https://doi.org/10.1101/2023.11.07.566105"
+        )
+        # The publisher metadata can only come from the current collection.
+        self.assertEqual(entry["Journal"], "Nat Genet")
+
+    def test_transform_falls_back_to_the_collection_version_doi(self):
+        """With no publication in the dataset citation, the version's doi is used."""
+        raw = self._li_like()
+        raw["dv-1"]["dataset_json"]["citation"] = None
+
+        entry = CellxGeneTransformer().transform(raw)["dv-1"]
+
+        self.assertEqual(
+            entry["Link_to_publication"], "https://doi.org/10.1101/2023.11.07.566105"
+        )
+
+    def test_transform_falls_back_to_the_collection_citation_then_doi(self):
+        """Then the current collection's citation, then its doi."""
+        raw = self._li_like()
+        raw["dv-1"]["dataset_json"]["citation"] = None
+        raw["dv-1"]["collection_version_json"] = {}
+        raw["dv-1"]["collection_json"]["citation"] = (
+            "Publication: https://doi.org/10.1/from-citation Dataset Version: x"
+        )
+        entry = CellxGeneTransformer().transform(raw)["dv-1"]
+        self.assertEqual(entry["Link_to_publication"], "https://doi.org/10.1/from-citation")
+
+        raw["dv-1"]["collection_json"]["citation"] = None
+        entry = CellxGeneTransformer().transform(raw)["dv-1"]
+        self.assertEqual(
+            entry["Link_to_publication"], "https://doi.org/10.1038/s41588-025-02454-1"
+        )
+
+    def test_transform_keeps_the_collection_link_from_the_dataset_citation(self):
+        entry = CellxGeneTransformer().transform(self._li_like())["dv-1"]
+
+        self.assertEqual(
+            entry["Link_to_CELLxGENE_collection"],
+            "https://cellxgene.cziscience.com/collections/coll-1",
+        )
+
     def test_transform_skips_missing_collection(self):
         """Entries with no collection_json are skipped."""
         transformer = CellxGeneTransformer()

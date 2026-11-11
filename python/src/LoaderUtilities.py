@@ -849,8 +849,9 @@ def get_gene_names_and_ensembl_and_entrez_ids():
         Entrez ids
     """
     # Half the typical Ensembl release interval (about six months). Note that
-    # the GENCODE release interval is years.
-    max_fetch_age_hours = 2160.0
+    # the GENCODE release interval is years. Temporarily doubled (2160 -> 4320) while
+    # BioMart is unreachable; restore 2160 once the connection fix lands.
+    max_fetch_age_hours = 4320.0
     if GENE_MAPPING_PATH.exists():
         age_hours = (
             datetime.now(timezone.utc)

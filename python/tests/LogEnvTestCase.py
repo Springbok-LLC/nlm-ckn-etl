@@ -11,7 +11,7 @@ import sys
 import unittest
 from pathlib import Path
 from types import SimpleNamespace
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 
 import structlog
 
@@ -109,9 +109,6 @@ class LaunchEnvTestCase(unittest.TestCase):
             subprocess, "Popen", side_effect=lambda *a, **k: _FakeProc()
         )
         self.run_mock = patcher.start()
-        self.addCleanup(patcher.stop)
-        patcher = patch.object(fetch, "get_run_logger", return_value=MagicMock())
-        patcher.start()
         self.addCleanup(patcher.stop)
 
     def _env(self):
