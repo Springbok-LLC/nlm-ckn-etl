@@ -145,6 +145,9 @@ For `records_rejected` and `*_skipped` and `*_failed` lines. Lowercase
 | `not_found` | An expected input or artifact is absent |
 | `rate_limited` | The upstream returned HTTP 429 |
 | `not_in_summary` | A cached CELLxGENE dataset is named by no master dataset summary |
+| `no_ensembl_id` | A gene name has no Ensembl id |
+| `invalid_ontology_id` | A term has the placeholder ontology id `GOREL` |
+| `no_id_or_number` | A term matched no ontology id and number |
 | `missing_context` | A fetcher's input (gene data, dataset ids, an earlier source's results) was not built |
 | `archive_failed` | An older HuBMAP table could not be moved to `.archive/`, so it was deleted |
 | `http_error` | The upstream returned a non-success status; add `status_code` |
@@ -236,14 +239,18 @@ reports give the source line each name replaces.
 | `records_rejected` | WARN | `source`, `reason`, `records_rejected`, `sample` (a short list of ids); one per reason |
 | `records_flagged` | WARN | `source`, `reason`, `records_flagged`, `sample`; records kept despite a problem (a deprecated term the tuple still uses) |
 | `string_list_parse_failed` | WARN | `value` (first 80 characters), `error_type`, `error`; one per malformed cell, which `ProductionDataValidator` flags before the ETL runs |
-| `gene_mapping_loaded` | INFO | `source` (`local`, `s3`, `biomart`), `path` or `uri`, `age_hours`, `records_out`, `reason` |
+| `gene_mapping_loaded` | INFO | `source` (`local`, `s3`, `biomart`), `path` or `uri`, `age_hours` (local and S3), `records_out`, `duration_ms` (BioMart), and `reason` (`expired` or `not_found`) when an earlier source was passed over |
 | `gene_mapping_cached` | INFO | `uri` |
-| `gene_mapping_cache_failed` | WARN | `error_type`, `error` |
-| `gene_mapping_s3_error` | WARN | `error` |
-| `biomart_retry` | WARN | `attempt`, `max_retries`, `wait_s`, `error` |
-| `gene_ids_collected` | INFO | `kind` (`ensembl`, `entrez`), `records_in`, `records_out`, `records_rejected` |
+| `gene_mapping_cache_failed` | WARN | `uri`, `error_type`, `error` |
+| `gene_mapping_s3_error` | WARN | `uri`, `error_type`, `error`; the mapping is then taken from BioMart. A missing object is not an error: it is `reason=not_found` on `gene_mapping_loaded` |
+| `biomart_retry` | WARN | `attempt`, `max_retries`, `wait_s`, `error_type`, `error` |
+| `gene_ids_collected` | INFO | `kind` (`ensembl`, `entrez`), `records_in` (unique gene names), `records_out` (unique ids), `records_rejected` (names with no id) |
+| `gene_id_unmapped` | DEBUG | `reason` (`no_ensembl_id`, `unmapped_ensembl`, `unmapped_entrez`, `unmapped_name`), `id`; one per lookup miss, so off in production |
+| `ontology_term_skipped` | DEBUG | `reason` (`invalid_ontology_id`, `no_id_or_number`), `term` |
+| `tissue_terms_unknown` | WARN | `organ`, `n_terms_unknown`, `terms`; one per resolved summary |
+| `mapping_dataset_version_id_missing` | WARN | `file`, `error`; the mapping file adds no reference dataset |
 | `gene_names_collected` | INFO | `n_files`, `records_out` |
-| `uberon_root_missing` | WARN | `path` or `organ` |
+| `uberon_root_missing` | WARN | `path` (a harvester file with no root row) or `organ` (once per organ per process) |
 | `summary_organ_missing` | WARN | |
 | `summary_missing` | WARN | `results_file` |
 | `results_missing_vs_manifest` | WARN | `file`, `results_dir` |

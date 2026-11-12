@@ -8,11 +8,12 @@ from pathlib import Path
 import random
 import re
 import string
-from time import sleep
+from time import monotonic, sleep
 
 from lxml import etree
 import pandas as pd
 import scanpy as sc
+import structlog
 
 from rdflib.term import BNode
 from urllib.parse import urlparse
@@ -25,6 +26,12 @@ from UniProtIdMapper import (
 )
 
 import ProductionDataSpecification as spec
+
+_events = structlog.get_logger(__name__)
+
+# Organs already reported as having no UBERON root term, so the warning is
+# logged once per organ rather than once per dataset summary.
+_ORGANS_WITHOUT_ROOT = set()
 
 ALPHABET = string.ascii_lowercase + string.digits
 
@@ -150,12 +157,16 @@ def parse_term(term, ro=None):
         oid = match.group(1)
         if oid == "GOREL":
             # Identifier not found in the Ontology Lookup Service
-            print(f"Invalid Ontology ID: 'GOREL' for term: {term}")
+            _events.debug(
+                "ontology_term_skipped", reason="invalid_ontology_id", term=str(term)
+            )
             return None, None, None, None, None
 
         number = match.group(2)
         if len(oid) == 0 or len(number) == 0:
-            print(f"Did not match ontology id or number for term: {term}")
+            _events.debug(
+                "ontology_term_skipped", reason="no_id_or_number", term=str(term)
+            )
             return None, None, None, None, None
 
         term = f"{oid}_{number}"
@@ -298,7 +309,7 @@ def get_uberon_root_map(results_dir=None):
             if row["level"] == spec.UBERON_ROOT_LEVEL
         ]
         if not roots:
-            print(f"Warning: no root term in {path.name}")
+            _events.warning("uberon_root_missing", path=path.name)
             continue
         root_map[organ] = {"roots": roots, "terms": set(uberon_data["obo_id"])}
 
@@ -333,8 +344,9 @@ def resolve_root_uberon_term(organ, tissue_terms, root_map):
 
     if entry is None:
         root_term = spec.ORGAN_ROOT_OVERRIDES.get(organ)
-        if root_term is None:
-            print(f"Warning: no UBERON root term for organ {organ}")
+        if root_term is None and organ not in _ORGANS_WITHOUT_ROOT:
+            _ORGANS_WITHOUT_ROOT.add(organ)
+            _events.warning("uberon_root_missing", organ=organ)
         return root_term
 
     # An organ whose harvester table was built from more than one query has
@@ -347,9 +359,14 @@ def resolve_root_uberon_term(organ, tissue_terms, root_map):
         if term in root_ids:
             return term
 
-    for term in tissue_terms:
-        if term not in entry["terms"]:
-            print(f"Warning: tissue term {term} not among the terms of {organ}")
+    unknown = [term for term in tissue_terms if term not in entry["terms"]]
+    if unknown:
+        _events.warning(
+            "tissue_terms_unknown",
+            organ=organ,
+            n_terms_unknown=len(unknown),
+            terms=unknown,
+        )
 
     for obo_id, label in roots:
         if spec.normalize_organ(label) == organ:
@@ -370,7 +387,7 @@ def resolve_summary_root_uberon_term(summary_data, root_map):
 
     row = summary_data.iloc[0]
     if "organ" not in summary_data.columns or pd.isna(row["organ"]):
-        print("Warning: dataset summary has no organ, so no UBERON root term")
+        _events.warning("summary_organ_missing")
         return None
 
     tissue_terms = []
@@ -464,10 +481,7 @@ def get_dataset_file_paths(results_dir=None):
     # MappingTupleWriter simply skips results sets without a mapping.
     for p, sp in zip(nsforest_paths, summary_paths):
         if not sp:
-            print(
-                f"WARNING: No master_dataset_summary found for {p.name} — "
-                f"dataset version id lookup will fail."
-            )
+            _events.warning("summary_missing", results_file=p.name)
 
     # Cross-check against the manifest so missing results files are caught at
     # extraction time rather than discovered implicitly through absent output.
@@ -484,12 +498,17 @@ def get_dataset_file_paths(results_dir=None):
             found = {p.name for p in nsforest_paths}
             missing = expected - found
             for name in sorted(missing):
-                print(
-                    f"WARNING: {name} is listed in master_s3_manifest.csv "
-                    f"but was not found in {results_dir.name}/"
+                _events.warning(
+                    "results_missing_vs_manifest",
+                    file=name,
+                    results_dir=results_dir.name,
                 )
         except Exception as exc:
-            print(f"WARNING: Could not validate against master_s3_manifest.csv: {exc}")
+            _events.warning(
+                "manifest_check_failed",
+                error_type=type(exc).__name__,
+                error=str(exc),
+            )
 
     return {
         "nsforest_paths": nsforest_paths,
@@ -530,8 +549,10 @@ def get_reference_dataset_version_ids(results_dir=None):
         try:
             mapping_df = pd.read_csv(mapping_path, usecols=["dataset_version_id"])
         except ValueError as exc:
-            print(
-                f"WARNING: {mapping_path.name} has no dataset_version_id column: {exc}"
+            _events.warning(
+                "mapping_dataset_version_id_missing",
+                file=mapping_path.name,
+                error=str(exc),
             )
             continue
         reference_ids.update(mapping_df["dataset_version_id"].astype(str))
@@ -640,11 +661,15 @@ def get_unique_gene_names_and_ids(nsforest_paths):
     """
     gene_names = set()
     for nsforest_path in nsforest_paths:
-        print(f"Loading NSForest results from {nsforest_path}")
         nsforest_results = load_results(nsforest_path).sort_values(
             "clusterName", ignore_index=True
         )
         gene_names |= set(collect_unique_gene_names(nsforest_results))
+    _events.info(
+        "gene_names_collected",
+        n_files=len(nsforest_paths),
+        records_out=len(gene_names),
+    )
 
     gene_ensembl_ids = collect_unique_gene_ensembl_ids(gene_names)
     gene_entrez_ids = collect_unique_gene_entrez_ids(gene_names)
@@ -804,9 +829,9 @@ def load_results(results_path):
     """
     results = pd.read_csv(results_path)
     if "uuid" not in results.columns:
-        print(f"Add UUID column to results CSV file {results_path.name}")
         results["uuid"] = [get_uuid() for idx in results.index]
         results.to_csv(results_path)
+        _events.info("results_uuid_added", file=results_path.name, rows=len(results))
     return results
 
 
@@ -852,24 +877,29 @@ def get_gene_names_and_ensembl_and_entrez_ids():
     # the GENCODE release interval is years. Temporarily doubled (2160 -> 4320) while
     # BioMart is unreachable; restore 2160 once the connection fix lands.
     max_fetch_age_hours = 4320.0
+    s3_uri = f"s3://{_S3_BUCKET}/{_S3_GENE_MAPPING_KEY}"
+    # Why the mapping was not taken from the local file, for the line that
+    # reports where it did come from.
+    reason = {}
     if GENE_MAPPING_PATH.exists():
         age_hours = (
             datetime.now(timezone.utc)
             - datetime.fromtimestamp(GENE_MAPPING_PATH.stat().st_mtime, tz=timezone.utc)
         ).total_seconds() / 3600
         if age_hours <= max_fetch_age_hours:
-            print(
-                f"Loading gene mapping from {GENE_MAPPING_PATH} ({age_hours:.1f}h old)"
-            )
             gene_names_and_ids = pd.read_csv(GENE_MAPPING_PATH, index_col=0)
             gene_names_and_ids["entrezgene_id"] = gene_names_and_ids[
                 "entrezgene_id"
             ].astype(str)
+            _events.info(
+                "gene_mapping_loaded",
+                source="local",
+                path=str(GENE_MAPPING_PATH),
+                age_hours=round(age_hours, 1),
+                records_out=len(gene_names_and_ids),
+            )
             return gene_names_and_ids
-        print(
-            f"Local gene mapping is {age_hours:.1f}h old"
-            f" (threshold: {max_fetch_age_hours}h) — re-fetching"
-        )
+        reason = {"reason": "expired"}
     if _S3_BUCKET:
         try:
             s3 = boto3.client("s3")
@@ -883,37 +913,39 @@ def get_gene_names_and_ensembl_and_entrez_ids():
                 s3.download_file(
                     _S3_BUCKET, _S3_GENE_MAPPING_KEY, str(GENE_MAPPING_PATH)
                 )
-                print(
-                    f"Loaded gene mapping from s3://{_S3_BUCKET}/{_S3_GENE_MAPPING_KEY}"
-                    f" ({age_hours:.1f}h old)"
-                )
                 gene_names_and_ids = pd.read_csv(GENE_MAPPING_PATH, index_col=0)
                 gene_names_and_ids["entrezgene_id"] = gene_names_and_ids[
                     "entrezgene_id"
                 ].astype(str)
+                _events.info(
+                    "gene_mapping_loaded",
+                    source="s3",
+                    uri=s3_uri,
+                    age_hours=round(age_hours, 1),
+                    records_out=len(gene_names_and_ids),
+                    **reason,
+                )
                 return gene_names_and_ids
-            print(
-                f"Gene mapping cache is {age_hours:.1f}h old"
-                f" (threshold: {max_fetch_age_hours}h) — re-fetching"
-            )
+            reason = {"reason": "expired"}
         except (NoCredentialsError, PartialCredentialsError) as exc:
-            print(
-                f"WARNING: S3 credential error for"
-                f" s3://{_S3_BUCKET}/{_S3_GENE_MAPPING_KEY}: {exc}; falling back to source"
+            _events.warning(
+                "gene_mapping_s3_error",
+                uri=s3_uri,
+                error_type=type(exc).__name__,
+                error=str(exc),
             )
         except ClientError as exc:
             if exc.response["Error"]["Code"] not in ("404", "NoSuchKey"):
-                print(
-                    f"WARNING: S3 head_object failed for"
-                    f" s3://{_S3_BUCKET}/{_S3_GENE_MAPPING_KEY}: {exc}; falling back to source"
+                _events.warning(
+                    "gene_mapping_s3_error",
+                    uri=s3_uri,
+                    error_type=type(exc).__name__,
+                    error=str(exc),
                 )
             else:
-                print(
-                    f"Gene mapping not in S3 (s3://{_S3_BUCKET}/{_S3_GENE_MAPPING_KEY});"
-                    " fetching from source"
-                )
+                reason = {"reason": "not_found"}
 
-    print("Getting gene names, and Ensembl and Entrez ids from BioMart")
+    biomart_started = monotonic()
     biomart_retries = 3
     biomart_retry_delay = 30  # seconds
     for attempt in range(1, biomart_retries + 1):
@@ -930,9 +962,13 @@ def get_gene_names_and_ensembl_and_entrez_ids():
             break
         except Exception as exc:
             if attempt < biomart_retries:
-                print(
-                    f"BioMart query failed (attempt {attempt}/{biomart_retries}): {exc}. "
-                    f"Retrying in {biomart_retry_delay}s..."
+                _events.warning(
+                    "biomart_retry",
+                    attempt=attempt,
+                    max_retries=biomart_retries,
+                    wait_s=biomart_retry_delay,
+                    error_type=type(exc).__name__,
+                    error=str(exc),
                 )
                 sleep(biomart_retry_delay)
             else:
@@ -942,16 +978,26 @@ def get_gene_names_and_ensembl_and_entrez_ids():
     )
     BIOMART_DIRPATH.mkdir(parents=True, exist_ok=True)
     gene_names_and_ids.to_csv(GENE_MAPPING_PATH)
+    _events.info(
+        "gene_mapping_loaded",
+        source="biomart",
+        path=str(GENE_MAPPING_PATH),
+        records_out=len(gene_names_and_ids),
+        duration_ms=round((monotonic() - biomart_started) * 1000),
+        **reason,
+    )
     if _S3_BUCKET:
         try:
             boto3.client("s3").upload_file(
                 str(GENE_MAPPING_PATH), _S3_BUCKET, _S3_GENE_MAPPING_KEY
             )
-            print(f"Cached gene mapping to s3://{_S3_BUCKET}/{_S3_GENE_MAPPING_KEY}")
+            _events.info("gene_mapping_cached", uri=s3_uri)
         except Exception as exc:
-            print(
-                f"WARNING: Failed to cache gene mapping to"
-                f" s3://{_S3_BUCKET}/{_S3_GENE_MAPPING_KEY}: {exc}"
+            _events.warning(
+                "gene_mapping_cache_failed",
+                uri=s3_uri,
+                error_type=type(exc).__name__,
+                error=str(exc),
             )
     return gene_names_and_ids
 
@@ -968,7 +1014,6 @@ def get_gene_name_to_ensembl_ids_map():
     gene_name_to_ensembl_ids : pd.DataFrame
         DataFrame indexed by gene name containing gene Ensembl id
     """
-    print("Creating gene name to Ensembl ids map")
     gene_names_and_ids = get_gene_names_and_ensembl_and_entrez_ids()
     gene_name_to_ensembl_ids = gene_names_and_ids.set_index("external_gene_name")
     return gene_name_to_ensembl_ids
@@ -995,9 +1040,8 @@ def map_gene_name_to_ensembl_ids(name, gene_name_to_ensembl_ids):
             ids = ids.to_list()
         else:
             ids = [ids]
-        # print(f"Mapped gene name {name} to Ensembl ids {ids}")
     else:
-        print(f"Could not find gene Ensembl ids for gene name: {name}")
+        _events.debug("gene_id_unmapped", reason="no_ensembl_id", id=name)
         ids = []
     return ids
 
@@ -1014,7 +1058,6 @@ def get_gene_ensembl_id_to_names_map():
     gene_ensembl_id_to_names : pd.DataFrame
         DataFrame indexed by gene Ensembl ids containing gene names
     """
-    print("Creating gene Ensembl id to names map")
     gene_names_and_ids = get_gene_names_and_ensembl_and_entrez_ids()
     gene_ensembl_id_to_names = gene_names_and_ids.set_index("ensembl_gene_id")
     return gene_ensembl_id_to_names
@@ -1041,9 +1084,8 @@ def map_gene_ensembl_id_to_names(gid, gene_ensembl_id_to_names):
             names = names.to_list()
         else:
             names = [names]
-        # print(f"Mapped gene Ensembl id {gid} to names {names}")
     else:
-        print(f"Could not find gene names for gene Ensembl id: {gid}")
+        _events.debug("gene_id_unmapped", reason="unmapped_ensembl", id=gid)
         names = []
     return names
 
@@ -1060,7 +1102,6 @@ def get_gene_name_to_entrez_ids_map():
     gene_name_to_entrez_ids : pd.DataFrame
         DataFrame indexed by gene name containing gene Entrez id
     """
-    print("Creating gene name to Entrez ids map")
     gene_names_and_ids = get_gene_names_and_ensembl_and_entrez_ids()
     gene_name_to_entrez_ids = gene_names_and_ids.set_index("external_gene_name")
     return gene_name_to_entrez_ids
@@ -1087,9 +1128,8 @@ def map_gene_name_to_entrez_ids(name, gene_name_to_entrez_ids):
             ids = ids.to_list()
         else:
             ids = [ids]
-        # print(f"Mapped gene name {name} to Entrez ids {ids}")
     else:
-        print(f"Could not find gene Entrez ids for gene name: {name}")
+        _events.debug("gene_id_unmapped", reason="unmapped_entrez", id=name)
         ids = []
     return ids
 
@@ -1106,7 +1146,6 @@ def get_gene_entrez_id_to_names_map():
     gene_entrez_id_to_names : pd.DataFrame
         DataFrame indexed by gene Entrez ids containing gene names
     """
-    print("Creating gene Entrez id to names map")
     gene_names_and_ids = get_gene_names_and_ensembl_and_entrez_ids()
     gene_entrez_id_to_names = gene_names_and_ids.set_index("entrezgene_id")
     return gene_entrez_id_to_names
@@ -1133,9 +1172,8 @@ def map_gene_entrez_id_to_names(gid, gene_entrez_id_to_names):
             names = names.to_list()
         else:
             names = [names]
-        # print(f"Mapped gene Entrez id {gid} to names {names}")
     else:
-        print(f"Could not find gene names for gene Entrez id: {gid}")
+        _events.debug("gene_id_unmapped", reason="unmapped_name", id=gid)
         names = []
     return names
 
@@ -1342,6 +1380,7 @@ def collect_unique_gene_ensembl_ids(gene_names):
         List of unique gene Ensembl ids
     """
     gene_ensembl_ids = set()
+    n_rejected = 0
 
     gene_names = set(gene_names)
     gene_name_to_ensembl_ids = get_gene_name_to_ensembl_ids_map()
@@ -1358,8 +1397,14 @@ def collect_unique_gene_ensembl_ids(gene_names):
                 gene_ensembl_id = _gene_ensembl_ids[0]
         if gene_ensembl_id:
             gene_ensembl_ids.add(gene_ensembl_id)
-    print(
-        f"Collected {len(gene_ensembl_ids)} unique Ensembl gene ids for {len(gene_names)} unique gene names"
+        else:
+            n_rejected += 1
+    _events.info(
+        "gene_ids_collected",
+        kind="ensembl",
+        records_in=len(gene_names),
+        records_out=len(gene_ensembl_ids),
+        records_rejected=n_rejected,
     )
 
     return sorted(gene_ensembl_ids)
@@ -1384,6 +1429,7 @@ def collect_unique_gene_entrez_ids(gene_names):
         List of unique gene Entrez ids
     """
     gene_entrez_ids = set()
+    n_rejected = 0
 
     gene_names = set(gene_names)
     gene_ensembl_id_to_names = get_gene_ensembl_id_to_names_map()
@@ -1407,8 +1453,14 @@ def collect_unique_gene_entrez_ids(gene_names):
             gene_entrez_id = _gene_entrez_ids[0]
         if gene_entrez_id:
             gene_entrez_ids.add(gene_entrez_id)
-    print(
-        f"Collected {len(gene_entrez_ids)} unique Entrez gene ids for {len(gene_names)} unique gene names"
+        else:
+            n_rejected += 1
+    _events.info(
+        "gene_ids_collected",
+        kind="entrez",
+        records_in=len(gene_names),
+        records_out=len(gene_entrez_ids),
+        records_rejected=n_rejected,
     )
 
     return sorted(gene_entrez_ids)
@@ -1426,7 +1478,6 @@ def get_efo_to_mondo_map():
     efo2mondo : pd.DataFrame
         DataFrame indexed by EFO containing MONDO term
     """
-    print("Creating EFO to MONDO term map")
     mondo_efo_mappings_name = (
         Path(__file__).parents[2] / "data" / "mondo_efo_mappings.csv"
     )
@@ -1548,7 +1599,6 @@ def get_chembl_to_pubchem_map():
     chembl2pubchem : pd.DataFrame
         DataFrame indexed by ChEMBL id containing PubChem id
     """
-    print("Creating ChEMBL to PubChem id map")
     src1src22_path = Path(__file__).parents[2] / "data" / "src1src22.csv"
     chembl2pubchem = pd.read_csv(src1src22_path)
     chembl2pubchem = chembl2pubchem.set_index("ChEMBL")
