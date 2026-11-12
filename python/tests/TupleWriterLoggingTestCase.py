@@ -51,6 +51,18 @@ class RejectTallyTestCase(unittest.TestCase):
         self.assertTrue(all(e["log_level"] == "warning" for e in logs))
         self.assertEqual(tally.n_rejected, 9)
 
+    def test_storage_is_bounded_but_counts_are_exact(self):
+        tally = RejectTally("gene")
+        for i in range(1000):
+            tally.reject("no_data", str(i))
+            tally.flag("deprecated_term", str(i))
+        self.assertEqual(len(tally._rejected["no_data"]), utilities.REJECT_SAMPLE_SIZE)
+        self.assertEqual(len(tally._flagged["deprecated_term"]), utilities.REJECT_SAMPLE_SIZE)
+        self.assertEqual(tally.n_rejected, 1000)
+        with capture_logs() as logs:
+            tally.log()
+        self.assertEqual(_one(logs, "records_flagged")["records_flagged"], 1000)
+
     def test_nothing_is_logged_when_nothing_was_recorded(self):
         with capture_logs() as logs:
             RejectTally("gene").log()
@@ -208,6 +220,26 @@ class WriterRejectsTestCase(unittest.TestCase):
 
 
 class WriterMainLoggingTestCase(unittest.TestCase):
+    def test_rejects_are_logged_when_create_tuples_raises(self):
+        def create_tuples(results, rejects):
+            rejects.reject("no_data", "P1")
+            raise RuntimeError("boom")
+
+        with tempfile.TemporaryDirectory() as d:
+            external = Path(d) / "external"
+            external.mkdir()
+            (external / "uniprot_transformed.json").write_text(
+                json.dumps({"protein_accessions": ["P1"], "P1": {}})
+            )
+            run = SimpleNamespace(external_dir=external)
+            with patch.object(UniProtTupleWriter, "get_current_run", return_value=run), patch.object(
+                UniProtTupleWriter, "create_tuples", create_tuples
+            ):
+                with capture_logs() as logs:
+                    with self.assertRaises(RuntimeError):
+                        UniProtTupleWriter.main()
+        self.assertEqual(_one(logs, "records_rejected")["sample"], ["P1"])
+
     def test_uniprot_main_logs_start_and_write(self):
         with tempfile.TemporaryDirectory() as d:
             external = Path(d) / "external"

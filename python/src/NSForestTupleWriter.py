@@ -625,16 +625,18 @@ def main() -> int:
             root_uberon_term,
             reference_dataset_version_ids,
         )
+        n_dataset = 0
+        if tuples:
+            output_name = nsforest_path.name.replace(".csv", "-nsforest.json")
+            n_dataset = write_tuples(tuples, get_tuples_dir() / output_name)
+            n_written += n_dataset
         _events.info(
             "tuple_writer_dataset",
             source="nsforest",
             file=nsforest_path.name,
             records_in=len(nsforest_results),
-            tuples_out=len(tuples),
+            tuples_out=n_dataset,
         )
-        if tuples:
-            output_name = nsforest_path.name.replace(".csv", "-nsforest.json")
-            n_written += write_tuples(tuples, get_tuples_dir() / output_name)
     return n_written
 
 

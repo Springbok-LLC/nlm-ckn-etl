@@ -101,8 +101,10 @@ def main() -> int:
     )
 
     rejects = RejectTally("uniprot")
-    tuples = create_tuples(uniprot_results, rejects)
-    rejects.log()
+    try:
+        tuples = create_tuples(uniprot_results, rejects)
+    finally:
+        rejects.log()
     if tuples:
         return write_tuples(tuples, get_tuples_dir() / "uniprot.json")
     return 0
