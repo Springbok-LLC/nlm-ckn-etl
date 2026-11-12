@@ -96,6 +96,11 @@ class FetchLoopLoggingTestCase(unittest.TestCase):
         batch = _one(logs, "fetch_batch_done")
         self.assertEqual((batch["n_ok"], batch["n_failed"]), (1, 1))
 
+    def test_duplicate_failing_ids_do_not_make_n_ok_negative(self):
+        fetcher = _Fetcher(errors={"b": RuntimeError("boom")})
+        batch = _one(self._run(fetcher, ["b", "b"]), "fetch_batch_done")
+        self.assertEqual((batch["n_ok"], batch["n_failed"]), (0, 2))
+
     def test_unexpected_error_is_an_error_event(self):
         fetcher = _Fetcher(errors={"a": TypeError("odd")})
         logs = self._run(fetcher, ["a"])
@@ -167,7 +172,9 @@ class HuBMAPLoggingTestCase(unittest.TestCase):
             (event["organ"], event["reason"], event["status_code"], event["log_level"]),
             ("heart", "http_error", 500, "error"),
         )
-        self.assertEqual(_one(logs, "fetch_finished")["records_rejected"], 1)
+        done = _one(logs, "fetch_finished")
+        self.assertEqual(done["records_rejected"], 1)
+        self.assertEqual(done["outcome"], "partial")
 
     def test_older_version_removed_when_archive_fails(self):
         with patch.object(DataFetcher.shutil, "move", side_effect=OSError("no")):
