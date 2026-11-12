@@ -6,6 +6,7 @@ annotations from CELLxGENE curation API metadata.
 
 import json
 
+import structlog
 from ckn_schema.pydantic.ckn_schema import CellSetDataset, Publication
 from rdflib.term import Literal, URIRef
 
@@ -16,9 +17,11 @@ from LoaderUtilities import (
     get_dataset_organs_map,
     get_reference_dataset_version_ids,
 )
+from logging_setup import configure_logging
 
 from TupleWriterUtilities import (
     ASSOCIATION_CLASSES,
+    RejectTally,
     association_to_tuples,
     cell_set_dataset_identifier,
     cell_set_dataset_name_tuples,
@@ -26,14 +29,18 @@ from TupleWriterUtilities import (
     get_tuples_dir,
     normalize_doi,
     remove_protocols,
+    require_input,
     write_tuples,
 )
+
+_events = structlog.get_logger(__name__)
 
 
 def create_tuples(
     cellxgene_results: dict,
     dataset_organs: dict | None = None,
     reference_dataset_version_ids: set[str] | None = None,
+    rejects: RejectTally | None = None,
 ) -> list[tuple]:
     """Create tuples from CELLxGENE metadata.
 
@@ -74,6 +81,7 @@ def create_tuples(
         List of 3-element and 5-element RDF tuples.
     """
     tuples = []
+    rejects = rejects if rejects is not None else RejectTally("cellxgene")
     dataset_organs = dataset_organs or {}
     reference_dataset_version_ids = reference_dataset_version_ids or set()
 
@@ -82,10 +90,7 @@ def create_tuples(
         # Skip cached datasets that no summary mentions (Springbok-LLC/
         # nlm-ckn-etl#171).
         if dataset_organs and dataset_version_id not in dataset_organs:
-            print(
-                f"Skipping CELLxGENE dataset {dataset_version_id}: "
-                "not in any master dataset summary"
-            )
+            rejects.reject("not_in_summary", dataset_version_id)
             continue
         # One vertex per organ the source was filtered for; the source id
         # alone when there is no organ, so the two writers agree on the key.
@@ -157,28 +162,41 @@ def create_tuples(
     return tuples
 
 
-def main():
+def main() -> int:
     """Run CELLxGENE tuple writer.
 
     Loads transformed CELLxGENE metadata and creates tuples for each
     dataset. Writes output to a single JSON tuple file.
+
+    Returns
+    -------
+    int
+        The number of tuples written
     """
     cellxgene_path = get_current_run().external_dir / "cellxgene_transformed.json"
-    if not cellxgene_path.exists():
-        raise FileNotFoundError(f"CELLxGENE results not found at {cellxgene_path}")
+    require_input(cellxgene_path, "CELLxGENE results", "cellxgene_transformed")
 
-    print(f"Creating CELLxGENE tuples from {cellxgene_path}")
     with open(cellxgene_path, "r") as fp:
         cellxgene_results = json.load(fp)
+    _events.info(
+        "tuple_writer_started",
+        source="cellxgene",
+        input_path=str(cellxgene_path),
+        records_in=len(cellxgene_results),
+    )
 
     dataset_organs = get_dataset_organs_map()
     reference_dataset_version_ids = get_reference_dataset_version_ids()
+    rejects = RejectTally("cellxgene")
     tuples = create_tuples(
-        cellxgene_results, dataset_organs, reference_dataset_version_ids
+        cellxgene_results, dataset_organs, reference_dataset_version_ids, rejects
     )
+    rejects.log()
     if tuples:
-        write_tuples(tuples, get_tuples_dir() / "cellxgene.json")
+        return write_tuples(tuples, get_tuples_dir() / "cellxgene.json")
+    return 0
 
 
 if __name__ == "__main__":
+    configure_logging("etl-pipeline")
     main()

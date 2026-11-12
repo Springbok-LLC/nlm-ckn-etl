@@ -6,6 +6,7 @@ E-Utilities gene data.
 
 import json
 
+import structlog
 from ckn_schema.pydantic.ckn_schema import Gene, Protein
 
 from LoaderUtilities import (
@@ -13,17 +14,24 @@ from LoaderUtilities import (
     get_gene_entrez_id_to_names_map,
     map_gene_entrez_id_to_names,
 )
+from logging_setup import configure_logging
 
 from TupleWriterUtilities import (
     ASSOCIATION_CLASSES,
+    RejectTally,
     association_to_tuples,
     entity_to_annotation_triples,
     get_tuples_dir,
+    require_input,
     write_tuples,
 )
 
+_events = structlog.get_logger(__name__)
 
-def create_tuples(gene_results: dict) -> list[tuple]:
+
+def create_tuples(
+    gene_results: dict, rejects: RejectTally | None = None
+) -> list[tuple]:
     """Create tuples from NCBI Gene results.
 
     Produces:
@@ -37,6 +45,8 @@ def create_tuples(gene_results: dict) -> list[tuple]:
         id, with a 'gene_entrez_ids' key listing all ids. Each gene
         entry contains fields such as Gene_ID, Official_full_name,
         Gene_type, UniProt_ID, Also_known_as, Summary, etc.
+    rejects : RejectTally, optional
+        Collects the genes with no data or no name; the caller logs it.
 
     Returns
     -------
@@ -44,18 +54,19 @@ def create_tuples(gene_results: dict) -> list[tuple]:
         List of 3-element and 5-element RDF tuples.
     """
     tuples = []
+    rejects = rejects if rejects is not None else RejectTally("gene")
 
     gene_entrez_id_to_names = get_gene_entrez_id_to_names_map()
     gene_entrez_ids = gene_results.get("gene_entrez_ids", [])
 
     for gene_entrez_id in gene_entrez_ids:
         if not gene_results.get(gene_entrez_id):
-            print(f"Warning: No data for gene Entrez ID {gene_entrez_id}")
+            rejects.reject("no_data", gene_entrez_id)
             continue
 
         gene_name = map_gene_entrez_id_to_names(gene_entrez_id, gene_entrez_id_to_names)
         if not gene_name:
-            print(f"Warning: Cannot map gene Entrez ID {gene_entrez_id} to name")
+            rejects.reject("unmapped_name", gene_entrez_id)
             continue
         gene_name = gene_name[0]
 
@@ -105,25 +116,38 @@ def create_tuples(gene_results: dict) -> list[tuple]:
     return tuples
 
 
-def main():
+def main() -> int:
     """Run Gene tuple writer.
 
     Loads transformed NCBI Gene results and creates tuples for each
     gene and its associated protein. Writes output to a single JSON
     tuple file.
+
+    Returns
+    -------
+    int
+        The number of tuples written
     """
     gene_path = get_current_run().external_dir / "gene_transformed.json"
-    if not gene_path.exists():
-        raise FileNotFoundError(f"Gene results not found at {gene_path}")
+    require_input(gene_path, "Gene results", "gene_transformed")
 
-    print(f"Creating Gene tuples from {gene_path}")
     with open(gene_path, "r") as fp:
         gene_results = json.load(fp)
+    _events.info(
+        "tuple_writer_started",
+        source="gene",
+        input_path=str(gene_path),
+        records_in=len(gene_results.get("gene_entrez_ids", [])),
+    )
 
-    tuples = create_tuples(gene_results)
+    rejects = RejectTally("gene")
+    tuples = create_tuples(gene_results, rejects)
+    rejects.log()
     if tuples:
-        write_tuples(tuples, get_tuples_dir() / "gene.json")
+        return write_tuples(tuples, get_tuples_dir() / "gene.json")
+    return 0
 
 
 if __name__ == "__main__":
+    configure_logging("etl-pipeline")
     main()

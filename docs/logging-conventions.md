@@ -144,6 +144,7 @@ For `records_rejected` and `*_skipped` and `*_failed` lines. Lowercase
 | `missing_sentinel` | A cache file lacks its sentinel key |
 | `not_found` | An expected input or artifact is absent |
 | `rate_limited` | The upstream returned HTTP 429 |
+| `not_in_summary` | A cached CELLxGENE dataset is named by no master dataset summary |
 | `missing_context` | A fetcher's input (gene data, dataset ids, an earlier source's results) was not built |
 | `archive_failed` | An older HuBMAP table could not be moved to `.archive/`, so it was deleted |
 | `http_error` | The upstream returned a non-success status; add `status_code` |
@@ -228,12 +229,13 @@ reports give the source line each name replaces.
 | `gene_parse_failed` | WARN | `gene_id`, `error_type`, `error` |
 | `no_h5ad_asset` | WARN | `dataset_version_id`, `filetypes`; the dataset's CELLxGENE link is left unset |
 | `tuple_writer_started` | INFO | `source`, `input_path`, `records_in` |
-| `tuple_writer_dataset` | INFO | `file`, `records_in`, `records_rejected`, `tuples_out` |
-| `tuple_writers_finished` | INFO | `duration_ms`, `tuples_out` per writer |
-| `input_missing` | ERROR | `input`, `path` (the writer then raises) |
+| `tuple_writer_dataset` | INFO | `source` (`nsforest`, `mapping`), `file`, `records_in`, `tuples_out`, and `records_rejected` where the writer counts them (mapping); one per results file |
+| `tuple_writers_finished` | INFO | `duration_ms`, `tuples_out` (an object keyed by `source`: the tuples each writer wrote) |
+| `input_missing` | ERROR | `input` (the file's name without `.json`, e.g. `gene_transformed`), `path` (the writer then raises) |
 | `tuples_written` | INFO | `output_path`, `records_out`, `records_rejected`, `deduped_removed`, `duration_ms` |
-| `records_rejected` | WARN | `source`, `reason`, `records_rejected`, `sample` (a short list of ids) |
-| `string_list_parse_failed` | WARN | `value`, `error_type`, `error`; aggregate to a count |
+| `records_rejected` | WARN | `source`, `reason`, `records_rejected`, `sample` (a short list of ids); one per reason |
+| `records_flagged` | WARN | `source`, `reason`, `records_flagged`, `sample`; records kept despite a problem (a deprecated term the tuple still uses) |
+| `string_list_parse_failed` | WARN | `value` (first 80 characters), `error_type`, `error`; one per malformed cell, which `ProductionDataValidator` flags before the ETL runs |
 | `gene_mapping_loaded` | INFO | `source` (`local`, `s3`, `biomart`), `path` or `uri`, `age_hours`, `records_out`, `reason` |
 | `gene_mapping_cached` | INFO | `uri` |
 | `gene_mapping_cache_failed` | WARN | `error_type`, `error` |
