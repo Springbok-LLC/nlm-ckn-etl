@@ -330,7 +330,7 @@ reports give the source line each name replaces.
 | `external_cache_promoted` | INFO | `objects_copied`, `src_prefix`, `duration_ms`; WARN when 0 |
 | `release_dir_validated` | INFO | `records_out` (NSForest files) |
 | `tuple_files_validated` | INFO | `records_out` (files), `bytes` |
-| `tuple_file_empty` | WARN | `file`, `bytes` (2 or fewer: empty, or an empty JSON list) |
+| `tuple_file_empty` | WARN | `file`, `bytes` (an empty file, an empty JSON list, or an empty `tuples` array) |
 | `production_promotion_finished` | INFO | `run_name`, `objects`, `bytes`, `duration_ms` |
 | `release_started` | INFO | `release_tag`, `run_name`, `github_repo`, `tar_source`, `release_config` (path or URL), `max_fetch_age_hours`, `fetch_mode`, `refresh_sources`, `java_opts`, `hubmap_url_count`, `s3_enabled`; once per run, and only on Batch, `batch_job_id` and `cloudwatch_log_url` (the log group, not a stream) |
 | `release_tarball_fetched` | INFO | `source_kind` (`https`, `s3`, `local`), `uri` or `path`, `bytes`, `duration_ms` |

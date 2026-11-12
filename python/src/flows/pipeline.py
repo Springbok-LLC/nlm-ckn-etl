@@ -115,7 +115,6 @@ from _common import (
     _get_arangodb_id,
     _get_or_create_arango_password,
     _jar_key,
-    _log_env,
     _parse_s3_url,
     _run_logged,
     _run_python_script,
@@ -132,6 +131,8 @@ _events = structlog.get_logger(__name__)
 
 # arangodump/arangorestore output kept at DEBUG is cut to this many characters.
 _MAX_TOOL_OUTPUT = 32_768
+# Larger than ``{"tuples": []}`` as write_tuples indents it (22 bytes).
+_EMPTY_TUPLE_FILE_MAX_BYTES = 256
 _ERROR_LINE = re.compile(r"\bERROR\b")
 
 
@@ -202,6 +203,14 @@ def _log_source_versions(run_name: str) -> None:
             error=str(exc),
         )
         return
+    if not isinstance(status, dict):
+        _events.warning(
+            "fetch_status_unreadable",
+            path=status_path.name,
+            error_type="TypeError",
+            error=f"expected a JSON object, got {type(status).__name__}",
+        )
+        return
     for source, entry in status.items():
         if isinstance(entry, dict) and entry.get("source_version"):
             _events.info(
@@ -209,6 +218,7 @@ def _log_source_versions(run_name: str) -> None:
                 source=source,
                 source_version=entry["source_version"],
             )
+
 
 # ── Tasks ──────────────────────────────────────────────────────────────────
 
@@ -1102,12 +1112,32 @@ def validate_tuple_files(run_name: str = "") -> None:
         )
     sizes = {f.name: f.stat().st_size for f in json_files}
     for name, size in sizes.items():
-        # An empty file or an empty JSON list: a writer ran but produced no rows.
-        if size <= 2:
+        # A writer ran but produced no rows: an empty file, an empty JSON list,
+        # or the ``{"tuples": []}`` object that write_tuples writes.
+        if _tuple_file_is_empty(tuples_dir / name, size):
             _events.warning("tuple_file_empty", file=name, bytes=size)
     _events.info(
         "tuple_files_validated", records_out=len(json_files), bytes=sum(sizes.values())
     )
+
+
+def _tuple_file_is_empty(path: Path, size: int) -> bool:
+    """Whether a tuple file holds no tuples.
+
+    Only files small enough to be empty are parsed, so a large file is never
+    read just to be counted.
+    """
+    if size <= 2:
+        return True
+    if size > _EMPTY_TUPLE_FILE_MAX_BYTES:
+        return False
+    try:
+        data = json.loads(path.read_text())
+    except (OSError, ValueError):
+        return False
+    if isinstance(data, dict):
+        return data.get("tuples") == []
+    return data == []
 
 
 @task(name="sync-baseline-dump-to-s3", log_prints=True)

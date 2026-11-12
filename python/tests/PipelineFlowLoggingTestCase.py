@@ -69,6 +69,13 @@ class ValidationTestCase(unittest.TestCase):
         self.assertEqual(warned["empty.json"]["log_level"], "warning")
         self.assertEqual(_one(logs, "tuple_files_validated")["records_out"], 3)
 
+    def test_empty_tuples_object_warns(self):
+        # What TupleWriterUtilities.write_tuples writes when it has no tuples.
+        empty = json.dumps({"tuples": []}, indent=4)
+        full = json.dumps({"tuples": [{"a": 1}]}, indent=4)
+        logs = self._tuples({"empty.json": empty, "full.json": full})
+        self.assertEqual({e["file"] for e in _all(logs, "tuple_file_empty")}, {"empty.json"})
+
 
 class ArtifactSyncTestCase(unittest.TestCase):
     def setUp(self):
@@ -390,6 +397,16 @@ class HelpersTestCase(unittest.TestCase):
                 with capture_logs() as logs:
                     pipeline._log_source_versions("r")
         self.assertEqual(_one(logs, "fetch_status_unreadable")["error_type"], "JSONDecodeError")
+
+    def test_non_object_status_warns(self):
+        with tempfile.TemporaryDirectory() as d:
+            ext = Path(d)
+            (ext / "fetch-status.json").write_text("[]")
+            with patch.object(pipeline, "_external_dir", return_value=ext):
+                with capture_logs() as logs:
+                    pipeline._log_source_versions("r")
+        self.assertEqual(_one(logs, "fetch_status_unreadable")["error_type"], "TypeError")
+        self.assertEqual(_all(logs, "source_versions_resolved"), [])
 
     def test_dir_bytes(self):
         with tempfile.TemporaryDirectory() as d:
