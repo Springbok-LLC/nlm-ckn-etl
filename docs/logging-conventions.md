@@ -221,7 +221,9 @@ reports give the source line each name replaces.
 | `gene_search_empty` | WARN | `name` |
 | `gene_search_failed` | WARN | `name`, `reason=http_error`, `status_code` |
 | `gene_fetch_failed` | WARN | `gene_id`, `reason=http_error`, `status_code` |
-| `uniprot_http_error` | ERROR | `url`, `status_code`, `body` |
+| `uniprot_http_error` | ERROR | `url`, `status_code`, `body` (first 500 characters of the response text); the error is then re-raised |
+| `idmapping_job_pending` | DEBUG | `job_id`, `job_status`, `wait_s`; one per poll of a UniProt id mapping job |
+| `idmapping_batch_fetched` | DEBUG | `n_fetched`, `total`; paging progress |
 
 ### Transform and tuple writers
 
@@ -369,8 +371,10 @@ reports give the source line each name replaces.
 | `validation_finding` | ERROR or WARN, by finding severity | `check`, `path`, `detail` |
 | `validation_finished` | INFO | `n_errors`, `n_warnings`, `data_dir`, `exit_code`, `duration_ms` |
 
-`ProductionDataValidator --json` is machine output, not a log: keep it on
-stdout and send log lines to stderr for that invocation.
+`ProductionDataValidator --json` is machine output, not a log: it stays on
+stdout, and the validator sends its log lines to stderr on every invocation. The
+validator is run by hand, so it defaults to `LOG_FORMAT=console` (readable
+lines); set `LOG_FORMAT=json` for JSON lines.
 
 ## 7. Open points
 

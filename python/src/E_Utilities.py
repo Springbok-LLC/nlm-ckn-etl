@@ -6,7 +6,10 @@ from time import sleep
 from urllib import parse
 
 import requests
+import structlog
 from lxml import etree
+
+_events = structlog.get_logger(__name__)
 
 EUTILS_URL = "https://eutils.ncbi.nlm.nih.gov/entrez/eutils/"
 NCBI_EMAIL = os.environ.get("NCBI_EMAIL")
@@ -144,7 +147,6 @@ def get_data_for_pmid(pmid, do_write=False):
     data = {}
 
     # Fetch from PubMed
-    print(f"Getting data for PMID: '{pmid}'")
     fetch_url = EUTILS_URL + "efetch.fcgi"
     params = {
         "db": "pubmed",
@@ -180,7 +182,12 @@ def get_data_for_pmid(pmid, do_write=False):
             data["Year"] = find_names_or_none(root, ["ArticleDate", "Year"])
             data["Citation"] = f"{data['Author']} ({data['Year']}) {data['Journal']}"
     else:
-        print(f"Encountered error in fetching from PubMed: {response.status_code}")
+        _events.warning(
+            "pubmed_fetch_failed",
+            pmid=pmid,
+            reason="http_error",
+            status_code=response.status_code,
+        )
 
     return data
 
@@ -205,7 +212,6 @@ def find_gene_id_for_gene_name(name, do_write=False):
     gene_id = None
 
     # Search Gene
-    print(f"Searching Gene for name: '{name}'")
     search_url = EUTILS_URL + "esearch.fcgi"
     params = {
         "db": "gene",
@@ -229,14 +235,16 @@ def find_gene_id_for_gene_name(name, do_write=False):
         # Got the response, so assign the gene id
         if len(json_data["esearchresult"]["idlist"]) > 0:
             gene_id = json_data["esearchresult"]["idlist"][0]
-            print(f"Found gene id {gene_id} while searching Gene for name {name}")
 
         else:
-            print(f"No gene id found while searching Gene for name {name}")
+            _events.warning("gene_search_empty", name=name)
 
     else:
-        print(
-            f"Encountered error in searching Gene for name {name}: {response.status_code}"
+        _events.warning(
+            "gene_search_failed",
+            name=name,
+            reason="http_error",
+            status_code=response.status_code,
         )
 
     return gene_id
@@ -255,7 +263,6 @@ def fetch_xml_for_gene_id(gene_id):
     xml_data : str or None
         Raw XML response text, or None if the request failed
     """
-    print(f"Fetching XML for gene id: '{gene_id}'")
     fetch_url = EUTILS_URL + "efetch.fcgi"
     params = {
         "db": "gene",
@@ -270,7 +277,12 @@ def fetch_xml_for_gene_id(gene_id):
     if response.status_code == 200:
         return response.text
     else:
-        print(f"Encountered error in fetching from Gene: {response.status_code}")
+        _events.warning(
+            "gene_fetch_failed",
+            gene_id=gene_id,
+            reason="http_error",
+            status_code=response.status_code,
+        )
         return None
 
 

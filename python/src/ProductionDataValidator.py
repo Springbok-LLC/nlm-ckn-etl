@@ -40,13 +40,19 @@ is found.
 import argparse
 import ast
 import json
+import os
 import sys
 from dataclasses import dataclass, field
 from pathlib import Path
+from time import monotonic
 
 import pandas as pd
+import structlog
 
 import ProductionDataSpecification as spec
+from logging_setup import configure_logging
+
+_events = structlog.get_logger(__name__)
 
 ERROR = "ERROR"
 WARN = "WARN"
@@ -689,13 +695,14 @@ def validate(data_dir):
     return report
 
 
-def _print_report(report):
-    """Print a human-readable summary grouped by severity."""
-    errs, warns = report.errors(), report.warnings()
-    for f in errs + warns:
-        loc = f" [{f.path}]" if f.path else ""
-        print(f"{f.severity:5} {f.check}: {f.message}{loc}")
-    print(f"\n{len(errs)} error(s), {len(warns)} warning(s) in {report.data_dir}")
+def _log_report(report):
+    """Log each finding, errors first, as ``validation_finding``.
+
+    The level follows the finding's severity: ERROR or WARN.
+    """
+    for f in report.errors() + report.warnings():
+        log = _events.error if f.severity == ERROR else _events.warning
+        log("validation_finding", check=f.check, path=f.path, detail=f.message)
 
 
 def main(argv=None):
@@ -718,6 +725,12 @@ def main(argv=None):
     )
     args = parser.parse_args(argv)
 
+    # Logs go to stderr so that --json keeps stdout to itself.  This tool is
+    # run by hand, so default to readable lines; LOG_FORMAT=json overrides.
+    os.environ.setdefault("LOG_FORMAT", "console")
+    configure_logging("etl-pipeline", stream=sys.stderr)
+    started = monotonic()
+
     data_dir = Path(args.data_dir)
     if not data_dir.is_dir():
         parser.error(f"--data-dir not a directory: {data_dir}")
@@ -736,11 +749,19 @@ def main(argv=None):
                 indent=2,
             )
         )
-    else:
-        _print_report(report)
 
+    _log_report(report)
     failed = bool(report.errors()) or (args.strict and bool(report.warnings()))
-    return 1 if failed else 0
+    exit_code = 1 if failed else 0
+    _events.info(
+        "validation_finished",
+        n_errors=len(report.errors()),
+        n_warnings=len(report.warnings()),
+        data_dir=str(report.data_dir),
+        exit_code=exit_code,
+        duration_ms=round((monotonic() - started) * 1000),
+    )
+    return exit_code
 
 
 if __name__ == "__main__":

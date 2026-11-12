@@ -130,17 +130,21 @@ def configure_logging(
     )
 
     if os.getenv(LOG_FORMAT_ENV, "").lower() == "console":
-        renderer = structlog.dev.ConsoleRenderer(colors=False)
+        # The console renderer reads the event name from ``event``, so the
+        # rename to ``message`` is for JSON only.
+        finishing = [structlog.dev.ConsoleRenderer(colors=False)]
     else:
-        renderer = structlog.processors.JSONRenderer()
+        finishing = [
+            structlog.processors.EventRenamer("message"),
+            structlog.processors.JSONRenderer(),
+        ]
 
     formatter = structlog.stdlib.ProcessorFormatter(
         # Applies the same fields to stdlib records (Prefect, third parties).
         foreign_pre_chain=shared,
         processors=[
             structlog.stdlib.ProcessorFormatter.remove_processors_meta,
-            structlog.processors.EventRenamer("message"),
-            renderer,
+            *finishing,
         ],
     )
     handler = logging.StreamHandler(stream or sys.stdout)
