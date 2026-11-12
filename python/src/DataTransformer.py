@@ -3,6 +3,10 @@ import base64
 import gzip
 import json
 import re
+from datetime import datetime, timezone
+from time import monotonic
+
+import structlog
 
 from E_Utilities import parse_xml_for_gene_id
 
@@ -14,6 +18,23 @@ from LoaderUtilities import (
     get_values_or_none,
     set_current_run,
 )
+from logging_setup import configure_logging
+
+_events = structlog.get_logger(__name__)
+
+# Rejected ids logged on a ``records_rejected`` line, so a large reject does
+# not become a large log line.
+_REJECT_SAMPLE_SIZE = 5
+
+
+def _ms(started: float) -> int:
+    """Return the milliseconds elapsed since a ``time.monotonic()`` reading."""
+    return round((monotonic() - started) * 1000)
+
+
+def _mtime_iso(path) -> str:
+    """Return a file's modification time as an ISO 8601 UTC string."""
+    return datetime.fromtimestamp(path.stat().st_mtime, timezone.utc).isoformat()
 
 
 class BaseTransformer:
@@ -24,6 +45,20 @@ class BaseTransformer:
     name: str
 
     _input_path_override = None
+
+    def _reject(self, reason, id_value):
+        """Record an input entry the transformer dropped, and why.
+
+        Parameters
+        ----------
+        reason : str
+            A ``reason`` value from ``docs/logging-conventions.md``
+        id_value : str
+            The entry's id
+        """
+        if "_rejects" not in self.__dict__:
+            self._rejects = {}
+        self._rejects.setdefault(reason, []).append(id_value)
 
     @property
     def input_path(self):
@@ -63,7 +98,6 @@ class BaseTransformer:
         dict
             Raw results as saved by the corresponding fetcher
         """
-        print(f"[{self.name}] Loading raw results from {self.input_path}")
         with open(self.input_path, "r") as fp:
             return json.load(fp)
 
@@ -75,7 +109,6 @@ class BaseTransformer:
         results : dict
             Transformed results to persist
         """
-        print(f"[{self.name}] Saving transformed results to {self.output_path}")
         with open(self.output_path, "w") as fp:
             json.dump(results, fp)
 
@@ -108,14 +141,63 @@ class BaseTransformer:
         dict
             Transformed results
         """
+        started = monotonic()
         if not force and not self.is_stale():
-            print(f"[{self.name}] Output is up to date, skipping")
+            _events.info(
+                "transform_skipped_up_to_date",
+                source=self.name,
+                input_mtime=_mtime_iso(self.input_path),
+                output_mtime=_mtime_iso(self.output_path),
+            )
             with open(self.output_path, "r") as fp:
                 return json.load(fp)
+        self._rejects = {}
         raw = self.load()
         results = self.transform(raw)
         self.save(results)
+        self._log_finished(raw, results, started)
         return results
+
+    def _log_finished(self, raw, results, started):
+        """Log the rejected entries and ``transform_finished``.
+
+        The entries are the dict-valued items: the id lists a fetcher stores
+        beside its results are not records.  An entry the transformer left
+        empty without a recorded reason is counted as ``no_data``.
+
+        Parameters
+        ----------
+        raw : dict
+            The raw results the transformer read
+        results : dict
+            The transformed results
+        started : float
+            ``time.monotonic()`` reading from the start of the run
+        """
+        records_in = sum(isinstance(v, dict) for v in raw.values())
+        records_out = sum(1 for v in results.values() if isinstance(v, dict) and v)
+        rejects = dict(self._rejects)
+        unexplained = records_in - records_out - sum(len(v) for v in rejects.values())
+        if unexplained > 0:
+            rejects["no_data"] = [None] * unexplained
+        for reason, ids in rejects.items():
+            _events.warning(
+                "records_rejected",
+                source=self.name,
+                reason=reason,
+                records_rejected=len(ids),
+                sample=[i for i in ids if i is not None][:_REJECT_SAMPLE_SIZE],
+            )
+        _events.info(
+            "transform_finished",
+            source=self.name,
+            input_path=str(self.input_path),
+            output_path=str(self.output_path),
+            records_in=records_in,
+            records_out=records_out,
+            records_rejected=records_in - records_out,
+            duration_ms=_ms(started),
+        )
 
 
 def _publication_in(citation):
@@ -160,10 +242,7 @@ class CellxGeneTransformer(BaseTransformer):
             publication_json = collection_version_json or collection_json
 
             if not dataset_json or not publication_json:
-                print(
-                    f"[{self.name}] Skipping dataset_version_id "
-                    f"{dataset_version_id} (missing data)"
-                )
+                self._reject("missing_dataset_or_collection", dataset_version_id)
                 continue
 
             entry = {}
@@ -237,9 +316,10 @@ class CellxGeneTransformer(BaseTransformer):
                 entry["Link_to_CELLxGENE_dataset"] = h5ad_asset["url"]
             elif any(a.get("filetype") for a in assets):
                 entry["Link_to_CELLxGENE_dataset"] = None
-                print(
-                    f"WARNING: No H5AD asset for dataset {dataset_version_id};"
-                    f" filetypes present: {[a.get('filetype') for a in assets]}"
+                _events.warning(
+                    "no_h5ad_asset",
+                    dataset_version_id=dataset_version_id,
+                    filetypes=[a.get("filetype") for a in assets],
                 )
             else:
                 entry["Link_to_CELLxGENE_dataset"] = get_value_or_none(
@@ -370,7 +450,13 @@ class GeneTransformer(BaseTransformer):
                     gene_entrez_id, xml_data
                 )
             except Exception as exc:
-                print(f"WARNING: skipping gene {gene_entrez_id}: {exc}")
+                _events.warning(
+                    "gene_parse_failed",
+                    gene_id=gene_entrez_id,
+                    error_type=type(exc).__name__,
+                    error=str(exc),
+                )
+                self._reject("parse_failed", gene_entrez_id)
                 transformed[gene_entrez_id] = {}
 
         return transformed
@@ -468,7 +554,33 @@ TRANSFORMER_REGISTRY = [
 
 
 def main():
-    """Transform raw fetcher output for all registered sources."""
+    """Transform raw fetcher output for all registered sources.
+
+    Logs the run as ``run_started`` and ``run_finished``, or ``run_failed``.
+    """
+    configure_logging("etl-fetcher")
+    started = monotonic()
+    try:
+        _transform_all()
+    except Exception as exc:
+        _events.error(
+            "run_failed",
+            script="DataTransformer",
+            error_type=type(exc).__name__,
+            error=str(exc),
+            duration_ms=_ms(started),
+        )
+        raise
+    _events.info(
+        "run_finished",
+        script="DataTransformer",
+        outcome="ok",
+        duration_ms=_ms(started),
+    )
+
+
+def _transform_all():
+    """Parse the command line and transform each requested source."""
     parser = argparse.ArgumentParser(description="Transform External API Results")
     parser.add_argument(
         "sources",
@@ -490,11 +602,17 @@ def main():
     set_current_run(args.run_name)
 
     source_names = args.sources or [t.name for t in TRANSFORMER_REGISTRY]
+    _events.info(
+        "run_started",
+        script="DataTransformer",
+        run_name=get_current_run().run_name,
+        sources=source_names,
+        force=args.force,
+    )
 
     for transformer in TRANSFORMER_REGISTRY:
         if transformer.name in source_names:
-            result = transformer.run(force=args.force)
-            print(f"[{transformer.name}] Transformed {len(result)} entries")
+            transformer.run(force=args.force)
 
 
 if __name__ == "__main__":
