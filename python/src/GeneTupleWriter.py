@@ -141,8 +141,10 @@ def main() -> int:
     )
 
     rejects = RejectTally("gene")
-    tuples = create_tuples(gene_results, rejects)
-    rejects.log()
+    try:
+        tuples = create_tuples(gene_results, rejects)
+    finally:
+        rejects.log()
     if tuples:
         return write_tuples(tuples, get_tuples_dir() / "gene.json")
     return 0

@@ -188,10 +188,12 @@ def main() -> int:
     dataset_organs = get_dataset_organs_map()
     reference_dataset_version_ids = get_reference_dataset_version_ids()
     rejects = RejectTally("cellxgene")
-    tuples = create_tuples(
-        cellxgene_results, dataset_organs, reference_dataset_version_ids, rejects
-    )
-    rejects.log()
+    try:
+        tuples = create_tuples(
+            cellxgene_results, dataset_organs, reference_dataset_version_ids, rejects
+        )
+    finally:
+        rejects.log()
     if tuples:
         return write_tuples(tuples, get_tuples_dir() / "cellxgene.json")
     return 0

@@ -296,7 +296,7 @@ class DataFetcher:
                 _events.debug(
                     "fetch_batch_done",
                     source=self.name,
-                    n_ok=len(batch) - n_batch_failed,
+                    n_ok=len(futures) - n_batch_failed,
                     n_failed=n_batch_failed,
                 )
 
@@ -812,7 +812,7 @@ class HuBMAPFetcher(DataFetcher):
         _events.info(
             "fetch_finished",
             source=self.name,
-            outcome="ok",
+            outcome="partial" if n_failed else "ok",
             records_in=len(json_urls),
             records_out=n_present + n_downloaded,
             records_rejected=n_failed,

@@ -65,8 +65,18 @@ class RejectTally:
 
     def __init__(self, source: str):
         self.source = source
+        # Per reason: the number of records, and at most REJECT_SAMPLE_SIZE ids.
         self._rejected: dict[str, list] = {}
         self._flagged: dict[str, list] = {}
+        self._rejected_counts: dict[str, int] = {}
+        self._flagged_counts: dict[str, int] = {}
+
+    @staticmethod
+    def _tally(samples, counts, reason, id_value) -> None:
+        counts[reason] = counts.get(reason, 0) + 1
+        sample = samples.setdefault(reason, [])
+        if id_value is not None and len(sample) < REJECT_SAMPLE_SIZE:
+            sample.append(id_value)
 
     def reject(self, reason: str, id_value=None) -> None:
         """Record an input record that produced no tuples.
@@ -78,7 +88,7 @@ class RejectTally:
         id_value : str, optional
             The record's id, kept for the sample
         """
-        self._rejected.setdefault(reason, []).append(id_value)
+        self._tally(self._rejected, self._rejected_counts, reason, id_value)
 
     def flag(self, reason: str, id_value=None) -> None:
         """Record an input record that was kept despite a problem.
@@ -90,26 +100,26 @@ class RejectTally:
         id_value : str, optional
             The record's id, kept for the sample
         """
-        self._flagged.setdefault(reason, []).append(id_value)
+        self._tally(self._flagged, self._flagged_counts, reason, id_value)
 
     @property
     def n_rejected(self) -> int:
         """The number of records rejected, over all reasons."""
-        return sum(len(ids) for ids in self._rejected.values())
+        return sum(self._rejected_counts.values())
 
     def log(self) -> None:
         """Log ``records_rejected`` and ``records_flagged``, one per reason."""
-        for event, by_reason in (
-            ("records_rejected", self._rejected),
-            ("records_flagged", self._flagged),
+        for event, by_reason, counts in (
+            ("records_rejected", self._rejected, self._rejected_counts),
+            ("records_flagged", self._flagged, self._flagged_counts),
         ):
             for reason, ids in by_reason.items():
                 _events.warning(
                     event,
                     source=self.source,
                     reason=reason,
-                    **{event: len(ids)},
-                    sample=[i for i in ids if i is not None][:REJECT_SAMPLE_SIZE],
+                    **{event: counts[reason]},
+                    sample=ids,
                 )
 
 
