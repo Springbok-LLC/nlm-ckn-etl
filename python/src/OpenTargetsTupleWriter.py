@@ -427,8 +427,10 @@ def main() -> int:
     )
 
     rejects = RejectTally("opentargets")
-    tuples = create_tuples(opentargets_results, gene_results, uniprot_results, rejects)
-    rejects.log()
+    try:
+        tuples = create_tuples(opentargets_results, gene_results, uniprot_results, rejects)
+    finally:
+        rejects.log()
     if tuples:
         return write_tuples(tuples, get_tuples_dir() / "opentargets.json")
     return 0

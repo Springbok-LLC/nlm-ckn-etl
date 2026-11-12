@@ -308,21 +308,25 @@ def main() -> int:
         summary_data = load_results(summary_path[0]) if summary_path else pd.DataFrame()
 
         rejects = RejectTally("mapping")
-        tuples = create_tuples(
-            mapping_results, summary_data, harvester_data, uberon_root_map, rejects
-        )
-        rejects.log()
+        try:
+            tuples = create_tuples(
+                mapping_results, summary_data, harvester_data, uberon_root_map, rejects
+            )
+        finally:
+            rejects.log()
+        n_dataset = 0
+        if tuples:
+            output_name = cluster_cid_path.name.replace(".csv", "-mapping.json")
+            n_dataset = write_tuples(tuples, get_tuples_dir() / output_name)
+            n_written += n_dataset
         _events.info(
             "tuple_writer_dataset",
             source="mapping",
             file=cluster_cid_path.name,
             records_in=len(mapping_results),
             records_rejected=rejects.n_rejected,
-            tuples_out=len(tuples),
+            tuples_out=n_dataset,
         )
-        if tuples:
-            output_name = cluster_cid_path.name.replace(".csv", "-mapping.json")
-            n_written += write_tuples(tuples, get_tuples_dir() / output_name)
     return n_written
 
 
