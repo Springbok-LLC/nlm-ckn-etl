@@ -1,10 +1,12 @@
 import ipaddress
 import json
 import os
-from pprint import pprint
 import random
 
+import structlog
 from arango import ArangoClient
+
+_events = structlog.get_logger(__name__)
 
 
 def is_loopback_host(host):
@@ -87,11 +89,10 @@ def create_or_get_database(database_name):
     # Create database, if needed
     sys_db = _sys_db()
     if not sys_db.has_database(database_name):
-        print(f"Creating ArangoDB database: {database_name}")
         sys_db.create_database(database_name)
+        _events.info("database_created", database=database_name)
 
     # Connect to database
-    print(f"Getting ArangoDB database: {database_name}")
     db = _client().db(
         database_name, username="root", password=os.getenv("ARANGO_DB_PASSWORD", "")
     )
@@ -114,8 +115,8 @@ def delete_database(database_name):
     # Delete database, if needed
     sys_db = _sys_db()
     if sys_db.has_database(database_name):
-        print(f"Deleting ArangoDB database: {database_name}")
         sys_db.delete_database(database_name)
+        _events.warning("database_dropped", database=database_name)
 
 
 def create_or_get_graph(db, graph_name):
@@ -135,10 +136,9 @@ def create_or_get_graph(db, graph_name):
     """
     # Create, or get the graph
     if not db.has_graph(graph_name):
-        print(f"Creating database graph: {graph_name}")
         graph = db.create_graph(graph_name)
+        _events.info("graph_created", database=db.name, graph=graph_name)
     else:
-        print(f"Getting database graph: {graph_name}")
         graph = db.graph(graph_name)
 
     return graph
@@ -160,8 +160,8 @@ def delete_graph(db, graph_name):
     """
     # Delete the graph
     if db.has_graph(graph_name):
-        print(f"Deleting database graph: {graph_name}")
         db.delete_graph(graph_name)
+        _events.warning("graph_dropped", database=db.name, graph=graph_name)
 
 
 def create_or_get_vertex_collection(graph, vertex_name):
@@ -181,10 +181,11 @@ def create_or_get_vertex_collection(graph, vertex_name):
     """
     # Create, or get the vertex collection
     if not graph.has_vertex_collection(vertex_name):
-        print(f"Creating graph vertex collection: {vertex_name}")
         collection = graph.create_vertex_collection(vertex_name)
+        _events.debug(
+            "vertex_collection_created", graph=graph.name, collection=vertex_name
+        )
     else:
-        print(f"Getting graph vertex collection: {vertex_name}")
         collection = graph.vertex_collection(vertex_name)
 
     return collection
@@ -206,8 +207,10 @@ def delete_vertex_collection(graph, vertex_name):
     """
     # Delete the vertex collection
     if graph.has_vertex_collection(vertex_name):
-        print(f"Deleting graph vertex collection: {vertex_name}")
         graph.delete_vertex_collection(vertex_name)
+        _events.warning(
+            "vertex_collection_deleted", graph=graph.name, collection=vertex_name
+        )
 
 
 def create_or_get_edge_collection(graph, from_vertex_name, to_vertex_name):
@@ -233,14 +236,15 @@ def create_or_get_edge_collection(graph, from_vertex_name, to_vertex_name):
     # Create, or get the edge collection
     collection_name = f"{from_vertex_name}-{to_vertex_name}"
     if not graph.has_edge_definition(collection_name):
-        print(f"Creating edge definition: {collection_name}")
         collection = graph.create_edge_definition(
             edge_collection=collection_name,
             from_vertex_collections=[f"{from_vertex_name}"],
             to_vertex_collections=[f"{to_vertex_name}"],
         )
+        _events.debug(
+            "edge_definition_created", graph=graph.name, collection=collection_name
+        )
     else:
-        print(f"Getting edge collection: {collection_name}")
         collection = graph.edge_collection(collection_name)
 
     return collection, collection_name
@@ -262,13 +266,15 @@ def delete_edge_collection(graph, edge_name):
     """
     # Delete the collection
     if graph.has_edge_definition(edge_name):
-        print(f"Deleting graph edge definition and collection: {edge_name}")
         graph.delete_edge_definition(edge_name)
+        _events.warning(
+            "edge_definition_deleted", graph=graph.name, collection=edge_name
+        )
 
 
 def print_summary(database_name):
-    """Print a summary of document counts for each vertex and edge collection
-    in the named database.
+    """Log the document count of each vertex and edge collection in the named
+    database, then the totals.
 
     Parameters
     ----------
@@ -292,25 +298,26 @@ def print_summary(database_name):
         else:
             vertex_collections.append(collection["name"])
 
-    vertex_counts = {}
-    print("Vertex collections:")
-    vertex_total = 0
-    for name in sorted(vertex_collections):
-        count = db.collection(name).count()
-        vertex_total += count
-        vertex_counts[name] = count
-        print(f"  {name:<40s} {count:,d}")
-    print(f"  {'TOTAL':<40s} {vertex_total:,d}")
-
-    edge_counts = {}
-    print("Edge collections:")
-    edge_total = 0
-    for name in sorted(edge_collections):
-        count = db.collection(name).count()
-        edge_total += count
-        edge_counts[name] = count
-        print(f"  {name:<40s} {count:,d}")
-    print(f"  {'TOTAL':<40s} {edge_total:,d}")
+    counts = {}
+    for kind, names in (("vertex", vertex_collections), ("edge", edge_collections)):
+        counts[kind] = {}
+        for name in sorted(names):
+            count = db.collection(name).count()
+            counts[kind][name] = count
+            _events.info(
+                "collection_counted",
+                database=database_name,
+                collection=name,
+                kind=kind,
+                records_out=count,
+            )
+    vertex_counts, edge_counts = counts["vertex"], counts["edge"]
+    _events.info(
+        "database_summary",
+        database=database_name,
+        vertex_total=sum(vertex_counts.values()),
+        edge_total=sum(edge_counts.values()),
+    )
 
     return {"vertex": vertex_counts, "edge": edge_counts}
 
@@ -541,9 +548,7 @@ def create_view(database_name, collection_maps_name):
         k for k in list(properties["links"].keys()) if k not in existing_collections
     ]
     for key in missing:
-        print(
-            f"Skipping view link for '{key}': collection not found in {database_name}"
-        )
+        _events.warning("view_link_skipped", collection=key, database=database_name)
         del properties["links"][key]
 
     db.create_view(
@@ -571,12 +576,12 @@ def delete_view(database_name):
 
 
 def print_vertex_examples(database_name, graph_name):
-    """Delete the bigram analyzer in the named database.
+    """Log one randomly chosen document of each vertex collection, at DEBUG.
 
     Parameters
     ----------
     database_name : str
-        Name of the database in which to delete the analyzer
+        Name of the database to sample
     graph_name : str
         Name of the graph to create or get
 
@@ -602,7 +607,4 @@ def print_vertex_examples(database_name, graph_name):
         vertex_keys = list(vertex_collection.keys())
         vertex_key = vertex_keys[random.randint(0, vertex_collection.count() - 1)]
         vertex = vertex_collection.get(vertex_key)
-        print()
-        print(vertex_name)
-        print()
-        pprint(vertex)
+        _events.debug("vertex_example", collection=vertex_name, document=vertex)
