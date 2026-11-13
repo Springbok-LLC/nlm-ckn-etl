@@ -1,0 +1,34 @@
+<configuration>
+  <statusListener class="ch.qos.logback.core.status.NopStatusListener"/>
+  <!--
+    One JSON object per line on stdout, with the same core fields the Python
+    side writes (docs/logging-conventions.md). correlation_id, release and
+    phase come from the MDC, bound by RunLog from CORRELATION_ID, GIT_SHA and
+    PHASE. LOG_FORMAT=console selects readable lines for local runs. Logback's own
+    status messages are off: they would be non-JSON lines on stdout.
+  -->
+  <define name="LOG_APPENDER" class="gov.nih.nlm.LogFormat"/>
+  <appender name="json" class="ch.qos.logback.core.ConsoleAppender">
+    <encoder class="net.logstash.logback.encoder.LogstashEncoder">
+      <customFields>{"service":"etl-pipeline"}</customFields>
+      <timeZone>UTC</timeZone>
+      <timestampPattern>yyyy-MM-dd'T'HH:mm:ss.SSSX</timestampPattern>
+      <fieldNames>
+        <timestamp>timestamp</timestamp>
+        <logger>logger</logger>
+        <stackTrace>exception</stackTrace>
+        <version>[ignore]</version>
+        <levelValue>[ignore]</levelValue>
+        <thread>[ignore]</thread>
+      </fieldNames>
+    </encoder>
+  </appender>
+  <appender name="console" class="ch.qos.logback.core.ConsoleAppender">
+    <encoder>
+      <pattern>%d{HH:mm:ss.SSS} %-5level [%logger{0}] %msg %kvp%n</pattern>
+    </encoder>
+  </appender>
+  <root level="INFO">
+    <appender-ref ref="${LOG_APPENDER}"/>
+  </root>
+</configuration>

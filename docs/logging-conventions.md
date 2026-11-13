@@ -109,6 +109,35 @@ Never log secrets: log whether a variable is set, not its value.
 A `*_started` line is INFO only at phase, flow and subprocess boundaries;
 elsewhere drop it and log the `_finished` line.
 
+## 4a. Logging from Java
+
+Java logs through SLF4J, with Logback and `logstash-logback-encoder` writing
+one JSON object per line to stdout (`src/main/resources/logback.xml`). The
+Prefect flow forwards a JSON line from the JVM as it is, so its level and
+fields survive.
+
+- **Call `Events`, not `System.out`.** `Events.info(LOG, "vertices_inserted",
+  "collection", name, "records_out", n)` logs a fixed `snake_case` message and
+  fields given as alternating keys and values. A number stays a number in the
+  JSON. `Events.failure(LOG, message, cause, ...)` adds `error_type`, `error`
+  and the stack trace in `exception`. `LOG` is
+  `LoggerFactory.getLogger(TheClass.class)`, which becomes the `logger` field.
+- **Wrap each `main()` in `RunLog.run`.** `RunLog.run("TheClass", body,
+  "args", ...)` binds the context, logs `run_started` with the fields given,
+  then `run_finished` (`outcome=ok`, `duration_ms`), or `run_failed` with the
+  exception before rethrowing it. The exit status does not change.
+- **Context comes from the environment.** `CORRELATION_ID`, `GIT_SHA` and
+  `PHASE` become `correlation_id`, `release` and `phase` on every line.
+  `service` is `etl-pipeline`. A missing `CORRELATION_ID` is a fresh UUID and
+  a missing `GIT_SHA` is `unknown`, as in Python.
+- **`LOG_FORMAT=console`** writes readable lines for local runs. Any other
+  value, or none, writes JSON.
+- **stdout is for log lines only.** Logback's own status messages are turned
+  off, because anything else on stdout reaches the log as a
+  `subprocess_output` line.
+- A library class does not configure logging. It logs through `Events` and
+  leaves the setup to `logback.xml`.
+
 ## 5. `reason` values
 
 For `records_rejected` and `*_skipped` and `*_failed` lines. Lowercase
