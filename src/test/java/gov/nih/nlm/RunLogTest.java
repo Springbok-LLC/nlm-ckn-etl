@@ -44,15 +44,17 @@ class RunLogTest {
         System.setOut(originalOut);
         System.clearProperty("LOG_FORMAT");
         MDC.clear();
-        configure(null);
+        // Back to the silent test configuration, so later tests do not inherit the console appender.
+        LoggerContext context = (LoggerContext) LoggerFactory.getILoggerFactory();
+        context.reset();
+        JoranConfigurator configurator = new JoranConfigurator();
+        configurator.setContext(context);
+        configurator.doConfigure(RunLogTest.class.getResource("/logback-test.xml"));
     }
 
     private static void configure(String logFormat) throws Exception {
-        if (logFormat == null) {
-            System.clearProperty("LOG_FORMAT");
-        } else {
-            System.setProperty("LOG_FORMAT", logFormat);
-        }
+        // Pinned, so an exported LOG_FORMAT in the shell cannot change what the tests parse.
+        System.setProperty("LOG_FORMAT", logFormat == null ? "json" : logFormat);
         LoggerContext context = (LoggerContext) LoggerFactory.getILoggerFactory();
         context.reset();
         URL config = RunLogTest.class.getResource("/logback.xml");
@@ -176,6 +178,18 @@ class RunLogTest {
                 }));
         assertEquals("disk", thrown.getCause().getMessage());
         assertEquals("run_failed", lines().get(1).get("message").asText());
+    }
+
+    @Test
+    void anyFormatButConsoleWritesJson() throws Exception {
+        for (String format : new String[] {"", "text", "JSON", "json"}) {
+            captured.reset();
+            configure(format);
+            LOG.info("a_message");
+            List<JsonNode> lines = lines();
+            assertEquals(1, lines.size(), "format '" + format + "'");
+            assertEquals("a_message", lines.get(0).get("message").asText());
+        }
     }
 
     @Test
