@@ -2,12 +2,14 @@ package gov.nih.nlm;
 
 import com.arangodb.ArangoDatabase;
 import com.arangodb.model.AqlQueryOptions;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.stream.Collectors;
 
 /**
  * Defines sets of AQL query strings and bind variables for obtaining paths between specified nodes, including paths
@@ -17,6 +19,8 @@ import java.util.stream.Collectors;
  */
 @Deprecated
 public class AqlQuerySetBuilder {
+
+    private static final Logger LOG = LoggerFactory.getLogger(AqlQuerySetBuilder.class);
 
     /**
      * Get AQL query set to identify a path with one edge.
@@ -474,35 +478,40 @@ public class AqlQuerySetBuilder {
      * @param args None expected
      */
     public static void main(String[] args) {
+        RunLog.run("AqlQuerySetBuilder", AqlQuerySetBuilder::runExamples);
+    }
+
+    private static void runExamples() {
 
         ArangoDbUtilities arangoDbUtilities = new ArangoDbUtilities();
         String database = "Cell-KN-Ontologies";
         String graph = "KN-Ontologies-v2.0";
         ArangoDatabase db = arangoDbUtilities.createOrGetDatabase(database);
 
-        List<AqlQuerySet> aqlQuerySets = new ArrayList<>();
+        // The queries by id, in the order they run
+        Map<String, AqlQuerySet> aqlQuerySets = new LinkedHashMap<>();
 
         // CS - BGS
         String node = "BGS";
-        aqlQuerySets.add(getQuerySetInOne(graph, node));
+        aqlQuerySets.put("CS-BGS", getQuerySetInOne(graph, node));
 
         // CS - CL - GO
         String nodeOne = "CL";
         String nodeTwo = "GO";
-        aqlQuerySets.add(getQuerySetInTwo(graph, nodeOne, nodeTwo));
+        aqlQuerySets.put("CS-CL-GO", getQuerySetInTwo(graph, nodeOne, nodeTwo));
 
         // CS - CL - GO
         nodeOne = "CL";
         nodeTwo = "GO";
         String edgeCollection = "GO-GO";
         String edgeLabel = "SUB_CLASS_OF";
-        aqlQuerySets.add(getQuerySetInTwoWithHierarchy(graph, nodeOne, nodeTwo, edgeCollection, edgeLabel));
+        aqlQuerySets.put("CS-CL-GO-hierarchy", getQuerySetInTwoWithHierarchy(graph, nodeOne, nodeTwo, edgeCollection, edgeLabel));
 
         // CS - CL - GS - PR
         nodeOne = "CL";
         nodeTwo = "GS";
         String nodeThree = "PR";
-        aqlQuerySets.add(getQuerySetInThree(graph, nodeOne, nodeTwo, nodeThree));
+        aqlQuerySets.put("CS-CL-GS-PR", getQuerySetInThree(graph, nodeOne, nodeTwo, nodeThree));
 
         // CS - CL - GS - MONDO
         nodeOne = "CL";
@@ -510,7 +519,7 @@ public class AqlQuerySetBuilder {
         nodeThree = "MONDO";
         edgeCollection = "MONDO-MONDO";
         edgeLabel = "SUB_CLASS_OF";
-        aqlQuerySets.add(getQuerySetInThreeWithHierarchy(graph,
+        aqlQuerySets.put("CS-CL-GS-MONDO-hierarchy", getQuerySetInThreeWithHierarchy(graph,
                 nodeOne,
                 nodeTwo,
                 nodeThree,
@@ -522,7 +531,7 @@ public class AqlQuerySetBuilder {
         nodeTwo = "GS";
         nodeThree = "MONDO";
         String nodeFour = "CHEMBL";
-        aqlQuerySets.add(getQuerySetInFour(graph, nodeOne, nodeTwo, nodeThree, nodeFour));
+        aqlQuerySets.put("CS-CL-GS-MONDO-CHEMBL", getQuerySetInFour(graph, nodeOne, nodeTwo, nodeThree, nodeFour));
 
         // CS - CL - GS - MONDO - HP
         nodeOne = "CL";
@@ -531,7 +540,7 @@ public class AqlQuerySetBuilder {
         nodeFour = "HP";
         edgeCollection = "HP-HP";
         edgeLabel = "SUB_CLASS_OF";
-        aqlQuerySets.add(getQuerySetInFourWithHierarchy(graph,
+        aqlQuerySets.put("CS-CL-GS-MONDO-HP-hierarchy", getQuerySetInFourWithHierarchy(graph,
                 nodeOne,
                 nodeTwo,
                 nodeThree,
@@ -545,22 +554,37 @@ public class AqlQuerySetBuilder {
         nodeThree = "MONDO";
         nodeFour = "CHEMBL";
         String nodeFive = "PR";
-        aqlQuerySets.add(getQuerySetInFive(graph, nodeOne, nodeTwo, nodeThree, nodeFour, nodeFive));
+        aqlQuerySets.put("CS-CL-GS-MONDO-CHEMBL-PR", getQuerySetInFive(graph, nodeOne, nodeTwo, nodeThree, nodeFour, nodeFive));
 
+        try {
+            runQueries(db, aqlQuerySets);
+        } finally {
+            arangoDbUtilities.arangoDB.shutdown();
+        }
+    }
+
+    /**
+     * Run each query and log the number of paths it collected.
+     *
+     * @param db           Database to query
+     * @param aqlQuerySets Queries by id, in the order to run them
+     */
+    static void runQueries(ArangoDatabase db, Map<String, AqlQuerySet> aqlQuerySets) {
         AqlQueryOptions queryOpts = new AqlQueryOptions();
-        for (AqlQuerySet aqlQuerySet : aqlQuerySets) {
-            System.out.println(aqlQuerySet.queryStr().lines().collect(Collectors.joining()).replaceAll("\\s+", " "));
+        for (Map.Entry<String, AqlQuerySet> entry : aqlQuerySets.entrySet()) {
+            AqlQuerySet aqlQuerySet = entry.getValue();
+            Events.debug(LOG, "aql_query", "query_id", entry.getKey(),
+                    "query", aqlQuerySet.queryStr().strip().replaceAll("\\s+", " "));
             long startTime = System.nanoTime();
             @SuppressWarnings("unchecked")
-            List<Map<String, Object>> queryPaths = (List<Map<String, Object>>) (List<?>) db.query(aqlQuerySet.queryStr(),
-                    Map.class,
-                    aqlQuerySet.bindVars(),
-                    queryOpts).asListRemaining();
-            long stopTime = System.nanoTime();
-            System.out.println("Collected " + queryPaths.size() + " paths in " + (stopTime - startTime) / 1e9 + " s");
+            List<Map<String, Object>> queryPaths = (List<Map<String, Object>>) (List<?>) db.query(
+                    aqlQuerySet.queryStr(), Map.class, aqlQuerySet.bindVars(), queryOpts).asListRemaining();
+            Events.info(LOG, "aql_paths_collected", "query_id", entry.getKey(), "records_out", queryPaths.size(),
+                    "duration_ms", RunLog.elapsedMs(startTime));
+            if (queryPaths.isEmpty()) {
+                Events.warn(LOG, "aql_paths_empty", "query_id", entry.getKey());
+            }
         }
-
-        arangoDbUtilities.arangoDB.shutdown();
     }
 
     public record AqlQuerySet(Map<String, Object> bindVars, String queryStr) {
