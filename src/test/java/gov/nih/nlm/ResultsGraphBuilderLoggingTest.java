@@ -82,16 +82,17 @@ class ResultsGraphBuilderLoggingTest {
                 tuple(OBO + "CL_0000001", SUB_CLASS_OF, OBO + "BFO_0000002"),
                 tuple(OBO + "BFO_0000002", SUB_CLASS_OF, OBO + "CL_0000002"),
                 tuple(OBO + "CL_0000001", OBO + "RO_0009999", OBO + "CL_0000002"),
-                tuple(OBO + "CL_0000001", LABEL, "an attribute, not an edge")));
+                tuple(OBO + "CL_0000001", LABEL, "an attribute, not an edge"),
+                tuple("http://example.org/unrecognized", LABEL, "an attribute of nothing")));
         Map<String, Integer> rejected = new TreeMap<>();
         try (LogCapture logs = new LogCapture(Level.DEBUG)) {
             ResultsGraphBuilder.constructEdges(tuples, maps(), null, new HashMap<>(), new HashMap<>(),
                     new HashMap<>(), rejected);
 
-            assertEquals(Map.of("invalid_vertex", 2, "no_label", 1), rejected);
+            assertEquals(Map.of("invalid_vertex", 3, "no_label", 1), rejected);
             LogCapture.Event e = logs.one("edges_constructed");
             assertEquals("DEBUG", e.level());
-            assertEquals(5, e.get("records_in"));
+            assertEquals(6, e.get("records_in"));
             assertEquals(1, e.get("records_out"));
         }
         try (LogCapture logs = new LogCapture()) {

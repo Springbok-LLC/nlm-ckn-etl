@@ -105,8 +105,8 @@ public class InducedSubgraphFinder {
                 continue;
             }
             long started = System.nanoTime();
-            int verticesBefore = verticesToAdd.size();
-            int edgesBefore = edgesToAdd.size();
+            long verticesBefore = countNewVertices(verticesToAdd, induced);
+            long edgesBefore = countNewEdges(edgesToAdd, induced);
 
             if ("all".equals(config.strategy())) {
                 HierarchyResult result = collectAllOntologyNodesAndEdges(fullGraph, prefix);
@@ -125,8 +125,8 @@ public class InducedSubgraphFinder {
             }
             Events.info(LOG, "hierarchy_enriched", "prefix", prefix, "strategy", config.strategy(),
                     "labels", config.labels().isEmpty() ? null : new TreeSet<>(config.labels()),
-                    "vertices_added", verticesToAdd.size() - verticesBefore,
-                    "edges_added", edgesToAdd.size() - edgesBefore, "duration_ms", RunLog.elapsedMs(started));
+                    "vertices_added", countNewVertices(verticesToAdd, induced) - verticesBefore,
+                    "edges_added", countNewEdges(edgesToAdd, induced) - edgesBefore, "duration_ms", RunLog.elapsedMs(started));
         }
 
         // Add ancestor vertices
@@ -147,6 +147,17 @@ public class InducedSubgraphFinder {
             }
         }
 
+    }
+
+    /** Candidates the induced subgraph does not hold yet, which are the ones that will be added. */
+    private static long countNewVertices(Set<ArangoVertex> candidates,
+                                         DirectedPseudograph<ArangoVertex, ArangoEdge> induced) {
+        return candidates.stream().filter(v -> !induced.containsVertex(v)).count();
+    }
+
+    private static long countNewEdges(Set<ArangoEdge> candidates,
+                                      DirectedPseudograph<ArangoVertex, ArangoEdge> induced) {
+        return candidates.stream().filter(e -> !induced.containsEdge(e)).count();
     }
 
     /**
