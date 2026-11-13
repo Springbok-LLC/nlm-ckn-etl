@@ -7,6 +7,7 @@
     PHASE. LOG_FORMAT=console selects readable lines for local runs. Logback's own
     status messages are off: they would be non-JSON lines on stdout.
   -->
+  <define name="LOG_APPENDER" class="gov.nih.nlm.LogFormat"/>
   <appender name="json" class="ch.qos.logback.core.ConsoleAppender">
     <encoder class="net.logstash.logback.encoder.LogstashEncoder">
       <customFields>{"service":"etl-pipeline"}</customFields>
@@ -28,6 +29,6 @@
     </encoder>
   </appender>
   <root level="INFO">
-    <appender-ref ref="${LOG_FORMAT:-json}"/>
+    <appender-ref ref="${LOG_APPENDER}"/>
   </root>
 </configuration>
