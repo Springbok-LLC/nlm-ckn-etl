@@ -4,6 +4,8 @@ import org.apache.jena.graph.Node;
 import org.apache.jena.graph.Triple;
 import org.json.JSONArray;
 import org.json.JSONObject;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.io.BufferedWriter;
 import java.io.IOException;
@@ -32,6 +34,8 @@ import static gov.nih.nlm.PathUtilities.listFilesMatchingPattern;
  * JSON file found there, and these ontology tuples are intended for review, not for loading.
  */
 public class OntologyTupleWriter {
+
+    private static final Logger LOG = LoggerFactory.getLogger(OntologyTupleWriter.class);
 
     // Assign the default OWL file pattern and output path
     private static final String DEFAULT_PATTERN = "uberon.*\\.owl";
@@ -65,6 +69,7 @@ public class OntologyTupleWriter {
      * @throws IOException On write
      */
     public static void writeTuples(Collection<Triple> triples, Path output) throws IOException {
+        long started = System.nanoTime();
         JSONArray tuplesJsonArray = new JSONArray();
         int nSkipped = 0;
         for (Triple triple : triples) {
@@ -92,9 +97,10 @@ public class OntologyTupleWriter {
             writer.write(jsonObject.toString());
         }
         if (nSkipped > 0) {
-            System.out.println("Skipped " + nSkipped + " triples containing a blank node");
+            Events.warn(LOG, "triples_skipped", "records_rejected", nSkipped, "reason", "blank_node");
         }
-        System.out.println("Wrote " + tuplesJsonArray.length() + " tuples to " + output);
+        Events.info(LOG, "tuples_written", "output_path", output.toString(), "records_out", tuplesJsonArray.length(),
+                "records_rejected", nSkipped, "duration_ms", RunLog.elapsedMs(started));
     }
 
     /**
@@ -105,7 +111,11 @@ public class OntologyTupleWriter {
      *             data/audit-&lt;run&gt;/uberon-tuples.json)
      * @throws IOException On read or write
      */
-    public static void main(String[] args) throws IOException {
+    public static void main(String[] args) {
+        RunLog.run("OntologyTupleWriter", () -> run(args), "args", String.join(" ", args));
+    }
+
+    private static void run(String[] args) throws IOException {
 
         // Parse arguments
         String pattern = DEFAULT_PATTERN;
@@ -127,12 +137,14 @@ public class OntologyTupleWriter {
         // List the ontology files
         List<Path> oboFiles = listFilesMatchingPattern(OBO_DIR.toString(), pattern);
         if (oboFiles.isEmpty()) {
-            throw new RuntimeException("No OBO files found matching the pattern " + pattern);
+            Events.error(LOG, "ontology_files_not_found", "pattern", pattern, "dir", OBO_DIR.toString());
+            throw new IllegalStateException("No OBO files found matching the pattern " + pattern);
         }
-        System.out.println("Collecting triples from " + oboFiles);
 
         // Collect unique triples, and write them as tuples
         HashSet<Triple> uniqueTriples = collectUniqueTriples(oboFiles, false);
+        Events.info(LOG, "tuple_writer_started", "source", "ontology", "input_path", OBO_DIR.toString(),
+                "records_in", uniqueTriples.size(), "pattern", pattern, "files", oboFiles.size());
         writeTuples(uniqueTriples, output);
     }
 }

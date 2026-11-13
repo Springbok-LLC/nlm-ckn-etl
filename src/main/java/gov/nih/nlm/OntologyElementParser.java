@@ -1,5 +1,7 @@
 package gov.nih.nlm;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.w3c.dom.Document;
 import org.w3c.dom.Element;
 import org.w3c.dom.Node;
@@ -30,6 +32,8 @@ import static gov.nih.nlm.PathUtilities.listFilesMatchingPattern;
  * "label" element.
  */
 public class OntologyElementParser {
+
+    private static final Logger LOG = LoggerFactory.getLogger(OntologyElementParser.class);
 
     // Assign pattern for matching to required elements
     private static final Pattern OWL_PATTERN = Pattern.compile("^owl:");
@@ -109,7 +113,11 @@ public class OntologyElementParser {
                         // Skip terms with non-ontology ids
                         if (!id.equals("valid")) {
                             ontologyElementMap.getIds().add(id);
+                        } else {
+                            ontologyElementMap.skip("non_ontology_id");
                         }
+                    } else {
+                        ontologyElementMap.skip("no_underscore_in_term");
                     }
 
                     // Consider terms with at least one "label" element
@@ -117,7 +125,10 @@ public class OntologyElementParser {
                     if (nodeList.getLength() > 0) {
                         Element labelElement = (Element) nodeList.item(0);
                         String label = labelElement.getTextContent();
-                        ontologyElementMap.getTerms().put(term, new OntologyElementMap.OntologyTerm(uri, label));
+                        if (ontologyElementMap.getTerms().put(term,
+                                new OntologyElementMap.OntologyTerm(uri, label)) != null) {
+                            ontologyElementMap.skip("duplicate_label");
+                        }
                     }
                 }
             }
@@ -141,7 +152,7 @@ public class OntologyElementParser {
         Map<String, OntologyElementMap> ontologyElementMaps = new HashMap<>();
         for (Path file : files) {
             String oboFileName = file.getFileName().toString();
-            System.out.println("Parsing ontology element in " + oboFileName);
+            long started = System.nanoTime();
             Document doc = parseXmlFile(file.toFile());
             OntologyElementMap ontologyElementMap = new OntologyElementMap();
             // Get title
@@ -171,6 +182,16 @@ public class OntologyElementParser {
             }
             // Parse the first node
             parseOntologyNode(doc.getDocumentElement(), ontologyElementMap);
+            Events.info(LOG, "ontology_file_parsed", "file", oboFileName,
+                    "purl", ontologyElementMap.getPurl() == null ? null : ontologyElementMap.getPurl().toString(),
+                    "version_iri", ontologyElementMap.getVersionIRI() == null ? null
+                            : ontologyElementMap.getVersionIRI().toString(),
+                    "records_out", ontologyElementMap.getTerms().size(),
+                    "records_rejected", ontologyElementMap.getSkipped().isEmpty() ? null
+                            : ontologyElementMap.getSkipped().values().stream().mapToInt(Integer::intValue).sum(),
+                    "rejected_by_reason", ontologyElementMap.getSkipped().isEmpty() ? null
+                            : ontologyElementMap.getSkipped(),
+                    "duration_ms", RunLog.elapsedMs(started));
             // Map maps by filename
             ontologyElementMaps.put(oboFileName.substring(0, oboFileName.lastIndexOf(".")), ontologyElementMap);
         }
@@ -224,15 +245,15 @@ public class OntologyElementParser {
     public static void main(String[] args) {
         String directoryPath = OBO_DIR.toString();
         String filePattern = ".*\\.owl";
-        List<Path> files;
-        try {
-            files = listFilesMatchingPattern(directoryPath, filePattern);
-        } catch (IOException e) {
-            throw new RuntimeException(e);
-        }
-        requireFiles(files, directoryPath, filePattern);
-        parseOntologyElements(files);
-        System.out.println("Parsed ontology elements from " + files.size() + " files.");
+        RunLog.run("OntologyElementParser", () -> {
+            long started = System.nanoTime();
+            List<Path> files = listFilesMatchingPattern(directoryPath, filePattern);
+            requireFiles(files, directoryPath, filePattern);
+            Map<String, OntologyElementMap> maps = parseOntologyElements(files);
+            int terms = maps.values().stream().mapToInt(m -> m.getTerms().size()).sum();
+            Events.info(LOG, "ontology_elements_parsed", "records_in", files.size(), "records_out", terms,
+                    "duration_ms", RunLog.elapsedMs(started));
+        }, "obo_dir", directoryPath, "pattern", filePattern);
     }
 
     /**
@@ -246,6 +267,7 @@ public class OntologyElementParser {
      */
     static void requireFiles(List<Path> files, String directoryPath, String filePattern) {
         if (files.isEmpty()) {
+            Events.error(LOG, "ontology_files_not_found", "pattern", filePattern, "dir", directoryPath);
             throw new IllegalStateException(
                 "No files found in " + directoryPath + " matching pattern " + filePattern);
         }

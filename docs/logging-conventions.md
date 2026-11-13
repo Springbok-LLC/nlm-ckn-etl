@@ -303,9 +303,13 @@ reports give the source line each name replaces.
 | `ontology_slim_empty` | WARN | `input_file`, `output_file`, `mode`; the slim kept no classes |
 | `ontology_file_archived` | INFO | `from`, `to` |
 | `taxon_lineages_built` | INFO | `taxa_count`, `permitted_taxa_count` |
-| `ontology_files_not_found` | ERROR | `pattern` |
+| `ontology_files_not_found` | ERROR | `pattern`, `dir`; logged before the run fails |
+| `ontology_file_parsed` | INFO | `file`, `purl`, `version_iri` (both left out when the file has none), `records_out` (terms), `records_rejected` and `rejected_by_reason` (left out when nothing was passed over; reasons `no_underscore_in_term`, `non_ontology_id`, `duplicate_label`), `duration_ms`; ties a run to the ontology versions it loaded |
 | `ontology_elements_parsed` | INFO | `records_in` (files), `records_out` (terms), `duration_ms` |
 | `triples_collected` | INFO | `file`, `records_in`, `records_out`, `records_rejected`, `duration_ms` |
+| `triple_namespaces_selected` | DEBUG | `file`, `namespaces` |
+| `ontology_imports_reported` | INFO | `file`, `root_ns`, `imports`, `class_namespaces`; from `--report-imports` |
+| `ontology_imports_report_failed` | ERROR | `file`, `error_type`, `error`; the report goes on to the next file |
 | `unique_triples_collected` | INFO | `files`, `records_in`, `records_out`, `duration_ms` |
 | `triples_skipped` | WARN | `records_rejected`, `reason` |
 | `vertices_constructed` | INFO | `records_in`, `records_out`, `records_rejected`, `duration_ms` |
