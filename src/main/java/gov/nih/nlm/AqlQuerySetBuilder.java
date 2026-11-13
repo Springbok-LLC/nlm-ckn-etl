@@ -10,7 +10,6 @@ import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.stream.Collectors;
 
 /**
  * Defines sets of AQL query strings and bind variables for obtaining paths between specified nodes, including paths
@@ -575,7 +574,7 @@ public class AqlQuerySetBuilder {
         for (Map.Entry<String, AqlQuerySet> entry : aqlQuerySets.entrySet()) {
             AqlQuerySet aqlQuerySet = entry.getValue();
             Events.debug(LOG, "aql_query", "query_id", entry.getKey(),
-                    "query", aqlQuerySet.queryStr().lines().collect(Collectors.joining()).replaceAll("\\s+", " "));
+                    "query", aqlQuerySet.queryStr().strip().replaceAll("\\s+", " "));
             long startTime = System.nanoTime();
             @SuppressWarnings("unchecked")
             List<Map<String, Object>> queryPaths = (List<Map<String, Object>>) (List<?>) db.query(

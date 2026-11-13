@@ -33,10 +33,10 @@ class AqlQuerySetBuilderLoggingTest {
     @Test
     void eachQueryIsOneEventAndAnEmptyOneWarns() {
         Map<String, AqlQuerySetBuilder.AqlQuerySet> sets = new LinkedHashMap<>();
-        sets.put("CS-BGS", new AqlQuerySetBuilder.AqlQuerySet(Map.of(), "FOR v IN\n   BGS RETURN v"));
+        sets.put("CS-BGS", new AqlQuerySetBuilder.AqlQuerySet(Map.of(), "FOR v IN\nBGS RETURN v"));
         sets.put("CS-CL-GO", new AqlQuerySetBuilder.AqlQuerySet(Map.of(), "FOR v IN CL RETURN v"));
         ArangoDatabase db = database(Map.of(
-                "FOR v IN\n   BGS RETURN v", List.of(Map.of(), Map.of()),
+                "FOR v IN\nBGS RETURN v", List.of(Map.of(), Map.of()),
                 "FOR v IN CL RETURN v", List.of()));
         try (LogCapture logs = new LogCapture()) {
             AqlQuerySetBuilder.runQueries(db, sets);
@@ -57,8 +57,8 @@ class AqlQuerySetBuilderLoggingTest {
     @Test
     void queryTextIsOnlyDebugWithItsWhitespaceCollapsed() {
         Map<String, AqlQuerySetBuilder.AqlQuerySet> sets = Map.of("CS-BGS",
-                new AqlQuerySetBuilder.AqlQuerySet(Map.of(), "FOR v IN\n   BGS RETURN v"));
-        ArangoDatabase db = database(Map.of("FOR v IN\n   BGS RETURN v", List.of(Map.of())));
+                new AqlQuerySetBuilder.AqlQuerySet(Map.of(), "FOR v IN\nBGS RETURN v"));
+        ArangoDatabase db = database(Map.of("FOR v IN\nBGS RETURN v", List.of(Map.of())));
         try (LogCapture logs = new LogCapture(Level.DEBUG)) {
             AqlQuerySetBuilder.runQueries(db, sets);
 
