@@ -275,11 +275,11 @@ public class OntologyTripleParser {
     public static void reportImports(List<Path> files) {
         for (Path file : files) {
             if (file.getFileName().toString().equals("ro.owl")) continue;
-            OntModel ontModel = OntModelFactory.createModel();
-            RDFDataMgr.read(ontModel, file.toString());
-            String rootNS = getRootNS(ontModel);
-            Set<String> imports = getImportNamespaces(ontModel);
             try {
+                OntModel ontModel = OntModelFactory.createModel();
+                RDFDataMgr.read(ontModel, file.toString());
+                String rootNS = getRootNS(ontModel);
+                Set<String> imports = getImportNamespaces(ontModel);
                 Set<String> classNS = getClassNamespaces(ontModel);
                 Events.info(LOG, "ontology_imports_reported", "file", file.getFileName().toString(),
                         "root_ns", rootNS, "imports", imports, "class_namespaces", classNS);
