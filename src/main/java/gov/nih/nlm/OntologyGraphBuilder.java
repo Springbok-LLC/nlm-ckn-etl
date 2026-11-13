@@ -8,6 +8,9 @@ import com.arangodb.entity.BaseDocument;
 import com.arangodb.entity.BaseEdgeDocument;
 import org.apache.jena.graph.Node;
 import org.apache.jena.graph.Triple;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.slf4j.MDC;
 
 import java.io.BufferedWriter;
 import java.io.IOException;
@@ -23,6 +26,7 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.TreeMap;
 
 import static gov.nih.nlm.OntologyElementParser.createURI;
 import static gov.nih.nlm.OntologyElementParser.parseOntologyElements;
@@ -34,6 +38,11 @@ import static gov.nih.nlm.PathUtilities.listFilesMatchingPattern;
  * Loads triples parsed from each ontology file in the data/obo directory into a local ArangoDB server instance.
  */
 public class OntologyGraphBuilder {
+
+    private static final Logger LOG = LoggerFactory.getLogger(OntologyGraphBuilder.class);
+
+    // The most failed inserts or updates logged one by one; the summary counts the rest
+    private static final int MAX_INSERT_FAILURES_LOGGED = 5;
 
     // Assign location of deprecated terms and edge labels files
     public static final Path DEPRECATED_TERMS_FILE = OBO_DIR.resolve("deprecated_terms.txt");
@@ -226,9 +235,11 @@ public class OntologyGraphBuilder {
 
         // Process triples
         long startTime = System.nanoTime();
-        System.out.println("Constructing vertices using " + uniqueTriples.size() + " triples");
         int nVertices = 0;
+        int nInvalid = 0;
+        int nTriplesFiltered = 0;
         for (Triple triple : uniqueTriples) {
+            boolean madeVertex = false;
 
             // Consider the subject and object nodes
             ArrayList<Node> nodes = new ArrayList<>(Arrays.asList(triple.getSubject(), triple.getObject()));
@@ -236,7 +247,11 @@ public class OntologyGraphBuilder {
 
                 // Construct a vertex from the current node, if it contains a valid id
                 VTuple vtuple = createVTuple(n);
+                if (!vtuple.isValidVertex && n.isURI()) {
+                    nInvalid++;
+                }
                 if (vtuple.isValidVertex) {
+                    madeVertex = true;
 
                     // Create a vertex collection, if needed
                     if (!vertexCollections.containsKey(vtuple.id)) {
@@ -255,9 +270,17 @@ public class OntologyGraphBuilder {
                     }
                 }
             }
+            // A literal object makes the triple an attribute, which is not counted
+            if (!madeVertex && !triple.getObject().isLiteral()) {
+                nTriplesFiltered++;
+            }
         }
-        long stopTime = System.nanoTime();
-        System.out.println("Constructed " + nVertices + " vertices using " + uniqueTriples.size() + " triples in " + (stopTime - startTime) / 1e9 + " s");
+        if (nTriplesFiltered > 0) {
+            Events.info(LOG, "triples_filtered", "stage", "vertices", "reason", "invalid_vertex",
+                    "records_rejected", nTriplesFiltered);
+        }
+        Events.info(LOG, "vertices_constructed", "records_in", uniqueTriples.size(), "records_out", nVertices,
+                "records_rejected", nInvalid, "duration_ms", RunLog.elapsedMs(startTime));
     }
 
     /**
@@ -273,7 +296,6 @@ public class OntologyGraphBuilder {
 
         // Process triples
         long startTime = System.nanoTime();
-        System.out.println("Updating vertices using " + uniqueTriples.size() + " triples");
         Set<String> updatedVertices = new HashSet<>(); // For counting only
         for (Triple triple : uniqueTriples) {
 
@@ -299,8 +321,8 @@ public class OntologyGraphBuilder {
                 }
             }
         }
-        long stopTime = System.nanoTime();
-        System.out.println("Updated " + updatedVertices.size() + " vertices using " + uniqueTriples.size() + " triples in " + (stopTime - startTime) / 1e9 + " s");
+        Events.info(LOG, "vertices_updated", "records_in", uniqueTriples.size(), "records_out", updatedVertices.size(),
+                "duration_ms", RunLog.elapsedMs(startTime));
     }
 
     /**
@@ -340,7 +362,6 @@ public class OntologyGraphBuilder {
     static InsertSummary insertVertices(Map<String, ArangoVertexCollection> vertexCollections,
                                         Map<String, Map<String, BaseDocument>> vertexDocuments,
                                         Path deprecatedTermsFile) throws IOException {
-        System.out.println("Inserting vertices");
         long startTime = System.nanoTime();
         int nVertices = 0;
         int nInserted = 0;
@@ -369,7 +390,7 @@ public class OntologyGraphBuilder {
                             nInserted++;
                         } catch (Exception e) {
                             nFailed++;
-                            System.err.println("Error inserting vertex " + doc + ": " + e.getMessage());
+                            logInsertFailure("insert", id, doc.getKey(), e, nFailed);
                         }
                     } else {
                         addSearchField(doc, id);
@@ -378,20 +399,36 @@ public class OntologyGraphBuilder {
                             nUpdated++;
                         } catch (Exception e) {
                             nFailed++;
-                            System.err.println("Error updating vertex " + doc + ": " + e.getMessage());
+                            logInsertFailure("update", id, doc.getKey(), e, nFailed);
                         }
                     }
                 }
             }
         }
-        long stopTime = System.nanoTime();
-        System.out.println("Of " + nVertices + " vertices, inserted " + nInserted + ", updated " + nUpdated
-                + ", skipped " + nSkipped + " deprecated, failed " + nFailed + " in " + (stopTime - startTime) / 1e9
-                + " s");
+        Events.info(LOG, "vertices_inserted", "records_in", nVertices, "records_out", nInserted, "updated", nUpdated,
+                "skipped", nSkipped, "records_rejected", nFailed, "deprecated_terms_file",
+                nSkipped > 0 ? deprecatedTermsFile.toString() : null, "duration_ms", RunLog.elapsedMs(startTime));
         if (nFailed > 0) {
             throw new IllegalStateException(nFailed + " of " + nVertices + " vertices could not be inserted or updated");
         }
         return new InsertSummary(nVertices, nInserted, nUpdated, nSkipped, nFailed);
+    }
+
+    /**
+     * Log a failed insert or update at ERROR, for the first few failures only. The summary event counts every
+     * failure, so a run that loses thousands does not write thousands of lines.
+     *
+     * @param operation   {@code insert} or {@code update}
+     * @param collection  The vertex or edge collection
+     * @param key         The document key
+     * @param cause       The exception
+     * @param nFailedSoFar The number of failures so far, including this one
+     */
+    private static void logInsertFailure(String operation, String collection, String key, Exception cause,
+                                         int nFailedSoFar) {
+        if (nFailedSoFar <= MAX_INSERT_FAILURES_LOGGED) {
+            Events.failure(LOG, "insert_failed", cause, "operation", operation, "collection", collection, "key", key);
+        }
     }
 
     /**
@@ -454,28 +491,42 @@ public class OntologyGraphBuilder {
 
         // Process triples
         long startTime = System.nanoTime();
-        System.out.println("Constructing edges using " + triples.size() + " triples");
         HashSet<String> edgeLabels = new HashSet<>();
         EdgeLabelFilter edgeLabelFilter = new EdgeLabelFilter();
         int nEdges = 0;
+        // Triples that named a subject and object but made no edge, by reason. A triple whose object is a literal is
+        // an attribute, which updateVertices consumes, so it is not counted.
+        Map<String, Integer> filtered = new TreeMap<>();
         for (Triple triple : triples) {
 
             // Ensure the subject contains a valid ontology ID
             VTuple subjectVTuple = createVTuple(triple.getSubject());
-            if (!subjectVTuple.isValidVertex) continue;
+            if (!subjectVTuple.isValidVertex) {
+                if (triple.getSubject().isURI() && triple.getObject().isURI()) {
+                    filtered.merge("invalid_vertex", 1, Integer::sum);
+                }
+                continue;
+            }
 
             // Ensure the object contains a valid ontology ID
             VTuple objectVTuple = createVTuple(triple.getObject());
-            if (!objectVTuple.isValidVertex) continue;
+            if (!objectVTuple.isValidVertex) {
+                if (triple.getObject().isURI()) {
+                    filtered.merge("invalid_vertex", 1, Integer::sum);
+                }
+                continue;
+            }
 
             // Parse the predicate and collect unique labels
             PTuple pTuple = parsePredicate(ontologyElementMaps, triple.getPredicate());
             if (pTuple.label() == null) {
+                filtered.merge("no_label", 1, Integer::sum);
                 continue;
             }
 
             // Drop taxon-constraint relations; they are ontology metadata, not biology, and must not appear in the graph
             if (isTaxonConstraintPredicate(pTuple.term())) {
+                filtered.merge("taxon_constraint", 1, Integer::sum);
                 continue;
             }
 
@@ -483,6 +534,7 @@ public class OntologyGraphBuilder {
             // leave their labels out of those collected
             String idPair = subjectVTuple.id + "-" + objectVTuple.id;
             if (!edgeLabelFilter.keep(idPair, normalizeEdgeLabel(pTuple.label()))) {
+                filtered.merge("label_filtered", 1, Integer::sum);
                 continue;
             }
             edgeLabels.add(pTuple.label());
@@ -517,9 +569,12 @@ public class OntologyGraphBuilder {
             addOrPromoteAttribute(doc, "Label", normalizeEdgeLabel(pTuple.label()));
             addOrPromoteAttribute(doc, "Source", normalizeEdgeSource(subjectVTuple.id));
         }
-        long stopTime = System.nanoTime();
-        edgeLabelFilter.summarize().forEach(System.out::println);
-        System.out.println("Constructed " + nEdges + " edges from " + triples.size() + " triples in " + (stopTime - startTime) / 1e9 + " s");
+        filtered.forEach((reason, count) -> Events.info(LOG, "triples_filtered", "stage", "edges", "reason", reason,
+                "records_rejected", count));
+        edgeLabelFilter.logSummary(LOG);
+        Events.info(LOG, "edges_constructed", "records_in", triples.size(), "records_out", nEdges,
+                "records_rejected", filtered.values().stream().mapToInt(Integer::intValue).sum(),
+                "duration_ms", RunLog.elapsedMs(startTime));
         return edgeLabels;
     }
 
@@ -565,7 +620,6 @@ public class OntologyGraphBuilder {
     public static InsertSummary insertEdges(Map<String, ArangoVertexCollection> vertexCollections,
                                             Map<String, ArangoEdgeCollection> edgeCollections,
                                             Map<String, Map<String, BaseEdgeDocument>> edgeDocuments) {
-        System.out.println("Inserting edges");
         long startTime = System.nanoTime();
         int nEdges = 0;
         int nInserted = 0;
@@ -593,7 +647,7 @@ public class OntologyGraphBuilder {
                             nInserted++;
                         } catch (Exception e) {
                             nFailed++;
-                            System.err.println("Error inserting edge " + doc + ": " + e.getMessage());
+                            logInsertFailure("insert", idPair, docKey, e, nFailed);
                         }
                     } else {
                         nSkipped++;
@@ -604,15 +658,16 @@ public class OntologyGraphBuilder {
                         nUpdated++;
                     } catch (Exception e) {
                         nFailed++;
-                        System.err.println("Error updating edge " + doc + ": " + e.getMessage());
+                        logInsertFailure("update", idPair, docKey, e, nFailed);
                     }
                 }
             }
         }
-        long stopTime = System.nanoTime();
-        System.out.println("Of " + nEdges + " edges, inserted " + nInserted + ", updated " + nUpdated
-                + ", skipped " + nSkipped + " with a missing endpoint, failed " + nFailed + " in "
-                + (stopTime - startTime) / 1e9 + " s");
+        if (nSkipped > 0) {
+            Events.warn(LOG, "edge_skipped", "records_rejected", nSkipped, "reason", "missing_endpoint");
+        }
+        Events.info(LOG, "edges_inserted", "records_in", nEdges, "records_out", nInserted, "updated", nUpdated,
+                "skipped", nSkipped, "records_rejected", nFailed, "duration_ms", RunLog.elapsedMs(startTime));
         if (nFailed > 0) {
             throw new IllegalStateException(nFailed + " of " + nEdges + " edges could not be inserted or updated");
         }
@@ -624,14 +679,20 @@ public class OntologyGraphBuilder {
      *
      * @param args (None expected)
      */
-    public static void main(String[] args) throws IOException {
+    public static void main(String[] args) {
+        RunLog.run("OntologyGraphBuilder", OntologyGraphBuilder::buildGraphs, "obo_dir", OBO_DIR.toString());
+    }
+
+    /** Builds the ontology graph, then the phenotype graph, each in its own database. */
+    static void buildGraphs() throws IOException {
 
         // List all ontology files
         String oboPath = OBO_DIR.toString();
         String oboPattern = ".*\\.owl";
         List<Path> oboFiles = listFilesMatchingPattern(oboPath, oboPattern);
         if (oboFiles.isEmpty()) {
-            throw new RuntimeException("No OBO files found matching the pattern " + oboPattern);
+            Events.error(LOG, "ontology_files_not_found", "pattern", oboPattern, "dir", oboPath);
+            throw new IllegalStateException("No OBO files found matching the pattern " + oboPattern);
         }
 
         // Parse ontology elements, and collect unique triples
@@ -646,6 +707,7 @@ public class OntologyGraphBuilder {
         // IllegalStateException from insertVertices/insertEdges) still
         // disconnects from ArangoDB rather than leaking the connection.
         try {
+            MDC.put("graph", ontologyGraphName);
             arangoDbUtilities.deleteDatabase(ontologyDatabaseName);
             ArangoDatabase ontologyDb = arangoDbUtilities.createOrGetDatabase(ontologyDatabaseName);
             arangoDbUtilities.deleteGraph(ontologyDb, ontologyGraphName);
@@ -679,12 +741,20 @@ public class OntologyGraphBuilder {
                     edgeLabelsWriter.write(label + ": " + normalizeEdgeLabel(label) + "\n");
                 }
             }
+            Events.info(LOG, "edge_labels_written", "path", EDGE_LABELS_FILE.toString(),
+                    "records_out", edgeLabels.size());
+
+            // Bind the phenotype graph before its input is read, so those events name it
+            String phenotypeDatabaseName = "Cell-KN-Phenotypes";
+            String phenotypeGraphName = "KN-Phenotypes-v2.0";
+            MDC.put("graph", phenotypeGraphName);
 
             // List the Cell Ontology file
             oboPattern = "cl.owl";
             oboFiles = listFilesMatchingPattern(oboPath, oboPattern);
             if (oboFiles.isEmpty()) {
-                throw new RuntimeException("No CL files found matching the pattern " + oboPattern);
+                Events.error(LOG, "ontology_files_not_found", "pattern", oboPattern, "dir", oboPath);
+                throw new IllegalStateException("No CL files found matching the pattern " + oboPattern);
             }
 
             // Parse Cell Ontology elements, and collect unique triples
@@ -693,8 +763,6 @@ public class OntologyGraphBuilder {
             HashSet<Triple> phenotypeTriples = collectUniqueTriples(oboFiles, false);
 
             // Initialize the phenotype database and subgraph
-            String phenotypeDatabaseName = "Cell-KN-Phenotypes";
-            String phenotypeGraphName = "KN-Phenotypes-v2.0";
             arangoDbUtilities.deleteDatabase(phenotypeDatabaseName);
             ArangoDatabase phenotypeDb = arangoDbUtilities.createOrGetDatabase(phenotypeDatabaseName);
             arangoDbUtilities.deleteGraph(phenotypeDb, phenotypeGraphName);
@@ -723,6 +791,7 @@ public class OntologyGraphBuilder {
             insertEdges(phenotypeVertexCollections, phenotypeEdgeCollections, phenotypeEdgeDocuments);
 
         } finally {
+            MDC.remove("graph");
             // Disconnect from a local ArangoDB server instance
             arangoDbUtilities.arangoDB.shutdown();
         }
