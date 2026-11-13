@@ -156,6 +156,10 @@ For `records_rejected` and `*_skipped` and `*_failed` lines. Lowercase
 | `no_cl_id` | A cluster has no Cell Ontology id |
 | `bad_cl_curie` | A Cell Ontology CURIE has an unexpected form |
 | `invalid_vertex` | A tuple subject or object is not a valid vertex |
+| `no_label` | A triple's predicate has no label |
+| `taxon_constraint` | A triple is an RO taxon-constraint relation (ontology metadata, not biology) |
+| `label_filtered` | An edge label was not reviewed for that pair of collections (see `edges_dropped_by_label_filter`) |
+| `missing_endpoint` | An edge's subject or object vertex was not inserted (for example a deprecated term) |
 | `invalid_edge_label` | An edge predicate label is null or filtered |
 | `not_a_triple` | A tuple has neither 3 nor 5 elements |
 | `blank_node` | A triple contains a blank node |
@@ -312,15 +316,17 @@ reports give the source line each name replaces.
 | `ontology_imports_report_failed` | ERROR | `file`, `error_type`, `error`; the report goes on to the next file |
 | `unique_triples_collected` | INFO | `files`, `records_in`, `records_out`, `duration_ms` |
 | `triples_skipped` | WARN | `records_rejected`, `reason` |
-| `vertices_constructed` | INFO | `records_in`, `records_out`, `records_rejected`, `duration_ms` |
+| `vertices_constructed` | INFO | `records_in` (triples), `records_out` (new vertices), `records_rejected` (named nodes that are not a valid vertex), `duration_ms` |
+| `triples_filtered` | INFO | `stage` (`vertices` or `edges`), `reason`, `records_rejected`; triples that made no vertex or edge by design, one per reason. A triple with a literal object is an attribute and is not counted |
 | `vertices_updated` | INFO | `records_in`, `records_out`, `duration_ms` |
-| `vertices_inserted` | INFO | `collection`, `records_in`, `records_out`, `records_rejected`, `skipped_existing`, `duration_ms` |
+| `vertices_inserted` | INFO | `records_in`, `records_out` (inserted), `updated`, `skipped` (deprecated), `records_rejected` (failed), `deprecated_terms_file` (when any were skipped), `duration_ms`; the run then fails if any failed |
 | `edges_constructed` | INFO | `records_in`, `records_out`, `records_rejected`, `duration_ms` |
 | `edges_updated` | INFO | `records_in`, `records_out`, `duration_ms` |
-| `edges_inserted` | INFO | `collection`, `records_in`, `records_out`, `records_rejected`, `duration_ms` |
+| `edges_inserted` | INFO | `records_in`, `records_out` (inserted), `updated`, `skipped` (an endpoint vertex is missing), `records_rejected` (failed), `duration_ms`; the run then fails if any failed |
+| `edge_labels_written` | INFO | `path`, `records_out` |
 | `edges_dropped_by_label_filter` | WARN | `edge_collection`, `records_rejected`, `label_counts` |
-| `insert_failed` | ERROR | `collection`, `key`, `error_type`, `error`; first few only, then the summary |
-| `edge_skipped` | WARN | `records_rejected`, `reason=unrecognized_collection` |
+| `insert_failed` | ERROR | `operation` (`insert` or `update`), `collection`, `key`, `error_type`, `error`; the first 5 per call only, then the summary counts the rest |
+| `edge_skipped` | WARN | `records_rejected`, `reason` (`unrecognized_collection` or `missing_endpoint`) |
 | `tuples_file_processed` | INFO | `tuples_file`, `records_in`, `records_rejected`, `duration_ms` |
 | `tuples_files_not_found` | ERROR | `pattern`, `dir` |
 | `graph_loaded` | INFO | `graph`, `records_out`, `edges`, `records_rejected`, `duration_ms` |
