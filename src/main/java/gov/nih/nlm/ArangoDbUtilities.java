@@ -8,6 +8,9 @@ import com.arangodb.model.VertexCollectionRemoveOptions;
 import com.arangodb.entity.CollectionEntity;
 import com.arangodb.entity.CollectionType;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
 import java.net.InetAddress;
 import java.net.UnknownHostException;
 import java.util.*;
@@ -20,6 +23,8 @@ import java.util.*;
  */
 public class ArangoDbUtilities {
 
+    private static final Logger LOG = LoggerFactory.getLogger(ArangoDbUtilities.class);
+
     /**
      * An ArangoDB instance
      */
@@ -29,17 +34,40 @@ public class ArangoDbUtilities {
      * Build the ArangoDB instance specified in the system environment.
      */
     public ArangoDbUtilities() {
-        Map<String, String> env = System.getenv();
-        arangoDB = new ArangoDB.Builder().host(env.get("ARANGO_DB_HOST"), Integer.parseInt(env.get("ARANGO_DB_PORT"))).useSsl(useSsl(env)).user(env.get("ARANGO_DB_USER")).password(env.get("ARANGO_DB_PASSWORD")).build();
+        this(System.getenv());
     }
 
     /**
-     * Build the ArangoDB instance specified in the provided environment.
+     * Build the ArangoDB instance specified in the provided environment, and log where it connects, never the
+     * password.
      *
      * @param env Environment map
+     * @throws IllegalStateException If ARANGO_DB_HOST or ARANGO_DB_PORT is not set
      */
     public ArangoDbUtilities(Map<String, String> env) {
-        arangoDB = new ArangoDB.Builder().host(env.get("ARANGO_DB_HOST"), Integer.parseInt(env.get("ARANGO_DB_PORT"))).useSsl(useSsl(env)).user(env.get("ARANGO_DB_USER")).password(env.get("ARANGO_DB_PASSWORD")).build();
+        String host = requireEnv(env, "ARANGO_DB_HOST");
+        int port = Integer.parseInt(requireEnv(env, "ARANGO_DB_PORT"));
+        boolean ssl = useSsl(env);
+        arangoDB = new ArangoDB.Builder().host(host, port).useSsl(ssl).user(env.get("ARANGO_DB_USER")).password(env.get("ARANGO_DB_PASSWORD")).build();
+        Events.info(LOG, "arangodb_client_created", "host", host, "port", port, "ssl", ssl,
+                "user", env.get("ARANGO_DB_USER"));
+    }
+
+    /**
+     * Get a required variable from the environment, logging which one is missing before failing.
+     *
+     * @param env  Environment map
+     * @param name Variable name
+     * @return The value
+     * @throws IllegalStateException If the variable is unset or blank
+     */
+    private static String requireEnv(Map<String, String> env, String name) {
+        String value = env.get(name);
+        if (value == null || value.isBlank()) {
+            Events.error(LOG, "arangodb_config_missing", "variable", name);
+            throw new IllegalStateException(name + " is not set");
+        }
+        return value;
     }
 
     /**
@@ -124,13 +152,12 @@ public class ArangoDbUtilities {
     public ArangoDatabase createOrGetDatabase(String databaseName) {
         // Create the database, if needed
         if (!arangoDB.db(databaseName).exists()) {
-            System.out.println("Creating database: " + databaseName);
             if (!arangoDB.createDatabase(databaseName)) {
                 throw new RuntimeException("Could not create database: " + databaseName);
             }
+            Events.info(LOG, "database_created", "database", databaseName);
         }
         // Get the database
-        System.out.println("Getting database: " + databaseName);
         return arangoDB.db(databaseName);
     }
 
@@ -142,10 +169,10 @@ public class ArangoDbUtilities {
     public void deleteDatabase(String databaseName) {
         // Delete the database, if needed
         if (arangoDB.db(databaseName).exists()) {
-            System.out.println("Deleting database: " + databaseName);
             if (!arangoDB.db(databaseName).drop()) {
                 throw new RuntimeException("Could not delete database: " + databaseName);
             }
+            Events.warn(LOG, "database_dropped", "database", databaseName);
         }
     }
 
@@ -159,12 +186,11 @@ public class ArangoDbUtilities {
     public ArangoGraph createOrGetGraph(ArangoDatabase db, String graphName) {
         // Create the graph, if needed
         if (!db.graph(graphName).exists()) {
-            System.out.println("Creating graph: " + graphName);
             Collection<EdgeDefinition> edgeDefinitions = new ArrayList<>();
             db.createGraph(graphName, edgeDefinitions);
+            Events.info(LOG, "graph_created", "database", db.name(), "graph", graphName);
         }
         // Get the graph
-        System.out.println("Getting graph: " + graphName);
         return db.graph(graphName);
     }
 
@@ -177,8 +203,8 @@ public class ArangoDbUtilities {
     public void deleteGraph(ArangoDatabase db, String graphName) {
         // Delete the graph, if needed
         if (db.graph(graphName).exists()) {
-            System.out.println("Deleting graph: " + graphName);
             db.graph(graphName).drop();
+            Events.warn(LOG, "graph_dropped", "database", db.name(), "graph", graphName);
         }
     }
 
@@ -192,11 +218,10 @@ public class ArangoDbUtilities {
     public ArangoVertexCollection createOrGetVertexCollection(ArangoGraph graph, String vertexName) {
         // Create the vertex collection, if needed
         if (!graph.getVertexCollections().contains(vertexName)) {
-            System.out.println("Creating vertex collection: " + vertexName);
             graph.addVertexCollection(vertexName);
+            Events.debug(LOG, "vertex_collection_created", "graph", graph.name(), "collection", vertexName);
         }
         // Get the vertex collection
-        System.out.println("Getting vertex collection: " + vertexName);
         return graph.vertexCollection(vertexName);
     }
 
@@ -209,10 +234,10 @@ public class ArangoDbUtilities {
     public void deleteVertexCollection(ArangoGraph graph, String vertexName) {
         // Delete the vertex collection, if needed
         if (graph.getVertexCollections().contains(vertexName)) {
-            System.out.println("Deleting vertex collection: " + vertexName);
             VertexCollectionRemoveOptions options = new VertexCollectionRemoveOptions();
             options.dropCollection(true);
             graph.vertexCollection(vertexName).remove(options);
+            Events.warn(LOG, "vertex_collection_deleted", "graph", graph.name(), "collection", vertexName);
         }
     }
 
@@ -230,12 +255,11 @@ public class ArangoDbUtilities {
         // Create edge collection, if needed
         String collectionName = fromVertexName + "-" + toVertexName;
         if (!graph.getEdgeDefinitions().contains(collectionName)) {
-            System.out.println("Creating edge collection: " + collectionName);
             EdgeDefinition edgeDefinition = new EdgeDefinition().collection(collectionName).from(fromVertexName).to(toVertexName);
             graph.addEdgeDefinition(edgeDefinition);
+            Events.debug(LOG, "edge_definition_created", "graph", graph.name(), "collection", collectionName);
         }
         // Get the edge collection
-        System.out.println("Getting edge collection: " + collectionName);
         return graph.edgeCollection(collectionName);
     }
 
@@ -248,15 +272,15 @@ public class ArangoDbUtilities {
     public void deleteEdgeCollection(ArangoGraph graph, String edgeName) {
         // Delete the edge collection, if needed
         if (graph.getEdgeDefinitions().contains(edgeName)) {
-            System.out.println("Deleting edge collection: " + edgeName);
             EdgeCollectionRemoveOptions options = new EdgeCollectionRemoveOptions();
             options.dropCollections(true);
             graph.edgeCollection(edgeName).remove(options);
+            Events.warn(LOG, "edge_definition_deleted", "graph", graph.name(), "collection", edgeName);
         }
     }
 
     /**
-     * Print a summary of document counts for each vertex and edge
+     * Log a summary of document counts for each vertex and edge
      * collection in the specified database.
      *
      * @param db Database to summarize
@@ -281,26 +305,26 @@ public class ArangoDbUtilities {
         edgeCollections.sort(Comparator.comparing(CollectionEntity::getName));
 
         Map<String, Long> vertexCounts = new LinkedHashMap<>();
-        System.out.println("Vertex collections:");
         long vertexTotal = 0;
         for (CollectionEntity collection : vertexCollections) {
             long count = db.collection(collection.getName()).count().getCount();
             vertexTotal += count;
             vertexCounts.put(collection.getName(), count);
-            System.out.printf("  %-40s %,d%n", collection.getName(), count);
+            Events.info(LOG, "collection_counted", "database", db.name(), "collection", collection.getName(),
+                    "kind", "vertex", "records_out", count);
         }
-        System.out.printf("  %-40s %,d%n", "TOTAL", vertexTotal);
 
         Map<String, Long> edgeCounts = new LinkedHashMap<>();
-        System.out.println("Edge collections:");
         long edgeTotal = 0;
         for (CollectionEntity collection : edgeCollections) {
             long count = db.collection(collection.getName()).count().getCount();
             edgeTotal += count;
             edgeCounts.put(collection.getName(), count);
-            System.out.printf("  %-40s %,d%n", collection.getName(), count);
+            Events.info(LOG, "collection_counted", "database", db.name(), "collection", collection.getName(),
+                    "kind", "edge", "records_out", count);
         }
-        System.out.printf("  %-40s %,d%n", "TOTAL", edgeTotal);
+        Events.info(LOG, "database_summary", "database", db.name(), "vertex_total", vertexTotal,
+                "edge_total", edgeTotal);
 
         Map<String, Map<String, Long>> summary = new LinkedHashMap<>();
         summary.put("vertex", vertexCounts);

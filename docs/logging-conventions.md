@@ -332,11 +332,13 @@ reports give the source line each name replaces.
 | `tuples_file_failed` | ERROR | `tuples_file`, `error_type`, `error`, `duration_ms`; logged before the run fails |
 | `tuples_files_listed` | INFO | `dir`, `files` |
 | `tuples_files_not_found` | ERROR | `pattern`, `dir` |
-| `graph_loaded` | INFO | `graph`, `records_out`, `edges`, `records_rejected`, `duration_ms` |
+| `graph_loaded` | INFO | `graph`, `records_out` (vertices), `edges`, `records_rejected` (edges with an endpoint outside the graph), `duration_ms` |
 | `source_graph_loaded` | INFO | `vertices`, `edges`, `duration_ms` |
-| `hierarchy_enriched` | INFO | `prefix`, `strategy`, `vertices_added`, `edges_added`, `duration_ms` |
-| `induced_subgraph_extracted` | INFO | `records_in`, `source_vertices`, `reachable_vertices`, `records_out`, `max_depth`, `duration_ms` |
-| `induced_graph_created` | INFO | `graph`, `database`, `vertices_written`, `edges_written`, `duration_ms` |
+| `hierarchy_enriched` | INFO | `prefix`, `strategy`, `labels` (left out when none), `vertices_added`, `edges_added`, `duration_ms` |
+| `hierarchy_skipped` | DEBUG | `prefix`, `strategy` |
+| `induced_subgraph_extracted` | INFO | `records_in` (graph vertices), `source_collection`, `source_vertices`, `reachable_vertices`, `records_out` (induced edges), `max_depth`, `duration_ms` |
+| `induced_subgraph_empty` | WARN | `reason` (`no_source_vertices`), `source_collection` |
+| `induced_graph_created` | INFO | `graph`, `database`, `vertices_written`, `edges_written`, `vertex_collection_count`, `edge_collection_count`, `duration_ms` |
 | `aql_paths_collected` | INFO | `query_id`, `records_out`, `duration_ms` |
 
 ### ArangoDB administration
@@ -347,6 +349,8 @@ reports give the source line each name replaces.
 | `arangodb_container_reused` | INFO | `container_id`, `port` |
 | `arangodb_container_removed` | INFO | `container_id`, `status` |
 | `arangodb_ready` | INFO | `port`, `duration_ms` |
+| `arangodb_client_created` | INFO | `host`, `port`, `ssl`, `user`; Java, never the password |
+| `arangodb_config_missing` | ERROR | `variable`; Java, logged before the run fails |
 | `arangodb_endpoint_resolved` | INFO | `mode`, `scheme` (remote only), `host`, `port`, `container_id` |
 | `arangodb_insecure_scheme` | WARN | `reason=unencrypted_credentials`, `host`; remote mode with `ARANGO_DB_SCHEME=http`, so root credentials cross the network unencrypted |
 | `arangodb_data_wiped` | INFO | `kind` (`named_volume` or `bind_mount`), `volume` or `path` |
