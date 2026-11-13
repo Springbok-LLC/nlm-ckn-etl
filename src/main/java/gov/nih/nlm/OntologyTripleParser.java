@@ -1,5 +1,7 @@
 package gov.nih.nlm;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.apache.jena.graph.Triple;
 import org.apache.jena.ontapi.OntModelFactory;
 import org.apache.jena.ontapi.model.OntClass;
@@ -30,6 +32,8 @@ import static gov.nih.nlm.PathUtilities.listFilesMatchingPattern;
  * Parses each ontology file in the data/obo directory to collect unique triples.
  */
 public class OntologyTripleParser {
+
+    private static final Logger LOG = LoggerFactory.getLogger(OntologyTripleParser.class);
 
     // Assign selected predicate namespaces
     private static final List<String> PREDICATE_NAMESPACES = List.of("http://purl.obolibrary.org/obo/",
@@ -121,8 +125,8 @@ public class OntologyTripleParser {
      */
     public static List<Triple> collectTriplesFromFile(Path owlFile, boolean testObjectInRootNS) {
         List<Triple> triples = new ArrayList<>();
-        System.out.println("Collecting triples from within " + owlFile.getFileName());
         long startTime = System.nanoTime();
+        int statementsSeen = 0;
 
         // Read the OWL file
         OntModel ontModel = OntModelFactory.createModel();
@@ -132,7 +136,7 @@ public class OntologyTripleParser {
         String rootNS = getRootNS(ontModel);
         String fileName = owlFile.getFileName().toString();
         Set<String> namespaces = getNamespaces(rootNS, fileName);
-        System.out.println("Filter on namespaces " + namespaces);
+        Events.debug(LOG, "triple_namespaces_selected", "file", fileName, "namespaces", new TreeSet<>(namespaces));
 
         // Consider each statement about each class in an accepted namespace
         for (OntClass ontClass : ontModel.classes().toList()) {
@@ -140,6 +144,7 @@ public class OntologyTripleParser {
                 continue;
             }
             for (OntStatement classStatement : ontClass.statements().toList()) {
+                statementsSeen++;
                 String predicateURI = classStatement.getPredicate().getURI();
                 if (!classStatement.getObject().isAnon()) {
                     // Handle statements which contain a named object
@@ -179,8 +184,9 @@ public class OntologyTripleParser {
                 }
             }
         }
-        long stopTime = System.nanoTime();
-        System.out.println("Collected triples from within " + owlFile.getFileName() + " in " + (stopTime - startTime) / 1e9 + " s");
+        Events.info(LOG, "triples_collected", "file", fileName, "records_in", statementsSeen,
+                "records_out", triples.size(), "records_rejected", statementsSeen - triples.size(),
+                "duration_ms", RunLog.elapsedMs(startTime));
         return triples;
     }
 
@@ -269,30 +275,17 @@ public class OntologyTripleParser {
     public static void reportImports(List<Path> files) {
         for (Path file : files) {
             if (file.getFileName().toString().equals("ro.owl")) continue;
-            System.out.println("=== " + file.getFileName() + " ===");
             OntModel ontModel = OntModelFactory.createModel();
             RDFDataMgr.read(ontModel, file.toString());
             String rootNS = getRootNS(ontModel);
-            System.out.println("  rootNS:  " + rootNS);
             Set<String> imports = getImportNamespaces(ontModel);
-            if (imports.isEmpty()) {
-                System.out.println("  imports: (none)");
-            } else {
-                for (String ns : imports) {
-                    System.out.println("  import:  " + ns);
-                }
-            }
             try {
                 Set<String> classNS = getClassNamespaces(ontModel);
-                System.out.println("  class namespaces: " + classNS.size());
-                for (String ns : classNS) {
-                    String marker = ns.equals(rootNS) ? " (root)" : "";
-                    System.out.println("  class:   " + ns + marker);
-                }
+                Events.info(LOG, "ontology_imports_reported", "file", file.getFileName().toString(),
+                        "root_ns", rootNS, "imports", imports, "class_namespaces", classNS);
             } catch (Exception e) {
-                System.out.println("  ERROR: " + e.getMessage());
+                Events.failure(LOG, "ontology_imports_report_failed", e, "file", file.getFileName().toString());
             }
-            System.out.println();
         }
     }
 
@@ -305,15 +298,18 @@ public class OntologyTripleParser {
      */
     public static HashSet<Triple> collectUniqueTriples(List<Path> files, boolean testObjectInRootNS) {
         HashSet<Triple> uniqueTriplesSet = new HashSet<>();
-        System.out.println("Collecting unique triples from within " + files.size() + " files");
         long startTime = System.nanoTime();
+        int filesParsed = 0;
+        int triplesCollected = 0;
         for (Path file : files) {
             if (file.getFileName().toString().equals("ro.owl")) continue;
             List<Triple> triples = collectTriplesFromFile(file, testObjectInRootNS);
             uniqueTriplesSet.addAll(triples);
+            filesParsed++;
+            triplesCollected += triples.size();
         }
-        long stopTime = System.nanoTime();
-        System.out.println("Collected " + uniqueTriplesSet.size() + " unique triples from within " + files.size() + " in " + (stopTime - startTime) / 1e9 + " s");
+        Events.info(LOG, "unique_triples_collected", "files", filesParsed, "records_in", triplesCollected,
+                "records_out", uniqueTriplesSet.size(), "duration_ms", RunLog.elapsedMs(startTime));
         return uniqueTriplesSet;
     }
 
@@ -324,17 +320,18 @@ public class OntologyTripleParser {
      * @param args Optional: "--report-imports" to print import namespaces
      */
     public static void main(String[] args) {
+        RunLog.run("OntologyTripleParser", () -> run(args),
+                "obo_dir", OBO_DIR.toString(), "args", String.join(" ", args));
+    }
+
+    private static void run(String[] args) throws IOException {
 
         // List ontology files
         String oboPattern = ".*\\.owl";
-        List<Path> oboFiles;
-        try {
-            oboFiles = listFilesMatchingPattern(OBO_DIR.toString(), oboPattern);
-            if (oboFiles.isEmpty()) {
-                throw new RuntimeException("No OBO files found matching the pattern " + oboPattern);
-            }
-        } catch (IOException e) {
-            throw new RuntimeException(e);
+        List<Path> oboFiles = listFilesMatchingPattern(OBO_DIR.toString(), oboPattern);
+        if (oboFiles.isEmpty()) {
+            Events.error(LOG, "ontology_files_not_found", "pattern", oboPattern, "dir", OBO_DIR.toString());
+            throw new IllegalStateException("No OBO files found matching the pattern " + oboPattern);
         }
 
         // Report imports if requested
@@ -345,14 +342,10 @@ public class OntologyTripleParser {
 
         // Map terms and labels
         String roPattern = "ro.owl";
-        List<Path> roFile;
-        try {
-            roFile = listFilesMatchingPattern(OBO_DIR.toString(), roPattern);
-            if (roFile.isEmpty()) {
-                throw new RuntimeException("No RO file found");
-            }
-        } catch (IOException e) {
-            throw new RuntimeException(e);
+        List<Path> roFile = listFilesMatchingPattern(OBO_DIR.toString(), roPattern);
+        if (roFile.isEmpty()) {
+            Events.error(LOG, "ontology_files_not_found", "pattern", roPattern, "dir", OBO_DIR.toString());
+            throw new IllegalStateException("No RO file found");
         }
         Map<String, OntologyElementMap> ontologyElementMaps = parseOntologyElements(roFile);
 
