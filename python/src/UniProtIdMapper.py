@@ -8,7 +8,10 @@ from xml.etree import ElementTree
 import zlib
 
 import requests
+import structlog
 from requests.adapters import HTTPAdapter, Retry
+
+_events = structlog.get_logger(__name__)
 
 
 POLLING_INTERVAL = 1.5
@@ -40,7 +43,13 @@ def check_response(response):
     try:
         response.raise_for_status()
     except requests.HTTPError:
-        print(response.json())
+        # The body is text: a non-JSON error page must not hide the HTTPError.
+        _events.error(
+            "uniprot_http_error",
+            url=response.url,
+            status_code=response.status_code,
+            body=response.text[:500],
+        )
         raise
 
 
@@ -121,7 +130,12 @@ def check_id_mapping_results_ready(job_id):
         j = request.json()
         if "jobStatus" in j:
             if j["jobStatus"] in ("NEW", "RUNNING"):
-                print(f"Retrying in {POLLING_INTERVAL}s")
+                _events.debug(
+                    "idmapping_job_pending",
+                    job_id=job_id,
+                    job_status=j["jobStatus"],
+                    wait_s=POLLING_INTERVAL,
+                )
                 time.sleep(POLLING_INTERVAL)
             else:
                 raise Exception(j["jobStatus"])
@@ -294,7 +308,7 @@ def merge_xml_results(xml_results):
 
 
 def print_progress_batches(batch_index, size, total):
-    """Print the progress of the batch request.
+    """Log the progress of the batch request, at DEBUG.
 
     Parameters
     ----------
@@ -310,7 +324,7 @@ def print_progress_batches(batch_index, size, total):
     None
     """
     n_fetched = min((batch_index + 1) * size, total)
-    print(f"Fetched: {n_fetched} / {total}")
+    _events.debug("idmapping_batch_fetched", n_fetched=n_fetched, total=total)
 
 
 def get_id_mapping_results_search(url):
