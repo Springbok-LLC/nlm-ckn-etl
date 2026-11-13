@@ -220,11 +220,25 @@ class ArangoAndInducedLoggingTest {
             LogCapture.Event e = logs.one("hierarchy_enriched");
             assertEquals("UBERON", e.get("prefix"));
             assertEquals("walk", e.get("strategy"));
-            assertEquals(1, e.get("vertices_added"));
-            assertEquals(1, e.get("edges_added"));
+            assertEquals(1L, e.get("vertices_added"));
+            assertEquals(1L, e.get("edges_added"));
             LogCapture.Event skipped = logs.one("hierarchy_skipped");
             assertEquals("DEBUG", skipped.level());
             assertEquals("PR", skipped.get("prefix"));
+        }
+    }
+
+    @Test
+    void hierarchyEnrichmentCountsOnlyWhatWasNotAlreadyThere() {
+        var full = sourceGraph();
+        var induced = new InducedSubgraphFinder().find(full, "CS", 1);
+        new InducedSubgraphFinder().addOntologyHierarchyPaths(full, induced);
+        try (LogCapture logs = new LogCapture()) {
+            new InducedSubgraphFinder().addOntologyHierarchyPaths(full, induced);
+
+            LogCapture.Event e = logs.one("hierarchy_enriched");
+            assertEquals(0L, e.get("vertices_added"));
+            assertEquals(0L, e.get("edges_added"));
         }
     }
 
