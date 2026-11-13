@@ -13,7 +13,8 @@ import org.slf4j.event.Level;
  * Events.info(LOG, "vertices_inserted", "collection", name, "records_out", n);
  * }</pre>
  *
- * <p>A field is a top-level JSON member, and a number stays a number. The
+ * <p>A field is a top-level JSON member, and a number stays a number. A field whose value is null is left out,
+ * so no line carries a {@code null}. The
  * vocabulary is in {@code docs/logging-conventions.md}.
  */
 public final class Events {
@@ -57,7 +58,9 @@ public final class Events {
         }
         var builder = log.atLevel(level).setMessage(message);
         for (int i = 0; i < fields.length; i += 2) {
-            builder = builder.addKeyValue(String.valueOf(fields[i]), fields[i + 1]);
+            if (fields[i + 1] != null) {
+                builder = builder.addKeyValue(String.valueOf(fields[i]), fields[i + 1]);
+            }
         }
         if (cause != null) {
             builder = builder

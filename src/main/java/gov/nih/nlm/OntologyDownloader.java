@@ -1,5 +1,7 @@
 package gov.nih.nlm;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.w3c.dom.Document;
 import org.w3c.dom.Element;
 
@@ -24,6 +26,8 @@ import static gov.nih.nlm.PathUtilities.OBO_DIR;
  */
 public class OntologyDownloader {
 
+    private static final Logger LOG = LoggerFactory.getLogger(OntologyDownloader.class);
+
     // Assign OBO Foundry PURLs
     static final List<String> OBO_PURLS = List.of("https://purl.obolibrary.org/obo/cl.owl",
             "https://purl.obolibrary.org/obo/go.owl",
@@ -46,7 +50,7 @@ public class OntologyDownloader {
      * @return Version string in YYYY-MM-DD format, or null if not found
      */
     public static String findOboVersion(Path oboFilePath) {
-        System.out.println("Parsing " + oboFilePath);
+        Events.debug(LOG, "ontology_file_parsing", "file", oboFilePath.toString());
         Document doc = OntologyElementParser.parseXmlFile(oboFilePath.toFile());
 
         // Try owl:versionInfo first
@@ -69,7 +73,7 @@ public class OntologyDownloader {
             }
         }
 
-        System.out.println("Could not get version for " + oboFilePath);
+        Events.warn(LOG, "ontology_version_not_found", "file", oboFilePath.toString());
         return null;
     }
 
@@ -102,9 +106,9 @@ public class OntologyDownloader {
             throws IOException, InterruptedException {
         Files.createDirectories(downloadDir);
 
+        long runStarted = System.nanoTime();
         List<String> failures = new ArrayList<>();
         for (String url : urls) {
-            System.out.println("Getting " + url);
             URI uri = URI.create(url);
             String path = uri.getPath();
             String fileName = path.substring(path.lastIndexOf('/') + 1);
@@ -112,6 +116,7 @@ public class OntologyDownloader {
             String suffix = fileName.substring(fileName.lastIndexOf('.'));
             Path newFile = downloadDir.resolve(stem + "-new" + suffix);
 
+            long started = System.nanoTime();
             try {
                 // Download to a temporary file
                 HttpRequest request = HttpRequest.newBuilder().uri(uri).build();
@@ -120,17 +125,22 @@ public class OntologyDownloader {
                     throw new IOException("HTTP " + response.statusCode() + " for " + url);
                 }
 
-                System.out.println("Writing " + newFile);
                 Files.write(newFile, response.body());
-                installDownload(newFile, downloadDir, stem, suffix);
+                installDownload(newFile, downloadDir, stem, suffix,
+                        "url", url, "status_code", response.statusCode(), "bytes", response.body().length,
+                        "duration_ms", RunLog.elapsedMs(started));
             } catch (IOException | RuntimeException e) {
                 // Leave the current file in place, drop any partial download, and go on to the next URL
-                System.err.println("Could not update " + url + ": " + e);
+                Events.failure(LOG, "ontology_download_failed", e, "ontology", fileName, "url", url,
+                        "duration_ms", RunLog.elapsedMs(started));
                 Files.deleteIfExists(newFile);
                 failures.add(url);
             }
         }
 
+        Events.info(LOG, "ontologies_downloaded", "records_in", urls.size(),
+                "records_out", urls.size() - failures.size(), "records_rejected", failures.size(),
+                "duration_ms", RunLog.elapsedMs(runStarted));
         if (!failures.isEmpty()) {
             throw new IOException("Could not update " + failures.size() + " of " + urls.size() + " ontologies: "
                     + String.join(", ", failures));
@@ -146,32 +156,32 @@ public class OntologyDownloader {
      * @param downloadDir Directory containing the current file
      * @param stem        File name without suffix
      * @param suffix      File name suffix, including the dot
+     * @param fields      Alternating key and value arguments describing the download (for example {@code url},
+     *                    {@code status_code}, {@code bytes} and {@code duration_ms}), added to the one
+     *                    {@code ontology_downloaded}, {@code ontology_updated} or {@code ontology_unchanged} event
+     *                    this method logs
      * @throws IOException if a file cannot be moved or deleted
      */
-    static void installDownload(Path newFile, Path downloadDir, String stem, String suffix) throws IOException {
+    static void installDownload(Path newFile, Path downloadDir, String stem, String suffix, Object... fields)
+            throws IOException {
+        String ontology = stem + suffix;
         String versionNew = findOboVersion(newFile);
-        System.out.println("Found new version " + versionNew);
 
         Path curFile = downloadDir.resolve(stem + suffix);
         if (!Files.exists(curFile)) {
-            System.out.println("Renaming " + newFile + " to " + curFile);
             Files.move(newFile, curFile);
+            Events.info(LOG, "ontology_downloaded", withFields(fields, "ontology", ontology, "version_new", versionNew));
             return;
         }
 
         String versionCur = findOboVersion(curFile);
-        System.out.println("Found current version " + versionCur);
 
         boolean versionsKnown = versionNew != null && versionCur != null;
         if (versionsKnown && versionNew.compareTo(versionCur) <= 0) {
-            System.out.println("New version is not newer than current version");
-            System.out.println("Removing " + newFile);
             Files.delete(newFile);
+            Events.info(LOG, "ontology_unchanged",
+                    withFields(fields, "ontology", ontology, "version_cur", versionCur, "version_new", versionNew));
             return;
-        }
-        if (!versionsKnown) {
-            System.err.println("Could not compare versions of " + curFile + " (current " + versionCur + ", new "
-                    + versionNew + "); keeping the new download");
         }
 
         Path archiveDir = downloadDir.resolve(".archive");
@@ -181,10 +191,8 @@ public class OntologyDownloader {
                 : "unversioned-" + System.currentTimeMillis() + "-" + UUID.randomUUID();
         Path oldFile = archiveDir.resolve(stem + "-" + archiveTag + suffix);
 
-        System.out.println("Renaming " + curFile + " to " + oldFile);
         Files.move(curFile, oldFile);
 
-        System.out.println("Renaming " + newFile + " to " + curFile);
         try {
             Files.move(newFile, curFile);
         } catch (IOException e) {
@@ -197,6 +205,17 @@ public class OntologyDownloader {
             }
             throw e;
         }
+        Events.info(LOG, "ontology_updated",
+                withFields(fields, "ontology", ontology, "version_prev", versionCur, "version_new", versionNew,
+                        "archived_to", oldFile.toString()));
+    }
+
+    /** The event's own fields followed by the download's. */
+    private static Object[] withFields(Object[] download, Object... own) {
+        Object[] all = new Object[own.length + download.length];
+        System.arraycopy(own, 0, all, 0, own.length);
+        System.arraycopy(download, 0, all, own.length, download.length);
+        return all;
     }
 
     /**
@@ -205,10 +224,7 @@ public class OntologyDownloader {
      * @param args (None expected)
      */
     public static void main(String[] args) {
-        try {
-            updateDownloads(OBO_PURLS, OBO_DIR);
-        } catch (IOException | InterruptedException e) {
-            throw new RuntimeException(e);
-        }
+        RunLog.run("OntologyDownloader", () -> updateDownloads(OBO_PURLS, OBO_DIR),
+                "obo_dir", OBO_DIR.toString(), "ontologies", OBO_PURLS.size());
     }
 }

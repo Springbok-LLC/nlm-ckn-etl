@@ -1,5 +1,8 @@
 package gov.nih.nlm;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
 import javax.xml.namespace.QName;
 import javax.xml.stream.XMLEventReader;
 import javax.xml.stream.XMLEventWriter;
@@ -42,6 +45,8 @@ import static gov.nih.nlm.PathUtilities.OBO_DIR;
  * </ul>
  */
 public class OntologySlimmer {
+
+    private static final Logger LOG = LoggerFactory.getLogger(OntologySlimmer.class);
 
     private static final String OWL_NS = "http://www.w3.org/2002/07/owl#";
     private static final String RDF_NS = "http://www.w3.org/1999/02/22-rdf-syntax-ns#";
@@ -99,7 +104,7 @@ public class OntologySlimmer {
         for (String taxonId : taxonIds) {
             taxonURIs.add(NCBITAXON_PREFIX + taxonId);
         }
-        return filterClasses(inputFile, outputFile, events -> hasSomeValuesFrom(events, taxonURIs));
+        return filterClasses(inputFile, outputFile, "inclusion", events -> hasSomeValuesFrom(events, taxonURIs));
     }
 
     /**
@@ -129,7 +134,7 @@ public class OntologySlimmer {
      * @throws XMLStreamException if an XML parsing error occurs
      */
     public static int slimOntologyByTaxonExclusion(Path inputFile, Path outputFile, List<Set<String>> targetLineages) throws IOException, XMLStreamException {
-        return filterClasses(inputFile, outputFile, events -> {
+        return filterClasses(inputFile, outputFile, "exclusion", events -> {
             TaxonConstraints constraints = extractTaxonConstraints(events);
             for (Set<String> lineage : targetLineages) {
                 if (!isExcludedForLineage(constraints, lineage)) {
@@ -147,14 +152,16 @@ public class OntologySlimmer {
      *
      * @param inputFile  Path to the full OWL file
      * @param outputFile Path to write the filtered OWL file
+     * @param mode       {@code inclusion} or {@code exclusion}, for the log line
      * @param filter     Decides whether each buffered class is written
      * @return The number of classes written
      * @throws IOException        if an I/O error occurs
      * @throws XMLStreamException if an XML parsing error occurs
      */
-    private static int filterClasses(Path inputFile, Path outputFile, ClassFilter filter) throws IOException, XMLStreamException {
+    private static int filterClasses(Path inputFile, Path outputFile, String mode, ClassFilter filter) throws IOException, XMLStreamException {
         XMLInputFactory inputFactory = hardenedInputFactory();
         XMLOutputFactory outputFactory = XMLOutputFactory.newInstance();
+        long started = System.nanoTime();
         int classesWritten = 0;
         int classesSkipped = 0;
 
@@ -251,8 +258,13 @@ public class OntologySlimmer {
             reader.close();
         }
 
-        System.out.println("Wrote " + classesWritten + " classes, skipped " + classesSkipped
-                + " classes and all axioms");
+        Events.info(LOG, "ontology_slimmed", "input_file", inputFile.toString(), "output_file", outputFile.toString(),
+                "mode", mode, "records_out", classesWritten, "records_rejected", classesSkipped,
+                "duration_ms", RunLog.elapsedMs(started));
+        if (classesWritten == 0) {
+            Events.warn(LOG, "ontology_slim_empty", "input_file", inputFile.toString(),
+                    "output_file", outputFile.toString(), "mode", mode);
+        }
         return classesWritten;
     }
 
@@ -499,48 +511,44 @@ public class OntologySlimmer {
      * @param args (None expected)
      */
     public static void main(String[] args) {
+        RunLog.run("OntologySlimmer", OntologySlimmer::slimDownloads,
+                "obo_dir", OBO_DIR.toString(), "permitted_taxa", String.join(",", new java.util.TreeSet<>(TaxonConfig.PERMITTED_TAXA)));
+    }
+
+    private static void slimDownloads() throws IOException, XMLStreamException {
         Path archiveDir = OBO_DIR.resolve(".archive");
 
-        try {
-            // Inclusion slim: pr.owl -> pr-slim.owl
-            Path prFull = OBO_DIR.resolve("pr.owl");
-            Path prSlim = OBO_DIR.resolve("pr-slim.owl");
-            if (!Files.exists(prFull)) {
-                throw new RuntimeException("pr.owl not found in " + OBO_DIR);
-            }
-            System.out.println("Slimming " + prFull + " to taxa " + TaxonConfig.PERMITTED_TAXA + " (inclusion)");
-            long startTime = System.nanoTime();
-            slimOntologyByTaxonInclusion(prFull, prSlim, TaxonConfig.PERMITTED_TAXA);
-            System.out.println("Slimmed in " + (System.nanoTime() - startTime) / 1e9 + " s");
-            Files.createDirectories(archiveDir);
-            Path prArchive = archiveDir.resolve("pr.owl");
-            System.out.println("Moving " + prFull + " to " + prArchive);
-            Files.move(prFull, prArchive, StandardCopyOption.REPLACE_EXISTING);
-
-            // Exclusion slim: uberon-base.owl -> uberon-human.owl, using the NCBITaxon hierarchy in taxslim.owl
-            Path taxslimFile = OBO_DIR.resolve("taxslim.owl");
-            Path uberonFull = OBO_DIR.resolve("uberon-base.owl");
-            Path uberonSlim = OBO_DIR.resolve("uberon-human.owl");
-            if (!Files.exists(uberonFull)) {
-                throw new RuntimeException("uberon-base.owl not found in " + OBO_DIR);
-            }
-            if (!Files.exists(taxslimFile)) {
-                throw new RuntimeException("taxslim.owl not found in " + OBO_DIR);
-            }
-            System.out.println("Building lineages for taxa " + TaxonConfig.PERMITTED_TAXA + " from " + taxslimFile);
-            List<Set<String>> lineages = buildTaxonLineages(taxslimFile, TaxonConfig.PERMITTED_TAXA);
-            int lineageTaxa = lineages.stream().mapToInt(Set::size).sum();
-            System.out.println("Lineages span " + lineageTaxa + " taxa across " + lineages.size() + " permitted taxon(s)");
-            System.out.println("Slimming " + uberonFull + " to taxa " + TaxonConfig.PERMITTED_TAXA + " (exclusion)");
-            startTime = System.nanoTime();
-            int kept = slimOntologyByTaxonExclusion(uberonFull, uberonSlim, lineages);
-            System.out.println("Kept " + kept + " UBERON classes; slimmed in " + (System.nanoTime() - startTime) / 1e9 + " s");
-            Path uberonArchive = archiveDir.resolve("uberon-base.owl");
-            System.out.println("Moving " + uberonFull + " to " + uberonArchive);
-            Files.move(uberonFull, uberonArchive, StandardCopyOption.REPLACE_EXISTING);
-
-        } catch (IOException | XMLStreamException e) {
-            throw new RuntimeException(e);
+        // Inclusion slim: pr.owl -> pr-slim.owl
+        Path prFull = OBO_DIR.resolve("pr.owl");
+        Path prSlim = OBO_DIR.resolve("pr-slim.owl");
+        if (!Files.exists(prFull)) {
+            throw new IllegalStateException("pr.owl not found in " + OBO_DIR);
         }
+        slimOntologyByTaxonInclusion(prFull, prSlim, TaxonConfig.PERMITTED_TAXA);
+        archive(prFull, archiveDir.resolve("pr.owl"), archiveDir);
+
+        // Exclusion slim: uberon-base.owl -> uberon-human.owl, using the NCBITaxon hierarchy in taxslim.owl
+        Path taxslimFile = OBO_DIR.resolve("taxslim.owl");
+        Path uberonFull = OBO_DIR.resolve("uberon-base.owl");
+        Path uberonSlim = OBO_DIR.resolve("uberon-human.owl");
+        if (!Files.exists(uberonFull)) {
+            throw new IllegalStateException("uberon-base.owl not found in " + OBO_DIR);
+        }
+        if (!Files.exists(taxslimFile)) {
+            throw new IllegalStateException("taxslim.owl not found in " + OBO_DIR);
+        }
+        List<Set<String>> lineages = buildTaxonLineages(taxslimFile, TaxonConfig.PERMITTED_TAXA);
+        int lineageTaxa = lineages.stream().mapToInt(Set::size).sum();
+        Events.info(LOG, "taxon_lineages_built", "taxa_count", lineageTaxa,
+                "permitted_taxa_count", lineages.size());
+        slimOntologyByTaxonExclusion(uberonFull, uberonSlim, lineages);
+        archive(uberonFull, archiveDir.resolve("uberon-base.owl"), archiveDir);
+    }
+
+    /** Moves a slimmed input into the archive, replacing any earlier archived copy. */
+    private static void archive(Path from, Path to, Path archiveDir) throws IOException {
+        Files.createDirectories(archiveDir);
+        Files.move(from, to, StandardCopyOption.REPLACE_EXISTING);
+        Events.info(LOG, "ontology_file_archived", "from", from.toString(), "to", to.toString());
     }
 }

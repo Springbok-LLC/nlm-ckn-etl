@@ -121,6 +121,14 @@ class RunLogTest {
     }
 
     @Test
+    void nullFieldsAreLeftOut() throws Exception {
+        Events.info(LOG, "x", "present", 1, "absent", null);
+        JsonNode line = lines().get(0);
+        assertEquals(1, line.get("present").asInt());
+        assertFalse(line.has("absent"));
+    }
+
+    @Test
     void debugIsOffByDefault() throws Exception {
         Events.debug(LOG, "per_item_detail", "id", "x");
         assertTrue(lines().isEmpty());
