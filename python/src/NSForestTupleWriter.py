@@ -6,6 +6,7 @@ scores.
 """
 
 import pandas as pd
+import structlog
 from rdflib.term import Literal, URIRef
 
 import ProductionDataSpecification as spec
@@ -50,6 +51,9 @@ from TupleWriterUtilities import (
     resolve_gene_names,
     write_tuples,
 )
+from logging_setup import configure_logging
+
+_events = structlog.get_logger(__name__)
 
 # Extra edge annotations from raw data columns (not on the Pydantic
 # entity model) for the CS→BMC edge.
@@ -505,13 +509,19 @@ def create_tuples(
     return tuples
 
 
-def main():
+def main() -> int:
     """Run NSForest tuple writer for all datasets.
 
     Loads results sources, resolves file paths, and creates tuples
     for each NSForest results file. Writes one JSON tuple file per
     dataset.
+
+    Returns
+    -------
+    int
+        The number of tuples written, over all datasets
     """
+    n_written = 0
     results_dir = get_current_run().results_dir
     harvester_data = get_cellxgene_harvester_data(results_dir)
     uberon_root_map = get_uberon_root_map(results_dir)
@@ -606,7 +616,6 @@ def main():
             summary_data, uberon_root_map
         )
 
-        print(f"Creating NSForest tuples from {nsforest_path.name}")
         tuples = create_tuples(
             nsforest_results,
             summary_data,
@@ -616,10 +625,21 @@ def main():
             root_uberon_term,
             reference_dataset_version_ids,
         )
+        n_dataset = 0
         if tuples:
             output_name = nsforest_path.name.replace(".csv", "-nsforest.json")
-            write_tuples(tuples, get_tuples_dir() / output_name)
+            n_dataset = write_tuples(tuples, get_tuples_dir() / output_name)
+            n_written += n_dataset
+        _events.info(
+            "tuple_writer_dataset",
+            source="nsforest",
+            file=nsforest_path.name,
+            records_in=len(nsforest_results),
+            tuples_out=n_dataset,
+        )
+    return n_written
 
 
 if __name__ == "__main__":
+    configure_logging("etl-pipeline")
     main()

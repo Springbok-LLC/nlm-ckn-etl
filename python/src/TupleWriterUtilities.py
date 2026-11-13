@@ -8,9 +8,11 @@ import ast
 import json
 import re
 from pathlib import Path
+from time import monotonic
 from typing import Any
 
 import pandas as pd
+import structlog
 from rdflib.term import Literal, URIRef
 
 import ckn_schema.pydantic.ckn_schema as ckn_module
@@ -41,6 +43,107 @@ from LoaderUtilities import (
 )
 
 import ProductionDataSpecification as spec
+
+_events = structlog.get_logger(__name__)
+
+# Rejected ids logged on a ``records_rejected`` line, so a large reject does
+# not become a large log line.
+REJECT_SAMPLE_SIZE = 5
+
+
+class RejectTally:
+    """Count the input records a tuple writer drops or flags, by reason.
+
+    A writer reports one ``records_rejected`` line per reason, with a sample
+    of ids, instead of a line per record.
+
+    Parameters
+    ----------
+    source : str
+        The writer's ``source`` value
+    """
+
+    def __init__(self, source: str):
+        self.source = source
+        # Per reason: the number of records, and at most REJECT_SAMPLE_SIZE ids.
+        self._rejected: dict[str, list] = {}
+        self._flagged: dict[str, list] = {}
+        self._rejected_counts: dict[str, int] = {}
+        self._flagged_counts: dict[str, int] = {}
+
+    @staticmethod
+    def _tally(samples, counts, reason, id_value) -> None:
+        counts[reason] = counts.get(reason, 0) + 1
+        sample = samples.setdefault(reason, [])
+        if id_value is not None and len(sample) < REJECT_SAMPLE_SIZE:
+            sample.append(id_value)
+
+    def reject(self, reason: str, id_value=None) -> None:
+        """Record an input record that produced no tuples.
+
+        Parameters
+        ----------
+        reason : str
+            A ``reason`` value from ``docs/logging-conventions.md``
+        id_value : str, optional
+            The record's id, kept for the sample
+        """
+        self._tally(self._rejected, self._rejected_counts, reason, id_value)
+
+    def flag(self, reason: str, id_value=None) -> None:
+        """Record an input record that was kept despite a problem.
+
+        Parameters
+        ----------
+        reason : str
+            A ``reason`` value from ``docs/logging-conventions.md``
+        id_value : str, optional
+            The record's id, kept for the sample
+        """
+        self._tally(self._flagged, self._flagged_counts, reason, id_value)
+
+    @property
+    def n_rejected(self) -> int:
+        """The number of records rejected, over all reasons."""
+        return sum(self._rejected_counts.values())
+
+    def log(self) -> None:
+        """Log ``records_rejected`` and ``records_flagged``, one per reason."""
+        for event, by_reason, counts in (
+            ("records_rejected", self._rejected, self._rejected_counts),
+            ("records_flagged", self._flagged, self._flagged_counts),
+        ):
+            for reason, ids in by_reason.items():
+                _events.warning(
+                    event,
+                    source=self.source,
+                    reason=reason,
+                    **{event: counts[reason]},
+                    sample=ids,
+                )
+
+
+def require_input(path: Path, description: str, input_name: str) -> None:
+    """Raise if a tuple writer's input file is missing, logging it first.
+
+    Parameters
+    ----------
+    path : Path
+        The expected input file
+    description : str
+        How the error message names the input, e.g. ``"Gene results"``
+    input_name : str
+        The ``input`` field of the ``input_missing`` event, e.g.
+        ``"gene_transformed"``
+
+    Raises
+    ------
+    FileNotFoundError
+        If ``path`` does not exist
+    """
+    if not path.exists():
+        _events.error("input_missing", input=input_name, path=str(path))
+        raise FileNotFoundError(f"{description} not found at {path}")
 
 # ---------------------------------------------------------------------------
 # Constants
@@ -158,7 +261,12 @@ def parse_string_list(s: str) -> list[str]:
         if isinstance(result, list):
             return [str(x) for x in result]
     except (ValueError, SyntaxError) as ex:
-        print(f"Warning: Could not parse string list: {ex}")
+        _events.warning(
+            "string_list_parse_failed",
+            value=s[:80],
+            error_type=type(ex).__name__,
+            error=str(ex),
+        )
     return []
 
 
@@ -750,7 +858,7 @@ def _dedupe_annotation_triples_last_wins(tuples: list[tuple]) -> list[tuple]:
     return out
 
 
-def write_tuples(tuples: list[tuple], output_path: Path) -> None:
+def write_tuples(tuples: list[tuple], output_path: Path) -> int:
     """Serialize tuples to JSON for ResultsGraphBuilder.
 
     Vertex annotation triples are deduplicated with last-non-None-wins
@@ -762,12 +870,26 @@ def write_tuples(tuples: list[tuple], output_path: Path) -> None:
         List of 3-element and 5-element tuples.
     output_path : Path
         Path to the output JSON file.
+
+    Returns
+    -------
+    int
+        The number of tuples written, after deduplication.
     """
+    started = monotonic()
+    n_in = len(tuples)
     tuples = _dedupe_annotation_triples_last_wins(tuples)
     output_path.parent.mkdir(parents=True, exist_ok=True)
     with open(output_path, "w") as f:
         json.dump({"tuples": tuples}, f, indent=4)
-    print(f"Wrote {len(tuples)} tuples to {output_path}")
+    _events.info(
+        "tuples_written",
+        output_path=str(output_path),
+        records_out=len(tuples),
+        deduped_removed=n_in - len(tuples),
+        duration_ms=round((monotonic() - started) * 1000),
+    )
+    return len(tuples)
 
 
 # ---------------------------------------------------------------------------

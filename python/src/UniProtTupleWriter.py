@@ -5,18 +5,26 @@ Produces Protein vertex annotations from UniProt API results.
 
 import json
 
+import structlog
 from ckn_schema.pydantic.ckn_schema import Protein
 
 from LoaderUtilities import get_current_run
+from logging_setup import configure_logging
 
 from TupleWriterUtilities import (
+    RejectTally,
     entity_to_annotation_triples,
     get_tuples_dir,
+    require_input,
     write_tuples,
 )
 
+_events = structlog.get_logger(__name__)
 
-def create_tuples(uniprot_results: dict) -> list[tuple]:
+
+def create_tuples(
+    uniprot_results: dict, rejects: RejectTally | None = None
+) -> list[tuple]:
     """Create tuples from UniProt results.
 
     Produces Protein vertex annotations.
@@ -29,6 +37,8 @@ def create_tuples(uniprot_results: dict) -> list[tuple]:
         accessions. Each entry contains Protein_name, UniProt_ID,
         Gene_name, Number_of_amino_acids, Function, Annotation_score,
         and Organism.
+    rejects : RejectTally, optional
+        Collects the accessions with no data; the caller logs it.
 
     Returns
     -------
@@ -36,13 +46,14 @@ def create_tuples(uniprot_results: dict) -> list[tuple]:
         List of 3-element annotation triples.
     """
     tuples = []
+    rejects = rejects if rejects is not None else RejectTally("uniprot")
 
     protein_accessions = uniprot_results.get("protein_accessions", [])
 
     for accession in protein_accessions:
         data = uniprot_results.get(accession)
         if not data:
-            print(f"Warning: No data for protein accession {accession}")
+            rejects.reject("no_data", accession)
             continue
 
         ann_score = data.get("Annotation_score")
@@ -66,24 +77,39 @@ def create_tuples(uniprot_results: dict) -> list[tuple]:
     return tuples
 
 
-def main():
+def main() -> int:
     """Run UniProt tuple writer.
 
     Loads transformed UniProt results and creates tuples for each
     protein. Writes output to a single JSON tuple file.
+
+    Returns
+    -------
+    int
+        The number of tuples written
     """
     uniprot_path = get_current_run().external_dir / "uniprot_transformed.json"
-    if not uniprot_path.exists():
-        raise FileNotFoundError(f"UniProt results not found at {uniprot_path}")
+    require_input(uniprot_path, "UniProt results", "uniprot_transformed")
 
-    print(f"Creating UniProt tuples from {uniprot_path}")
     with open(uniprot_path, "r") as fp:
         uniprot_results = json.load(fp)
+    _events.info(
+        "tuple_writer_started",
+        source="uniprot",
+        input_path=str(uniprot_path),
+        records_in=len(uniprot_results.get("protein_accessions", [])),
+    )
 
-    tuples = create_tuples(uniprot_results)
+    rejects = RejectTally("uniprot")
+    try:
+        tuples = create_tuples(uniprot_results, rejects)
+    finally:
+        rejects.log()
     if tuples:
-        write_tuples(tuples, get_tuples_dir() / "uniprot.json")
+        return write_tuples(tuples, get_tuples_dir() / "uniprot.json")
+    return 0
 
 
 if __name__ == "__main__":
+    configure_logging("etl-pipeline")
     main()

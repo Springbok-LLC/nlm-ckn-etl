@@ -7,6 +7,7 @@ associations from manual cell type mapping data.
 import re
 
 import pandas as pd
+import structlog
 from rdflib.term import Literal, URIRef
 
 from LoaderUtilities import (
@@ -24,6 +25,7 @@ from LoaderUtilities import (
     load_results,
     resolve_summary_root_uberon_term,
 )
+from logging_setup import configure_logging
 
 from ckn_schema.pydantic.ckn_schema import (
     AnatomicalStructure,
@@ -33,6 +35,7 @@ from ckn_schema.pydantic.ckn_schema import (
 
 from TupleWriterUtilities import (
     ASSOCIATION_CLASSES,
+    RejectTally,
     association_to_tuples,
     build_cell_set_dataset,
     cell_set_dataset_name_tuples,
@@ -45,12 +48,15 @@ from TupleWriterUtilities import (
     write_tuples,
 )
 
+_events = structlog.get_logger(__name__)
+
 
 def create_tuples(
     mapping_results: pd.DataFrame,
     summary_data: pd.DataFrame,
     harvester_data: pd.DataFrame | None = None,
     uberon_root_map: dict | None = None,
+    rejects: RejectTally | None = None,
 ) -> list[tuple]:
     """Create tuples from cluster_cid author-to-CL mapping results.
 
@@ -75,6 +81,9 @@ def create_tuples(
         Organ to UBERON root mapping from ``LoaderUtilities.get_uberon_root_map``,
         used to set each cell set's anatomical structure to the root term of the
         organ its dataset was sampled from.
+    rejects : RejectTally, optional
+        Collects the clusters dropped and the deprecated terms kept; the
+        caller logs it.
 
     Returns
     -------
@@ -82,6 +91,7 @@ def create_tuples(
         List of 3-element and 5-element RDF tuples.
     """
     tuples = []
+    rejects = rejects if rejects is not None else RejectTally("mapping")
     ensembl_id_to_names = get_gene_ensembl_id_to_names_map()
 
     for _, row in mapping_results.iterrows():
@@ -98,18 +108,16 @@ def create_tuples(
         if pd.isna(cl_id_raw) or str(cl_id_raw).strip() == "":
             cl_id_raw = row.get("cell_ontology_id")
         if pd.isna(cl_id_raw) or str(cl_id_raw).strip() == "":
-            print(
-                f"Warning: No cell ontology ID for cluster {row.get('cluster_name')!r}"
-            )
+            rejects.reject("no_cl_id", row.get("cluster_name"))
             continue
         cl_curie = purl_to_curie(str(cl_id_raw))
         if not re.match(r"CL:\d{7}$", cl_curie):
-            print(f"Warning: CL CURIE unexpected: {cl_curie}")
+            rejects.reject("bad_cl_curie", cl_curie)
             continue
         cell_type = CellType(ontology_purl=cl_curie, label=None)
         cl_term = curie_to_term(cell_type.ontology_purl)
         if cl_term in DEPRECATED_TERMS:
-            print(f"Warning: CL term {cl_term} deprecated")
+            rejects.flag("deprecated_term", cl_term)
 
         # Resolve this cluster's dataset (per-row dataset_version_id: Jorstad
         # maps each cluster to its own dataset) and its summary row.
@@ -142,7 +150,7 @@ def create_tuples(
             anat = AnatomicalStructure(ontology_purl=root_term)
             uberon_term = curie_to_term(anat.ontology_purl)
             if uberon_term in DEPRECATED_TERMS:
-                print(f"Warning: UBERON term {uberon_term} deprecated")
+                rejects.flag("deprecated_term", uberon_term)
 
         author_cell_set = hyphenate(str(row.get("cluster_name", "")))
         markers = resolve_gene_names(
@@ -244,14 +252,20 @@ def create_tuples(
     return tuples
 
 
-def main():
+def main() -> int:
     """Run Mapping tuple writer for all datasets.
 
     Loads results sources, resolves file paths, merges NSForest
     results with author-to-CL mapping data, and creates tuples for
     each dataset with a mapping file. Writes one JSON tuple file per
     dataset.
+
+    Returns
+    -------
+    int
+        The number of tuples written, over all datasets
     """
+    n_written = 0
     results_dir = get_current_run().results_dir
     harvester_data = get_cellxgene_harvester_data(results_dir)
     uberon_root_map = get_uberon_root_map(results_dir)
@@ -293,14 +307,29 @@ def main():
 
         summary_data = load_results(summary_path[0]) if summary_path else pd.DataFrame()
 
-        print(f"Creating mapping tuples from {cluster_cid_path.name}")
-        tuples = create_tuples(
-            mapping_results, summary_data, harvester_data, uberon_root_map
-        )
+        rejects = RejectTally("mapping")
+        try:
+            tuples = create_tuples(
+                mapping_results, summary_data, harvester_data, uberon_root_map, rejects
+            )
+        finally:
+            rejects.log()
+        n_dataset = 0
         if tuples:
             output_name = cluster_cid_path.name.replace(".csv", "-mapping.json")
-            write_tuples(tuples, get_tuples_dir() / output_name)
+            n_dataset = write_tuples(tuples, get_tuples_dir() / output_name)
+            n_written += n_dataset
+        _events.info(
+            "tuple_writer_dataset",
+            source="mapping",
+            file=cluster_cid_path.name,
+            records_in=len(mapping_results),
+            records_rejected=rejects.n_rejected,
+            tuples_out=n_dataset,
+        )
+    return n_written
 
 
 if __name__ == "__main__":
+    configure_logging("etl-pipeline")
     main()

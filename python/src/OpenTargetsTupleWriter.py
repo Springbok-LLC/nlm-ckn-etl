@@ -7,6 +7,7 @@ Targets Platform GraphQL API results.
 import json
 
 import pandas as pd
+import structlog
 from rdflib.term import Literal, URIRef
 
 from ckn_schema.pydantic.ckn_schema import (
@@ -29,18 +30,27 @@ from LoaderUtilities import (
     map_gene_ensembl_id_to_names,
     map_gene_name_to_entrez_ids,
 )
+from logging_setup import configure_logging
 
 from TupleWriterUtilities import (
     ASSOCIATION_CLASSES,
+    RejectTally,
     association_to_tuples,
     get_tuples_dir,
+    require_input,
     write_tuples,
 )
+
+_events = structlog.get_logger(__name__)
 
 VALID_PHASES = ["PHASE_3", "APPROVAL"]
 
 
-def get_mondo_term(disease_id: str, efo2mondo: pd.DataFrame) -> str | None:
+def get_mondo_term(
+    disease_id: str,
+    efo2mondo: pd.DataFrame,
+    rejects: RejectTally | None = None,
+) -> str | None:
     """Return MONDO term, mapping from EFO when necessary.
 
     Parameters
@@ -49,6 +59,8 @@ def get_mondo_term(disease_id: str, efo2mondo: pd.DataFrame) -> str | None:
         Disease identifier, either a MONDO or EFO term.
     efo2mondo : pd.DataFrame
         DataFrame indexed by EFO term containing MONDO term mappings.
+    rejects : RejectTally, optional
+        Where a deprecated term is recorded, as ``deprecated_term``.
 
     Returns
     -------
@@ -61,13 +73,17 @@ def get_mondo_term(disease_id: str, efo2mondo: pd.DataFrame) -> str | None:
     elif "EFO" in disease_id:
         mondo_term = map_efo_to_mondo(disease_id, efo2mondo)
     if mondo_term in DEPRECATED_TERMS:
-        print(f"Warning: MONDO term {mondo_term} deprecated")
+        if rejects is not None:
+            rejects.reject("deprecated_term", mondo_term)
         return None
     return mondo_term
 
 
 def create_tuples(
-    opentargets_results: dict, gene_results: dict, uniprot_results: dict
+    opentargets_results: dict,
+    gene_results: dict,
+    uniprot_results: dict,
+    rejects: RejectTally | None = None,
 ) -> list[tuple]:
     """Create tuples from Open Targets results.
 
@@ -96,6 +112,8 @@ def create_tuples(
     uniprot_results : dict
         Dictionary containing UniProt results keyed by protein
         accession. Used to look up protein names for drug targets.
+    rejects : RejectTally, optional
+        Collects the records dropped or flagged; the caller logs it.
 
     Returns
     -------
@@ -103,6 +121,7 @@ def create_tuples(
         List of 3-element and 5-element RDF tuples.
     """
     tuples = []
+    rejects = rejects if rejects is not None else RejectTally("opentargets")
 
     gene_ensembl_id_to_names = get_gene_ensembl_id_to_names_map()
     gene_name_to_entrez_ids = get_gene_name_to_entrez_ids_map()
@@ -116,12 +135,12 @@ def create_tuples(
             gene_ensembl_id, gene_ensembl_id_to_names
         )
         if not gene_name:
-            print(f"Warning: Cannot map Ensembl ID {gene_ensembl_id} to gene name")
+            rejects.reject("unmapped_ensembl", gene_ensembl_id)
             continue
         gene_name = gene_name[0]
         gene_entrez_id = map_gene_name_to_entrez_ids(gene_name, gene_name_to_entrez_ids)
         if not gene_entrez_id:
-            print(f"Warning: Cannot map gene name {gene_name} to Entrez ID")
+            rejects.reject("unmapped_entrez", gene_name)
             continue
         gene_entrez_id = gene_entrez_id[0]
 
@@ -140,7 +159,7 @@ def create_tuples(
 
         # Gene is_associated_with Disease
         for disease in ot_data.get("diseases", []):
-            mondo_term = get_mondo_term(disease["disease"]["id"], efo2mondo)
+            mondo_term = get_mondo_term(disease["disease"]["id"], efo2mondo, rejects)
             if mondo_term is None or disease["score"] < 0.5:
                 continue
 
@@ -256,7 +275,9 @@ def create_tuples(
             # Drug is_substance_that_treats Disease (from indications)
             if drug["drug"].get("indications"):
                 for indication in drug["drug"]["indications"].get("rows", []):
-                    mondo_term = get_mondo_term(indication["disease"]["id"], efo2mondo)
+                    mondo_term = get_mondo_term(
+                        indication["disease"]["id"], efo2mondo, rejects
+                    )
                     if (
                         mondo_term is None
                         or indication.get("maxClinicalStage") not in VALID_PHASES
@@ -284,14 +305,12 @@ def create_tuples(
         for pg in ot_data.get("pharmacogenetics", []):
             variant_rs_id = pg.get("variantRsId")
             if variant_rs_id is None:
-                print(
-                    f"Warning: Missing variant RS ID in pharmacogenetics for gene {gene_name}"
-                )
+                rejects.reject("missing_rsid", gene_name)
                 continue
 
             so_term = pg.get("variantFunctionalConsequenceId")
             if so_term in DEPRECATED_TERMS:
-                print(f"Warning: SO term {so_term} deprecated")
+                rejects.flag("deprecated_term", so_term)
 
             mutation_entity = Mutation(
                 reference_sequence_identifier=variant_rs_id,
@@ -350,9 +369,7 @@ def create_tuples(
             for pg_drug in pg.get("drugs", []):
                 drug_id = pg_drug.get("drugId")
                 if drug_id is None:
-                    print(
-                        f"Warning: Missing drug ID in pharmacogenetics for variant {variant_rs_id}"
-                    )
+                    rejects.reject("missing_drug_id", variant_rs_id)
                     continue
                 pg_drug_entity = Drug(label=pg_drug.get("drugFromSource", drug_id))
                 pg_chembl_id = drug_id.replace("CHEMBL", "")
@@ -373,25 +390,28 @@ def create_tuples(
     return tuples
 
 
-def main():
+def main() -> int:
     """Run Open Targets tuple writer.
 
     Loads transformed Open Targets, Gene, and UniProt results and
     creates tuples for each target, disease, drug, and pharmacogenetic
     resource. Writes output to a single JSON tuple file.
+
+    Returns
+    -------
+    int
+        The number of tuples written
     """
     external_dir = get_current_run().external_dir
     opentargets_path = external_dir / "opentargets_transformed.json"
     gene_path = external_dir / "gene_transformed.json"
     uniprot_path = external_dir / "uniprot_transformed.json"
-    if not opentargets_path.exists():
-        raise FileNotFoundError(f"Open Targets results not found at {opentargets_path}")
-    if not gene_path.exists():
-        raise FileNotFoundError(f"Gene results not found at {gene_path}")
-    if not uniprot_path.exists():
-        raise FileNotFoundError(f"UniProt results not found at {uniprot_path}")
+    require_input(
+        opentargets_path, "Open Targets results", "opentargets_transformed"
+    )
+    require_input(gene_path, "Gene results", "gene_transformed")
+    require_input(uniprot_path, "UniProt results", "uniprot_transformed")
 
-    print(f"Creating Open Targets tuples from {opentargets_path}")
     with open(opentargets_path, "r") as fp:
         opentargets_results = json.load(fp)
     with open(gene_path, "r") as fp:
@@ -399,10 +419,23 @@ def main():
     with open(uniprot_path, "r") as fp:
         uniprot_results = json.load(fp)
 
-    tuples = create_tuples(opentargets_results, gene_results, uniprot_results)
+    _events.info(
+        "tuple_writer_started",
+        source="opentargets",
+        input_path=str(opentargets_path),
+        records_in=len(opentargets_results.get("gene_ensembl_ids", [])),
+    )
+
+    rejects = RejectTally("opentargets")
+    try:
+        tuples = create_tuples(opentargets_results, gene_results, uniprot_results, rejects)
+    finally:
+        rejects.log()
     if tuples:
-        write_tuples(tuples, get_tuples_dir() / "opentargets.json")
+        return write_tuples(tuples, get_tuples_dir() / "opentargets.json")
+    return 0
 
 
 if __name__ == "__main__":
+    configure_logging("etl-pipeline")
     main()
