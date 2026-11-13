@@ -130,6 +130,7 @@ fields survive.
   `PHASE` become `correlation_id`, `release` and `phase` on every line.
   `service` is `etl-pipeline`. A missing `CORRELATION_ID` is a fresh UUID and
   a missing `GIT_SHA` is `unknown`, as in Python.
+- **Scoped fields use the MDC.** `OntologyGraphBuilder` builds two graphs in one process, so it binds `graph` while it loads each one and every event in between carries it.
 - **`LOG_FORMAT=console`** writes readable lines for local runs. Any other
   value, or none, writes JSON.
 - **stdout is for log lines only.** Logback's own status messages are turned
