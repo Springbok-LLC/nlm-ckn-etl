@@ -253,16 +253,16 @@ public class ResultsGraphBuilder {
             // Ensure the subject contains a valid ontology ID
             OntologyGraphBuilder.VTuple subjectVTuple = createVTuple(tupleArrayList.get(TRIPLE_SUBJECT_IDX));
             if (!subjectVTuple.isValidVertex()) {
-                // A literal object makes the triple an attribute, which updateVertices consumes
-                if (tupleArrayList.get(TRIPLE_OBJECT_IDX).isURI()) {
-                    rejected.merge("invalid_vertex", 1, Integer::sum);
-                }
+                // updateVertices skips an invalid subject too, so this is the one place it is counted, whatever
+                // the object
+                rejected.merge("invalid_vertex", 1, Integer::sum);
                 continue;
             }
 
             // Ensure the object contains a valid ontology ID
             OntologyGraphBuilder.VTuple objectVTuple = createVTuple(tupleArrayList.get(TRIPLE_OBJECT_IDX));
             if (!objectVTuple.isValidVertex()) {
+                // With a valid subject, a literal object is an attribute that updateVertices consumes
                 if (tupleArrayList.get(TRIPLE_OBJECT_IDX).isURI()) {
                     rejected.merge("invalid_vertex", 1, Integer::sum);
                 }

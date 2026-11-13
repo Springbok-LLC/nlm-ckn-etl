@@ -237,7 +237,9 @@ public class OntologyGraphBuilder {
         long startTime = System.nanoTime();
         int nVertices = 0;
         int nInvalid = 0;
+        int nTriplesFiltered = 0;
         for (Triple triple : uniqueTriples) {
+            boolean madeVertex = false;
 
             // Consider the subject and object nodes
             ArrayList<Node> nodes = new ArrayList<>(Arrays.asList(triple.getSubject(), triple.getObject()));
@@ -249,6 +251,7 @@ public class OntologyGraphBuilder {
                     nInvalid++;
                 }
                 if (vtuple.isValidVertex) {
+                    madeVertex = true;
 
                     // Create a vertex collection, if needed
                     if (!vertexCollections.containsKey(vtuple.id)) {
@@ -267,10 +270,14 @@ public class OntologyGraphBuilder {
                     }
                 }
             }
+            // A literal object makes the triple an attribute, which is not counted
+            if (!madeVertex && !triple.getObject().isLiteral()) {
+                nTriplesFiltered++;
+            }
         }
-        if (nInvalid > 0) {
+        if (nTriplesFiltered > 0) {
             Events.info(LOG, "triples_filtered", "stage", "vertices", "reason", "invalid_vertex",
-                    "records_rejected", nInvalid);
+                    "records_rejected", nTriplesFiltered);
         }
         Events.info(LOG, "vertices_constructed", "records_in", uniqueTriples.size(), "records_out", nVertices,
                 "records_rejected", nInvalid, "duration_ms", RunLog.elapsedMs(startTime));
@@ -737,6 +744,11 @@ public class OntologyGraphBuilder {
             Events.info(LOG, "edge_labels_written", "path", EDGE_LABELS_FILE.toString(),
                     "records_out", edgeLabels.size());
 
+            // Bind the phenotype graph before its input is read, so those events name it
+            String phenotypeDatabaseName = "Cell-KN-Phenotypes";
+            String phenotypeGraphName = "KN-Phenotypes-v2.0";
+            MDC.put("graph", phenotypeGraphName);
+
             // List the Cell Ontology file
             oboPattern = "cl.owl";
             oboFiles = listFilesMatchingPattern(oboPath, oboPattern);
@@ -751,9 +763,6 @@ public class OntologyGraphBuilder {
             HashSet<Triple> phenotypeTriples = collectUniqueTriples(oboFiles, false);
 
             // Initialize the phenotype database and subgraph
-            String phenotypeDatabaseName = "Cell-KN-Phenotypes";
-            String phenotypeGraphName = "KN-Phenotypes-v2.0";
-            MDC.put("graph", phenotypeGraphName);
             arangoDbUtilities.deleteDatabase(phenotypeDatabaseName);
             ArangoDatabase phenotypeDb = arangoDbUtilities.createOrGetDatabase(phenotypeDatabaseName);
             arangoDbUtilities.deleteGraph(phenotypeDb, phenotypeGraphName);
