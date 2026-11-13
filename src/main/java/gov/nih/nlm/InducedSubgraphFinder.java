@@ -3,6 +3,8 @@ package gov.nih.nlm;
 import gov.nih.nlm.model.ArangoEdge;
 import gov.nih.nlm.model.ArangoVertex;
 import org.jgrapht.graph.DirectedPseudograph;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.util.ArrayDeque;
 import java.util.Deque;
@@ -13,6 +15,8 @@ import java.util.TreeSet;
 import java.util.stream.Collectors;
 
 public class InducedSubgraphFinder {
+
+    private static final Logger LOG = LoggerFactory.getLogger(InducedSubgraphFinder.class);
 
     // Vertex collections to skip during BFS traversal. GO, HsapDv and PATO are excluded because
     // their terms and associations, as carried into the induced phenotype graph, do not provide
@@ -50,6 +54,8 @@ public class InducedSubgraphFinder {
                                                               String sourceCollection,
                                                               int maxDepth) {
 
+        long started = System.nanoTime();
+
         // Identify source vertices
         Set<ArangoVertex> sources = new HashSet<>();
         for (ArangoVertex v : graph.vertexSet()) {
@@ -58,15 +64,21 @@ public class InducedSubgraphFinder {
             }
         }
 
-        System.out.println("Source vertices: " + sources.size());
+        if (sources.isEmpty()) {
+            Events.warn(LOG, "induced_subgraph_empty", "reason", "no_source_vertices", "source_collection",
+                    sourceCollection);
+        }
 
         // Multi-source BFS with depth limit
         Set<ArangoVertex> reachable = multiBfs(graph, sources, maxDepth);
 
-        System.out.println("Reachable vertices: " + reachable.size());
-
         // Build induced subgraph
-        return inducedSubgraph(graph, reachable);
+        DirectedPseudograph<ArangoVertex, ArangoEdge> induced = inducedSubgraph(graph, reachable);
+        Events.info(LOG, "induced_subgraph_extracted", "records_in", graph.vertexSet().size(),
+                "source_collection", sourceCollection, "source_vertices", sources.size(),
+                "reachable_vertices", reachable.size(), "records_out", induced.edgeSet().size(),
+                "max_depth", maxDepth, "duration_ms", RunLog.elapsedMs(started));
+        return induced;
     }
 
     /**
@@ -89,11 +101,12 @@ public class InducedSubgraphFinder {
         for (String prefix : prefixesPresent) {
             HierarchyConfig config = HIERARCHY_CONFIG.get(prefix);
             if ("none".equals(config.strategy)) {
-                System.out.println("Skipping hierarchy paths for " + prefix + " (strategy: " + config.strategy() + ")");
-            } else {
-                System.out.println("Adding hierarchy paths for " + prefix + " (strategy: " + config.strategy() + (
-                        config.labels().isEmpty() ? "" : ", labels: " + new TreeSet<>(config.labels())) + ")");
+                Events.debug(LOG, "hierarchy_skipped", "prefix", prefix, "strategy", config.strategy());
+                continue;
             }
+            long started = System.nanoTime();
+            long verticesBefore = countNewVertices(verticesToAdd, induced);
+            long edgesBefore = countNewEdges(edgesToAdd, induced);
 
             if ("all".equals(config.strategy())) {
                 HierarchyResult result = collectAllOntologyNodesAndEdges(fullGraph, prefix);
@@ -110,6 +123,10 @@ public class InducedSubgraphFinder {
                     edgesToAdd.addAll(result.edges());
                 }
             }
+            Events.info(LOG, "hierarchy_enriched", "prefix", prefix, "strategy", config.strategy(),
+                    "labels", config.labels().isEmpty() ? null : new TreeSet<>(config.labels()),
+                    "vertices_added", countNewVertices(verticesToAdd, induced) - verticesBefore,
+                    "edges_added", countNewEdges(edgesToAdd, induced) - edgesBefore, "duration_ms", RunLog.elapsedMs(started));
         }
 
         // Add ancestor vertices
@@ -130,9 +147,17 @@ public class InducedSubgraphFinder {
             }
         }
 
-        System.out.println("After hierarchy enrichment:");
-        System.out.println("  Vertices: " + induced.vertexSet().size());
-        System.out.println("  Edges:    " + induced.edgeSet().size());
+    }
+
+    /** Candidates the induced subgraph does not hold yet, which are the ones that will be added. */
+    private static long countNewVertices(Set<ArangoVertex> candidates,
+                                         DirectedPseudograph<ArangoVertex, ArangoEdge> induced) {
+        return candidates.stream().filter(v -> !induced.containsVertex(v)).count();
+    }
+
+    private static long countNewEdges(Set<ArangoEdge> candidates,
+                                      DirectedPseudograph<ArangoVertex, ArangoEdge> induced) {
+        return candidates.stream().filter(e -> !induced.containsEdge(e)).count();
     }
 
     /**
@@ -255,8 +280,6 @@ public class InducedSubgraphFinder {
                 }
             }
         }
-
-        System.out.println("Induced edges: " + induced.edgeSet().size());
 
         return induced;
     }
