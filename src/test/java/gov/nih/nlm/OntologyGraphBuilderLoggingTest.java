@@ -63,18 +63,21 @@ class OntologyGraphBuilderLoggingTest {
     void verticesAreCountedAndInvalidIdsAreFiltered() {
         HashSet<Triple> triples = new HashSet<>(Set.of(
                 triple(OBO + "CL_0000001", SUB_CLASS_OF, OBO + "CL_0000002"),
-                triple(OBO + "CL_0000001", SUB_CLASS_OF, OBO + "BFO_0000002")));
+                triple(OBO + "CL_0000001", SUB_CLASS_OF, OBO + "BFO_0000002"),
+                triple(OBO + "BFO_0000003", SUB_CLASS_OF, OBO + "BFO_0000004")));
         try (LogCapture logs = new LogCapture()) {
             OntologyGraphBuilder.constructVertices(triples, utilities(), null, new HashMap<>(), new HashMap<>());
 
             LogCapture.Event e = logs.one("vertices_constructed");
             assertEquals("INFO", e.level());
-            assertEquals(2, e.get("records_in"));
+            assertEquals(3, e.get("records_in"));
             assertEquals(2, e.get("records_out"));
-            assertEquals(1, e.get("records_rejected"));
+            // Three invalid nodes: the BFO object of a triple that still made a vertex, and both ends of the other
+            assertEquals(3, e.get("records_rejected"));
             LogCapture.Event filtered = logs.one("triples_filtered");
             assertEquals("vertices", filtered.get("stage"));
             assertEquals("invalid_vertex", filtered.get("reason"));
+            // Only the triple that made no vertex at all
             assertEquals(1, filtered.get("records_rejected"));
         }
     }
