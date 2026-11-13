@@ -317,6 +317,9 @@ reports give the source line each name replaces.
 | `database_dropped` | WARN | `database` |
 | `graph_created` | INFO | `database`, `graph` |
 | `graph_dropped` | WARN | `database`, `graph` |
+| `vertex_collection_created`, `edge_definition_created` | DEBUG | `graph`, `collection`; dozens per run |
+| `vertex_collection_deleted`, `edge_definition_deleted` | WARN | `graph`, `collection` |
+| `vertex_example` | DEBUG | `collection`, `document` (one random document per vertex collection) |
 | `graph_recreated` | INFO | `database`, `graph` |
 | `graph_already_present` | INFO | `database`, `graph` |
 | `graph_recreate_failed` | ERROR | `database`, `graph`, `reason=http_error`, `status_code` |
