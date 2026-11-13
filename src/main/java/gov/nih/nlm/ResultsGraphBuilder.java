@@ -11,6 +11,9 @@ import org.apache.jena.graph.Node;
 import org.apache.jena.graph.NodeFactory;
 import org.json.JSONArray;
 import org.json.JSONObject;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.slf4j.MDC;
 
 import java.io.IOException;
 import java.nio.file.Files;
@@ -22,6 +25,7 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.TreeMap;
 
 import static gov.nih.nlm.OntologyElementParser.parseOntologyElements;
 import static gov.nih.nlm.OntologyGraphBuilder.createVTuple;
@@ -37,6 +41,8 @@ import static gov.nih.nlm.PathUtilities.listFilesMatchingPattern;
  * Loads tuples parsed from results JSON files into a local ArangoDB server instance.
  */
 public class ResultsGraphBuilder {
+
+    private static final Logger LOG = LoggerFactory.getLogger(ResultsGraphBuilder.class);
 
     // Assign location of tuples and schema files
     private static final String RUN_NAME =
@@ -134,7 +140,6 @@ public class ResultsGraphBuilder {
                                          Map<String, Map<String, BaseDocument>> vertexDocuments) {
 
         int nVertices = 0;
-        System.out.println("Constructing vertices using " + tuplesArrayList.size() + " tuples");
         long startTime = System.nanoTime();
         for (ArrayList<Node> tupleArrayList : tuplesArrayList) {
 
@@ -164,8 +169,8 @@ public class ResultsGraphBuilder {
                 }
             }
         }
-        long stopTime = System.nanoTime();
-        System.out.println("Constructed " + nVertices + " vertices using " + tuplesArrayList.size() + " tuples in " + (stopTime - startTime) / 1e9 + " s");
+        Events.debug(LOG, "vertices_constructed", "records_in", tuplesArrayList.size(), "records_out", nVertices,
+                "duration_ms", RunLog.elapsedMs(startTime));
     }
 
     /**
@@ -181,7 +186,6 @@ public class ResultsGraphBuilder {
                                       Map<String, Map<String, BaseDocument>> vertexDocuments) throws RuntimeException {
 
         Set<String> updatedVertices = new HashSet<>(); // For counting only
-        System.out.println("Updating vertices using " + tuplesArrayList.size() + " tuples");
         long startTime = System.nanoTime();
         for (ArrayList<Node> tupleArrayList : tuplesArrayList) {
 
@@ -215,8 +219,8 @@ public class ResultsGraphBuilder {
                 doc.updateAttribute(attribute, literal);
             }
         }
-        long stopTime = System.nanoTime();
-        System.out.println("Updated " + updatedVertices.size() + " vertices using " + tuplesArrayList.size() + " tuples in " + (stopTime - startTime) / 1e9 + " s");
+        Events.debug(LOG, "vertices_updated", "records_in", tuplesArrayList.size(), "records_out",
+                updatedVertices.size(), "duration_ms", RunLog.elapsedMs(startTime));
     }
 
     /**
@@ -229,16 +233,17 @@ public class ResultsGraphBuilder {
      * @param edgeKeys            ArangoDB edge keys for deduplication
      * @param edgeCollections     ArangoDB edge collections
      * @param edgeDocuments       ArangoDB edge documents
+     * @param rejected            Count of tuples that made no edge, by reason, added to
      */
     public static void constructEdges(ArrayList<ArrayList<Node>> tuplesArrayList,
                                       Map<String, OntologyElementMap> ontologyElementMaps,
                                       ArangoGraph graph,
                                       Map<String, Set<String>> edgeKeys,
                                       Map<String, ArangoEdgeCollection> edgeCollections,
-                                      Map<String, Map<String, BaseEdgeDocument>> edgeDocuments) throws RuntimeException {
+                                      Map<String, Map<String, BaseEdgeDocument>> edgeDocuments,
+                                      Map<String, Integer> rejected) throws RuntimeException {
 
         int nEdges = 0;
-        System.out.println("Constructing edges using " + tuplesArrayList.size() + " tuples");
         long startTime = System.nanoTime();
         for (ArrayList<Node> tupleArrayList : tuplesArrayList) {
 
@@ -247,15 +252,27 @@ public class ResultsGraphBuilder {
 
             // Ensure the subject contains a valid ontology ID
             OntologyGraphBuilder.VTuple subjectVTuple = createVTuple(tupleArrayList.get(TRIPLE_SUBJECT_IDX));
-            if (!subjectVTuple.isValidVertex()) continue;
+            if (!subjectVTuple.isValidVertex()) {
+                // A literal object makes the triple an attribute, which updateVertices consumes
+                if (tupleArrayList.get(TRIPLE_OBJECT_IDX).isURI()) {
+                    rejected.merge("invalid_vertex", 1, Integer::sum);
+                }
+                continue;
+            }
 
             // Ensure the object contains a valid ontology ID
             OntologyGraphBuilder.VTuple objectVTuple = createVTuple(tupleArrayList.get(TRIPLE_OBJECT_IDX));
-            if (!objectVTuple.isValidVertex()) continue;
+            if (!objectVTuple.isValidVertex()) {
+                if (tupleArrayList.get(TRIPLE_OBJECT_IDX).isURI()) {
+                    rejected.merge("invalid_vertex", 1, Integer::sum);
+                }
+                continue;
+            }
 
             // Parse the predicate
             PTuple pTuple = parsePredicate(ontologyElementMaps, tupleArrayList.get(TRIPLE_PREDICATE_IDX));
             if (pTuple.label() == null) {
+                rejected.merge("no_label", 1, Integer::sum);
                 continue;
             }
 
@@ -284,8 +301,8 @@ public class ResultsGraphBuilder {
             // Always assign the last label (add overwrites)
             doc.addAttribute("Label", normalizeEdgeLabel(pTuple.label()));
         }
-        long stopTime = System.nanoTime();
-        System.out.println("Constructed " + nEdges + " edges using " + tuplesArrayList.size() + " tuples in " + (stopTime - startTime) / 1e9 + " s");
+        Events.debug(LOG, "edges_constructed", "records_in", tuplesArrayList.size(), "records_out", nEdges,
+                "duration_ms", RunLog.elapsedMs(startTime));
     }
 
     /**
@@ -295,13 +312,14 @@ public class ResultsGraphBuilder {
      * @param tuplesArrayList     list of tuples parsed from a results file
      * @param ontologyElementMaps Maps terms and labels
      * @param edgeDocuments       ArangoDB edge documents
+     * @param rejected            Count of tuples that updated no edge, by reason, added to
      */
     public static void updateEdges(ArrayList<ArrayList<Node>> tuplesArrayList,
                                    Map<String, OntologyElementMap> ontologyElementMaps,
-                                   Map<String, Map<String, BaseEdgeDocument>> edgeDocuments) throws RuntimeException {
+                                   Map<String, Map<String, BaseEdgeDocument>> edgeDocuments,
+                                   Map<String, Integer> rejected) throws RuntimeException {
 
         Set<String> updatedEdges = new HashSet<>(); // For counting only
-        System.out.println("Updating edges using " + tuplesArrayList.size() + " tuples");
         long startTime = System.nanoTime();
         for (ArrayList<Node> tupleArrayList : tuplesArrayList) {
 
@@ -310,11 +328,17 @@ public class ResultsGraphBuilder {
 
             // Ensure the subject contains a valid ontology ID
             OntologyGraphBuilder.VTuple subjectVTuple = createVTuple(tupleArrayList.get(QUINTUPLE_SUBJECT_IDX));
-            if (!subjectVTuple.isValidVertex()) continue;
+            if (!subjectVTuple.isValidVertex()) {
+                rejected.merge("invalid_vertex", 1, Integer::sum);
+                continue;
+            }
 
             // Ensure the object contains a valid ontology ID
             OntologyGraphBuilder.VTuple objectVTuple = createVTuple(tupleArrayList.get(QUINTUPLE_OBJECT_IDX));
-            if (!objectVTuple.isValidVertex()) continue;
+            if (!objectVTuple.isValidVertex()) {
+                rejected.merge("invalid_vertex", 1, Integer::sum);
+                continue;
+            }
 
             // Parse the predicate
             PTuple pTuple = parsePredicate(ontologyElementMaps, tupleArrayList.get(QUINTUPLE_PREDICATE_IDX));
@@ -338,8 +362,8 @@ public class ResultsGraphBuilder {
                 doc.updateAttribute(attribute, value);
             }
         }
-        long stopTime = System.nanoTime();
-        System.out.println("Updated " + updatedEdges.size() + " edges using " + tuplesArrayList.size() + " tuples in " + (stopTime - startTime) / 1e9 + " s");
+        Events.debug(LOG, "edges_updated", "records_in", tuplesArrayList.size(), "records_out", updatedEdges.size(),
+                "duration_ms", RunLog.elapsedMs(startTime));
     }
 
     /**
@@ -348,35 +372,32 @@ public class ResultsGraphBuilder {
      * @param args (None expected)
      */
     public static void main(String[] args) {
+        RunLog.run("ResultsGraphBuilder", ResultsGraphBuilder::loadResults,
+                "tuples_dir", TUPLES_DIR.toString(), "obo_dir", OBO_DIR.toString());
+    }
+
+    /** Loads every tuples file in the tuples directory into the ontology graph. */
+    static void loadResults() throws IOException {
 
         // Identify the results tuples files
         String tuplesPath = TUPLES_DIR.toString();
         String tuplesPattern = ".*\\.json";
-        List<Path> tuplesFiles;
-        try {
-            tuplesFiles = listFilesMatchingPattern(tuplesPath, tuplesPattern);
-        } catch (IOException e) {
-            throw new RuntimeException(e);
-        }
+        List<Path> tuplesFiles = listFilesMatchingPattern(tuplesPath, tuplesPattern);
         if (tuplesFiles.isEmpty()) {
-            System.out.println("No tuples files found matching pattern " + tuplesPattern);
-            System.exit(1);
+            Events.error(LOG, "tuples_files_not_found", "pattern", tuplesPattern, "dir", tuplesPath);
+            throw new IllegalStateException("No tuples files found matching pattern " + tuplesPattern);
         }
+        Events.info(LOG, "tuples_files_listed", "dir", tuplesPath, "files", tuplesFiles.size());
 
         // Map terms and labels
         String oboPath = OBO_DIR.toString();
         String oboPattern = "ro.owl";
-        List<Path> oboFiles;
-        try {
-            oboFiles = listFilesMatchingPattern(oboPath, oboPattern);
-        } catch (IOException e) {
-            throw new RuntimeException(e);
-        }
-        Map<String, OntologyElementMap> ontologyElementMaps = null;
+        List<Path> oboFiles = listFilesMatchingPattern(oboPath, oboPattern);
         if (oboFiles.isEmpty()) {
-            throw new RuntimeException("No OBO files found matching the pattern " + oboPattern);
+            Events.error(LOG, "ontology_files_not_found", "pattern", oboPattern, "dir", oboPath);
+            throw new IllegalStateException("No OBO files found matching the pattern " + oboPattern);
         }
-        ontologyElementMaps = parseOntologyElements(oboFiles);
+        Map<String, OntologyElementMap> ontologyElementMaps = parseOntologyElements(oboFiles);
 
         // Every insert/build step runs inside a try so a failure (e.g. an
         // IllegalStateException from insertVertices/insertEdges) still
@@ -386,6 +407,7 @@ public class ResultsGraphBuilder {
             String ontologyDatabaseName = "Cell-KN-Ontologies";
             ArangoDatabase ontologyDb = db().createOrGetDatabase(ontologyDatabaseName);
             String ontologyGraphName = "KN-Ontologies-v2.0";
+            MDC.put("graph", ontologyGraphName);
             ArangoGraph ontologyGraph = db().createOrGetGraph(ontologyDb, ontologyGraphName);
 
             // Collect vertex keys for each vertex collection to prevent constructing
@@ -404,42 +426,62 @@ public class ResultsGraphBuilder {
 
             // Read the results tuples files
             for (Path tuplesFile : tuplesFiles) {
-                System.out.println("Processing tuples file " + tuplesFile);
-                ArrayList<ArrayList<Node>> tuplesArrayList;
+                long fileStarted = System.nanoTime();
                 try {
-                    tuplesArrayList = readJsonFile(tuplesFile.toString());
-                } catch (IOException e) {
-                    throw new RuntimeException(e);
+                    ArrayList<ArrayList<Node>> tuplesArrayList = readJsonFile(tuplesFile.toString());
+                    Map<String, Integer> rejected = new TreeMap<>();
+
+                    // Construct, and update vertices
+                    constructVertices(tuplesArrayList,
+                            ontologyGraph,
+                            ontologyVertexKeys,
+                            ontologyVertexCollections,
+                            ontologyVertexDocuments);
+                    updateVertices(tuplesArrayList, ontologyElementMaps, ontologyVertexDocuments);
+
+                    // Construct, and update edges
+                    constructEdges(tuplesArrayList,
+                            ontologyElementMaps,
+                            ontologyGraph,
+                            ontologyEdgeKeys,
+                            ontologyEdgeCollections,
+                            ontologyEdgeDocuments,
+                            rejected);
+                    updateEdges(tuplesArrayList, ontologyElementMaps, ontologyEdgeDocuments, rejected);
+                    logTuplesFile(tuplesFile, tuplesArrayList, rejected, fileStarted);
+                } catch (IOException | RuntimeException e) {
+                    Events.failure(LOG, "tuples_file_failed", e, "tuples_file", tuplesFile.toString(),
+                            "duration_ms", RunLog.elapsedMs(fileStarted));
+                    throw e;
                 }
-
-                // Construct, and update vertices
-                constructVertices(tuplesArrayList,
-                        ontologyGraph,
-                        ontologyVertexKeys,
-                        ontologyVertexCollections,
-                        ontologyVertexDocuments);
-                updateVertices(tuplesArrayList, ontologyElementMaps, ontologyVertexDocuments);
-
-                // Construct, and update edges
-                constructEdges(tuplesArrayList,
-                        ontologyElementMaps,
-                        ontologyGraph,
-                        ontologyEdgeKeys,
-                        ontologyEdgeCollections,
-                        ontologyEdgeDocuments);
-                updateEdges(tuplesArrayList, ontologyElementMaps, ontologyEdgeDocuments);
             }
             // Insert vertices, and edges
-            try {
-                insertVertices(ontologyVertexCollections, ontologyVertexDocuments);
-            } catch (IOException e) {
-                throw new RuntimeException(e);
-            }
+            insertVertices(ontologyVertexCollections, ontologyVertexDocuments);
             insertEdges(ontologyVertexCollections, ontologyEdgeCollections, ontologyEdgeDocuments);
 
         } finally {
+            MDC.remove("graph");
             // Disconnect from a local ArangoDB server instance
             db().arangoDB.shutdown();
         }
+    }
+
+    /**
+     * Log one {@code tuples_file_processed} event for a tuples file: how many tuples it held, how many made nothing,
+     * and why. A tuple with other than 3 or 5 elements is rejected as {@code not_a_triple}; the build steps ignore it.
+     */
+    static void logTuplesFile(Path tuplesFile, ArrayList<ArrayList<Node>> tuples,
+                                      Map<String, Integer> rejected, long startedNanos) {
+        long triples = tuples.stream().filter(t -> t.size() == 3).count();
+        long quintuples = tuples.stream().filter(t -> t.size() == 5).count();
+        long neither = tuples.size() - triples - quintuples;
+        if (neither > 0) {
+            rejected.merge("not_a_triple", (int) neither, Integer::sum);
+        }
+        Events.info(LOG, "tuples_file_processed", "tuples_file", tuplesFile.toString(), "records_in", tuples.size(),
+                "triples", triples, "quintuples", quintuples,
+                "records_rejected", rejected.values().stream().mapToInt(Integer::intValue).sum(),
+                "rejected_by_reason", rejected.isEmpty() ? null : rejected,
+                "duration_ms", RunLog.elapsedMs(startedNanos));
     }
 }
