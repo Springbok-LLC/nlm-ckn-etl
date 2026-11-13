@@ -1,6 +1,5 @@
 import argparse
 from concurrent.futures import ThreadPoolExecutor, as_completed
-import logging
 from datetime import datetime, timezone
 import json
 import os
@@ -8,10 +7,10 @@ from glob import glob
 from pathlib import Path
 import re
 import shutil
-from time import sleep
-import warnings
+from time import monotonic, sleep
 
 import requests
+import structlog
 
 import base64
 import gzip
@@ -26,12 +25,20 @@ from LoaderUtilities import (
     get_unique_gene_names_and_ids,
     set_current_run,
 )
+from logging_setup import configure_logging
+
+_events = structlog.get_logger(__name__)
 
 
 REQUEST_TIMEOUT = 30  # seconds
 MAX_RETRIES = 3
 DEFAULT_RETRY_AFTER = 5  # seconds
 MAX_FETCH_ATTEMPTS = 3  # per-ID attempts, across runs, before giving up
+
+
+def _ms(started: float) -> int:
+    """Return the milliseconds elapsed since a ``time.monotonic()`` reading."""
+    return round((monotonic() - started) * 1000)
 
 
 class DataFetcher:
@@ -151,10 +158,12 @@ class DataFetcher:
                     wait = int(
                         exc.response.headers.get("Retry-After", DEFAULT_RETRY_AFTER)
                     )
-                    print(
-                        f"[{self.name}] 429 for {id_value},"
-                        f" retry {attempt}/{MAX_RETRIES}"
-                        f" after {wait}s"
+                    _events.warning(
+                        "fetch_rate_limited",
+                        source=self.name,
+                        attempt=attempt,
+                        max_retries=MAX_RETRIES,
+                        wait_s=wait,
                     )
                     sleep(wait)
                 else:
@@ -196,6 +205,7 @@ class DataFetcher:
         dict
             The full results dict
         """
+        started = monotonic()
         if force:
             results = {}
             failures = {}
@@ -219,18 +229,19 @@ class DataFetcher:
         total = len(ids)
 
         self.n_failed = 0
+        _events.info(
+            "fetch_plan",
+            source=self.name,
+            ids_total=total,
+            ids_cached=total - len(pending_ids),
+            ids_pending=len(pending_ids),
+        )
         if not pending_ids:
             self._summarize_failures(failures, ids)
-            print(f"[{self.name}] All {total} IDs already fetched")
+            self._log_finished(total, started)
             return results
 
-        print(
-            f"[{self.name}] {total - len(pending_ids)} already fetched,"
-            f" {len(pending_ids)} remaining"
-        )
-
         interval = 1.0 / self.max_per_second
-        n_completed = 0
 
         with ThreadPoolExecutor(max_workers=self.max_per_second) as pool:
             for batch_start in range(0, len(pending_ids), self.batch_size):
@@ -241,9 +252,9 @@ class DataFetcher:
                     sleep(interval)
 
                 batch = {}
+                n_batch_failed = 0
                 for future in as_completed(futures):
                     id_value = futures[future]
-                    n_completed += 1
 
                     try:
                         result = future.result()
@@ -254,27 +265,39 @@ class DataFetcher:
                         KeyError,
                         RuntimeError,
                     ) as exc:
-                        print(f"[{self.name}] Error fetching {id_value}: {exc}")
-                        result = self.on_fetch_error(id_value)
-                        failures[id_value] = failures.get(id_value, 0) + 1
-                        self.n_failed += 1
-                    except Exception as exc:
-                        warnings.warn(
-                            f"[{self.name}] Unexpected error fetching"
-                            f" {id_value}: {exc!r}"
+                        _events.warning(
+                            "fetch_item_failed",
+                            source=self.name,
+                            id=id_value,
+                            error_type=type(exc).__name__,
+                            error=str(exc),
                         )
                         result = self.on_fetch_error(id_value)
                         failures[id_value] = failures.get(id_value, 0) + 1
                         self.n_failed += 1
+                        n_batch_failed += 1
+                    except Exception as exc:
+                        _events.error(
+                            "fetch_item_unexpected_error",
+                            source=self.name,
+                            id=id_value,
+                            error_type=type(exc).__name__,
+                            error=str(exc),
+                            exc_info=True,
+                        )
+                        result = self.on_fetch_error(id_value)
+                        failures[id_value] = failures.get(id_value, 0) + 1
+                        self.n_failed += 1
+                        n_batch_failed += 1
 
                     results[id_value] = result
                     batch[id_value] = result
 
-                print(
-                    f"[{self.name}] Completed"
-                    f" {n_completed}/{len(pending_ids)}"
-                    f" - {total - len(pending_ids) + n_completed}"
-                    f"/{total} total"
+                _events.debug(
+                    "fetch_batch_done",
+                    source=self.name,
+                    n_ok=len(futures) - n_batch_failed,
+                    n_failed=n_batch_failed,
                 )
 
                 # Failures are saved first: if a crash lands between the two
@@ -290,7 +313,32 @@ class DataFetcher:
 
         self._summarize_failures(failures, ids)
         self._save_final(results, ids)
+        self._log_finished(total, started)
         return results
+
+    def _log_finished(self, ids_total, started):
+        """Log ``fetch_finished`` for this run, from the failure counters.
+
+        Parameters
+        ----------
+        ids_total : int
+            The number of IDs the run was to cover
+        started : float
+            ``time.monotonic()`` reading from the start of the run
+        """
+        n_rejected = self.n_retryable + self.n_exhausted
+        _events.info(
+            "fetch_finished",
+            source=self.name,
+            outcome="partial" if self.n_retryable else "ok",
+            records_in=ids_total,
+            records_out=ids_total - n_rejected,
+            records_rejected=n_rejected,
+            n_retryable=self.n_retryable,
+            n_exhausted=self.n_exhausted,
+            path=str(self.output_path),
+            duration_ms=_ms(started),
+        )
 
     def _summarize_failures(self, failures, ids):
         """Set the failure counters for this run and report IDs left failed.
@@ -311,13 +359,6 @@ class DataFetcher:
         )
         self.n_exhausted = len(failures) - self.n_retryable
         self._save_failures(failures)
-        if failures:
-            print(
-                f"[{self.name}] {len(failures)} failed IDs:"
-                f" {self.n_retryable} will be retried,"
-                f" {self.n_exhausted} gave up after"
-                f" {self.max_fetch_attempts} attempts"
-            )
 
     def _load_failures(self):
         """Load the failed-attempt counts written by an earlier run.
@@ -383,7 +424,6 @@ class DataFetcher:
             Previously fetched results, or empty dict
         """
         if self.checkpoint_path.exists():
-            print(f"[{self.name}] Resuming from checkpoint {self.checkpoint_path}")
             results = {}
             with open(self.checkpoint_path, "r") as fp:
                 for line in fp:
@@ -392,19 +432,28 @@ class DataFetcher:
                         record = json.loads(line)
                         results[record["id"]] = record["data"]
             if self.output_path.exists():
-                print(
-                    f"[{self.name}] Merging with prior results from {self.output_path}"
-                )
                 with open(self.output_path, "r") as fp:
                     prior = json.load(fp)
                 for key, value in prior.items():
                     if key not in results:
                         results[key] = value
+            _events.info(
+                "fetch_checkpoint_resumed",
+                source=self.name,
+                path=str(self.checkpoint_path),
+                records_loaded=len(results),
+            )
             return results
         elif self.output_path.exists():
-            print(f"[{self.name}] Loading results from {self.output_path}")
             with open(self.output_path, "r") as fp:
-                return json.load(fp)
+                results = json.load(fp)
+            _events.info(
+                "fetch_cache_loaded",
+                source=self.name,
+                path=str(self.output_path),
+                records_loaded=len(results),
+            )
+            return results
         return {}
 
     def _save_checkpoint(self, batch):
@@ -416,10 +465,15 @@ class DataFetcher:
             Mapping of ID to result data for newly completed fetches
         """
         self.checkpoint_path.parent.mkdir(parents=True, exist_ok=True)
-        print(f"[{self.name}] Appending {len(batch)} records to {self.checkpoint_path}")
         with open(self.checkpoint_path, "a") as fp:
             for id_value, data in batch.items():
                 fp.write(json.dumps({"id": id_value, "data": data}) + "\n")
+        _events.debug(
+            "fetch_checkpoint_saved",
+            source=self.name,
+            path=str(self.checkpoint_path),
+            records_out=len(batch),
+        )
 
     def _save_final(self, results, ids):
         """Write the final JSON output and remove the checkpoint.
@@ -433,12 +487,10 @@ class DataFetcher:
         """
         self.before_dump(results, ids)
         self.output_path.parent.mkdir(parents=True, exist_ok=True)
-        print(f"[{self.name}] Writing final results to {self.output_path}")
         with open(self.output_path, "w") as fp:
             json.dump(results, fp, indent=4)
         if self.checkpoint_path.exists():
             self.checkpoint_path.unlink()
-            print(f"[{self.name}] Removed checkpoint {self.checkpoint_path}")
 
 
 class CellxGeneFetcher(DataFetcher):
@@ -555,17 +607,10 @@ class OpenTargetsFetcher(DataFetcher):
             timeout=self.request_timeout,
         )
         response.raise_for_status()
-        print(
-            f"[{self.name}] Assigning resources for gene Ensembl id {gene_ensembl_id}"
-        )
         return json.loads(response.text)["data"]
 
     def on_fetch_error(self, gene_ensembl_id):
         """Return empty target and empty resources on error."""
-        print(
-            f"[{self.name}] Could not assign resources for "
-            f"gene Ensembl id {gene_ensembl_id}"
-        )
         result = {"target": {}}
         for resource in OPENTARGETS_RESOURCES:
             result[resource] = {}
@@ -604,7 +649,6 @@ class GeneFetcher(DataFetcher):
             Dict with 'xml_gz_b64' (compressed XML) and
             'UniProt_name' (protein accession, or None)
         """
-        print(f"[{self.name}] Fetching gene XML for gene Entrez id {gene_entrez_id}")
         xml_data = fetch_xml_for_gene_id(gene_entrez_id)
         if xml_data is None:
             raise RuntimeError(
@@ -618,10 +662,6 @@ class GeneFetcher(DataFetcher):
 
     def on_fetch_error(self, gene_entrez_id):
         """Return empty dict on error."""
-        print(
-            f"[{self.name}] Could not assign gene data for "
-            f"gene Entrez id {gene_entrez_id}"
-        )
         return {}
 
     def before_dump(self, results, ids):
@@ -679,9 +719,6 @@ class UniProtFetcher(DataFetcher):
             timeout=REQUEST_TIMEOUT,
         )
         response.raise_for_status()
-        print(
-            f"[{self.name}] Assigning results for protein accession {protein_accession}"
-        )
         return response.json()
 
     def before_dump(self, results, ids):
@@ -730,13 +767,15 @@ class HuBMAPFetcher(DataFetcher):
         dict
             Empty dict (files are saved directly to disk)
         """
+        started = monotonic()
         hubmap_dir = self.output_path
         hubmap_dir.mkdir(parents=True, exist_ok=True)
         json_urls = self._get_hubmap_json_urls()
+        n_present = n_archived = n_downloaded = n_failed = 0
         for org, ver, url in json_urls:
             hubmap_filepath = hubmap_dir / f"{org}-v{ver}.json"
             if hubmap_filepath.exists():
-                print(f"HuBMAP data table {hubmap_filepath} already exists")
+                n_present += 1
                 continue
 
             archive_dirpath = hubmap_dir / ".archive"
@@ -744,19 +783,45 @@ class HuBMAPFetcher(DataFetcher):
             for pathname in glob(str(hubmap_dir / f"{org}-v*.json")):
                 try:
                     shutil.move(Path(pathname), archive_dirpath)
-                    print(f"Archived HuBMAP data table {pathname}")
+                    n_archived += 1
                 except Exception:
                     os.remove(pathname)
-                    print(f"Removed HuBMAP data table {pathname}")
+                    _events.warning(
+                        "hubmap_table_removed",
+                        path=pathname,
+                        reason="archive_failed",
+                    )
 
             response = requests.get(url, timeout=REQUEST_TIMEOUT)
             if response.status_code == 200:
                 with open(hubmap_filepath, "w") as fp:
                     fp.write(response.text)
-                print(f"Downloaded HuBMAP data table {hubmap_filepath}")
+                n_downloaded += 1
             else:
-                print(f"Could not download HuBMAP data table {hubmap_filepath}")
+                n_failed += 1
+                _events.error(
+                    "hubmap_download_failed",
+                    organ=org,
+                    version=ver,
+                    reason="http_error",
+                    status_code=response.status_code,
+                    url=url,
+                )
 
+        self.n_failed = n_failed
+        _events.info(
+            "fetch_finished",
+            source=self.name,
+            outcome="partial" if n_failed else "ok",
+            records_in=len(json_urls),
+            records_out=n_present + n_downloaded,
+            records_rejected=n_failed,
+            n_present=n_present,
+            n_archived=n_archived,
+            n_downloaded=n_downloaded,
+            path=str(hubmap_dir),
+            duration_ms=_ms(started),
+        )
         return {}
 
     @staticmethod
@@ -813,14 +878,13 @@ class HuBMAPFetcher(DataFetcher):
             json_urls.append((org, json_ver, json_url))
 
         if failures:
-            print(
-                "WARNING: the following HuBMAP URLs could not be resolved:\n"
-                + "\n".join(f"  - {f}" for f in failures)
+            _events.warning(
+                "hubmap_urls_unresolved", n_failed=len(failures), failures=failures
             )
         if not json_urls and failures:
             raise Exception(f"All {len(failures)} HuBMAP URL(s) failed to resolve.")
         if not json_urls:
-            print("WARNING: No HuBMAP URLs configured — skipping HuBMAP fetch.")
+            _events.warning("hubmap_no_urls_configured")
 
         return json_urls
 
@@ -831,8 +895,11 @@ def _load_fetch_status(path: Path) -> dict:
         try:
             return json.loads(path.read_text())
         except Exception as e:
-            logging.getLogger(__name__).warning(
-                "Could not read fetch status from %s: %s", path, e
+            _events.warning(
+                "fetch_status_unreadable",
+                path=path.name,
+                error_type=type(e).__name__,
+                error=str(e),
             )
     return {}
 
@@ -891,8 +958,29 @@ def main():
 
     Builds a shared context from NSForest results and dataset metadata,
     then runs each fetcher in registry order. Results from earlier
-    fetchers are available to later ones via the context dict.
+    fetchers are available to later ones via the context dict.  Logs the
+    run as ``run_started`` and ``run_finished``, or ``run_failed``.
     """
+    configure_logging("etl-fetcher")
+    started = monotonic()
+    try:
+        _fetch_all()
+    except Exception as exc:
+        _events.error(
+            "run_failed",
+            script="DataFetcher",
+            error_type=type(exc).__name__,
+            error=str(exc),
+            duration_ms=_ms(started),
+        )
+        raise
+    _events.info(
+        "run_finished", script="DataFetcher", outcome="ok", duration_ms=_ms(started)
+    )
+
+
+def _fetch_all():
+    """Parse the command line and fetch every registered source."""
     parser = argparse.ArgumentParser(description="Fetch External API Results")
     for fetcher in FETCHER_REGISTRY:
         parser.add_argument(
@@ -925,6 +1013,17 @@ def main():
         parser.error("--max-source-age-hours must be non-negative")
 
     set_current_run(args.run_name)
+    _events.info(
+        "run_started",
+        script="DataFetcher",
+        run_name=get_current_run().run_name,
+        max_source_age_hours=args.max_source_age_hours,
+        forced=[
+            f.name
+            for f in FETCHER_REGISTRY
+            if args.force_all or getattr(args, f"force_{f.name}", False)
+        ],
+    )
 
     # Per-source fetch status — written alongside the cache files so it travels to S3
     status_path = get_current_run().external_dir / "fetch-status.json"
@@ -937,7 +1036,12 @@ def main():
     try:
         file_paths = get_dataset_file_paths(results_dir)
     except Exception as exc:
-        print(f"WARNING: Could not read results directory ({results_dir.name}/): {exc}")
+        _events.error(
+            "results_dir_unreadable",
+            results_dir=results_dir.name,
+            error_type=type(exc).__name__,
+            error=str(exc),
+        )
         file_paths = {
             "nsforest_paths": [],
             "mapping_paths": [],
@@ -950,25 +1054,24 @@ def main():
         try:
             dataset_version_id_lists = get_dataset_version_id_lists(file_paths)
         except Exception as exc:
-            print(
-                f"WARNING: Failed to build dataset version ID lists: {exc}\n"
-                "Fetchers that depend on dataset version IDs will receive an empty list."
+            # Fetchers that depend on dataset version IDs get an empty list.
+            _events.error(
+                "dataset_ids_failed", error_type=type(exc).__name__, error=str(exc)
             )
             dataset_version_id_lists = []
     else:
-        print(
-            f"WARNING: No results_ensg_*.csv files found in {results_dir.name}/ — "
-            "fetchers that depend on NSForest results will produce no output."
-        )
+        # Fetchers that depend on NSForest results will produce no output.
+        _events.error("no_nsforest_results", results_dir=results_dir.name)
         dataset_version_id_lists = []
 
     if file_paths["nsforest_paths"]:
         try:
             gene_data = get_unique_gene_names_and_ids(file_paths["nsforest_paths"])
         except Exception as exc:
-            print(
-                f"WARNING: Failed to build gene data context (BioMart or other error): {exc}\n"
-                "Fetchers that require gene data (gene, uniprot, opentargets) will be skipped."
+            # Fetchers that require gene data (gene, uniprot, opentargets) are
+            # skipped.
+            _events.error(
+                "gene_context_failed", error_type=type(exc).__name__, error=str(exc)
             )
             gene_data = None
     else:
@@ -992,9 +1095,11 @@ def main():
                 status.get(fetcher.name, {}), args.max_source_age_hours, now_utc
             )
             if skip:
-                print(
-                    f"[{fetcher.name}] Skipping — last success"
-                    f" {age_hours:.1f}h ago (max age: {args.max_source_age_hours}h)"
+                _events.info(
+                    "fetch_skipped_fresh",
+                    source=fetcher.name,
+                    age_hours=round(age_hours, 1),
+                    max_age_hours=args.max_source_age_hours,
                 )
                 status.setdefault(fetcher.name, {})["last_outcome"] = "skipped"
                 _save_fetch_status(status_path, status)
@@ -1014,12 +1119,18 @@ def main():
         except (ValueError, KeyError) as exc:
             cached = fetcher._load()
             if cached:
-                print(f"[{fetcher.name}] {exc}; using cached results")
+                _events.warning(
+                    "fetch_using_cache",
+                    source=fetcher.name,
+                    reason="missing_context",
+                    error=str(exc),
+                    records_loaded=len(cached),
+                )
                 context[f"{fetcher.name}_results"] = cached
                 status.setdefault(fetcher.name, {})["last_outcome"] = "cached"
                 _save_fetch_status(status_path, status)
                 continue
-            print(f"ERROR: Fetcher '{fetcher.name}' requires missing context: {exc}")
+            _events.error("fetch_context_missing", source=fetcher.name, error=str(exc))
             context[f"{fetcher.name}_results"] = {}
             status.setdefault(fetcher.name, {})["last_outcome"] = "failed"
             _save_fetch_status(status_path, status)
@@ -1037,17 +1148,19 @@ def main():
                 # Failed IDs remain under the attempt cap. Leave
                 # last_success_at alone so the freshness check does not skip
                 # this source before they are retried.
-                print(
-                    f"[{fetcher.name}] Partial: {fetcher.n_retryable} failed"
-                    " IDs will be retried on the next run"
-                )
                 status[fetcher.name]["last_outcome"] = "partial"
             else:
                 status[fetcher.name]["last_success_at"] = now_iso
                 status[fetcher.name]["last_outcome"] = "ok"
             _save_fetch_status(status_path, status)
         except Exception as exc:
-            print(f"ERROR: Fetcher '{fetcher.name}' failed and will be skipped: {exc}")
+            _events.error(
+                "fetch_failed",
+                source=fetcher.name,
+                error_type=type(exc).__name__,
+                error=str(exc),
+                exc_info=True,
+            )
             context[f"{fetcher.name}_results"] = {}
             status[fetcher.name]["last_outcome"] = "failed"
             _save_fetch_status(status_path, status)

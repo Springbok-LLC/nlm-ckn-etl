@@ -144,6 +144,8 @@ For `records_rejected` and `*_skipped` and `*_failed` lines. Lowercase
 | `missing_sentinel` | A cache file lacks its sentinel key |
 | `not_found` | An expected input or artifact is absent |
 | `rate_limited` | The upstream returned HTTP 429 |
+| `missing_context` | A fetcher's input (gene data, dataset ids, an earlier source's results) was not built |
+| `archive_failed` | An older HuBMAP table could not be moved to `.archive/`, so it was deleted |
 | `http_error` | The upstream returned a non-success status; add `status_code` |
 | `nonzero_exit` | A subprocess exited with a non-zero `rc` |
 | `missing_directory` | A directory an upload expects (`data/obo/`, the external cache) does not exist |
@@ -178,8 +180,9 @@ reports give the source line each name replaces.
 | Message | Level | Fields |
 | --- | --- | --- |
 | `fetch_plan` | INFO | `source`, `ids_total`, `ids_cached`, `ids_pending` |
-| `fetch_finished` | INFO | `source`, `source_version`, `outcome`, `records_in`, `records_out`, `records_rejected`, `duration_ms`; Open Targets accumulates across batches first |
+| `fetch_finished` | INFO | `source`, `source_version`, `outcome`, `records_in`, `records_out`, `records_rejected`, `duration_ms`, `path`; the ID-based fetchers add `n_retryable` and `n_exhausted` (failed IDs still under, and at, the attempt cap), HuBMAP adds `n_present`, `n_archived` and `n_downloaded`; one per `run()`, so the Open Targets rejects are counted across batches |
 | `fetch_batch_done` | DEBUG | `source`, `n_ok`, `n_failed` |
+| `fetch_checkpoint_saved` | DEBUG | `source`, `path`, `records_out` (the batch appended) |
 | `fetch_skipped_fresh` | INFO | `source`, `age_hours`, `max_age_hours` |
 | `fetch_using_cache` | WARN | `source`, `reason`, `records_loaded` |
 | `fetch_rate_limited` | WARN | `source`, `attempt`, `max_retries`, `wait_s` |
@@ -203,10 +206,10 @@ reports give the source line each name replaces.
 | `external_files_invalid` | ERROR | `files`: a list of `{file, reason}`; logged before `validate_external_files` raises |
 | `external_cache_cleaned` | INFO | `records_out` (files removed, 0 when none) |
 | `hubmap_download_failed` | ERROR | `organ`, `version`, `reason=http_error`, `status_code`, `url` |
-| `hubmap_table_removed` | WARN | `path`, `reason` |
+| `hubmap_table_removed` | WARN | `path`, `reason=archive_failed` |
 | `hubmap_urls_unresolved` | WARN | `n_failed`, `failures` |
 | `hubmap_no_urls_configured` | WARN | |
-| `results_dir_unreadable` | ERROR | `results_dir`, `error` |
+| `results_dir_unreadable` | ERROR | `results_dir`, `error_type`, `error` |
 | `no_nsforest_results` | ERROR | `results_dir` |
 | `dataset_ids_failed` | ERROR | `error_type`, `error` |
 | `gene_context_failed` | ERROR | `error_type`, `error` |
