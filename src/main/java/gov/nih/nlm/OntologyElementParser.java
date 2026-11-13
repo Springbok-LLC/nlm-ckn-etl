@@ -113,7 +113,11 @@ public class OntologyElementParser {
                         // Skip terms with non-ontology ids
                         if (!id.equals("valid")) {
                             ontologyElementMap.getIds().add(id);
+                        } else {
+                            ontologyElementMap.skip("non_ontology_id");
                         }
+                    } else {
+                        ontologyElementMap.skip("no_underscore_in_term");
                     }
 
                     // Consider terms with at least one "label" element
@@ -121,7 +125,10 @@ public class OntologyElementParser {
                     if (nodeList.getLength() > 0) {
                         Element labelElement = (Element) nodeList.item(0);
                         String label = labelElement.getTextContent();
-                        ontologyElementMap.getTerms().put(term, new OntologyElementMap.OntologyTerm(uri, label));
+                        if (ontologyElementMap.getTerms().put(term,
+                                new OntologyElementMap.OntologyTerm(uri, label)) != null) {
+                            ontologyElementMap.skip("duplicate_label");
+                        }
                     }
                 }
             }
@@ -180,6 +187,10 @@ public class OntologyElementParser {
                     "version_iri", ontologyElementMap.getVersionIRI() == null ? null
                             : ontologyElementMap.getVersionIRI().toString(),
                     "records_out", ontologyElementMap.getTerms().size(),
+                    "records_rejected", ontologyElementMap.getSkipped().isEmpty() ? null
+                            : ontologyElementMap.getSkipped().values().stream().mapToInt(Integer::intValue).sum(),
+                    "rejected_by_reason", ontologyElementMap.getSkipped().isEmpty() ? null
+                            : ontologyElementMap.getSkipped(),
                     "duration_ms", RunLog.elapsedMs(started));
             // Map maps by filename
             ontologyElementMaps.put(oboFileName.substring(0, oboFileName.lastIndexOf(".")), ontologyElementMap);
