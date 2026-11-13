@@ -223,9 +223,10 @@ reports give the source line each name replaces.
 
 | Message | Level | Fields |
 | --- | --- | --- |
-| `transform_finished` | INFO | `source`, `input_path`, `output_path`, `records_in`, `records_out`, `records_rejected`, `duration_ms` |
+| `transform_finished` | INFO | `source`, `input_path`, `output_path`, `records_in`, `records_out`, `records_rejected`, `duration_ms`; the records are the dict-valued entries, not the id lists a fetcher stores beside them, and `records_out` counts the non-empty ones |
 | `transform_skipped_up_to_date` | INFO | `source`, `input_mtime`, `output_mtime` |
 | `gene_parse_failed` | WARN | `gene_id`, `error_type`, `error` |
+| `no_h5ad_asset` | WARN | `dataset_version_id`, `filetypes`; the dataset's CELLxGENE link is left unset |
 | `tuple_writer_started` | INFO | `source`, `input_path`, `records_in` |
 | `tuple_writer_dataset` | INFO | `file`, `records_in`, `records_rejected`, `tuples_out` |
 | `tuple_writers_finished` | INFO | `duration_ms`, `tuples_out` per writer |
