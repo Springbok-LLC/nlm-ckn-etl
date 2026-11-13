@@ -53,7 +53,8 @@ class ArangoDbUtilitiesTest {
 				throw new RuntimeException("Could not start ArangoDB");
 			}
 		} catch (java.io.IOException | InterruptedException e) {
-			e.printStackTrace();
+			// Fail the test, rather than carry on against an ArangoDB that did not start
+			throw new RuntimeException("Could not start ArangoDB", e);
 		}
 		// Connect to ArangoDB
 		Map<String, String> env = new HashMap<>();
@@ -77,7 +78,8 @@ class ArangoDbUtilitiesTest {
 				throw new RuntimeException("Could not stop ArangoDB");
 			}
 		} catch (java.io.IOException | InterruptedException e) {
-			e.printStackTrace();
+			// Fail the test, rather than leave ArangoDB running
+			throw new RuntimeException("Could not stop ArangoDB", e);
 		}
 		// Remove ArangoDB test data directory
 		try {
