@@ -1,7 +1,10 @@
 package gov.nih.nlm;
 
+import org.slf4j.Logger;
+
 import java.util.ArrayList;
 import java.util.Comparator;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -78,10 +81,9 @@ public class EdgeLabelFilter {
     public List<String> summarize() {
         List<String> lines = new ArrayList<>();
         for (Map.Entry<String, Map<String, Long>> pair : dropped.entrySet()) {
-            List<String> labelCounts = pair.getValue()
+            List<String> labelCounts = sortedLabelCounts(pair.getValue())
                     .entrySet()
                     .stream()
-                    .sorted(Map.Entry.<String, Long>comparingByValue().reversed().thenComparing(Map.Entry.comparingByKey()))
                     .map(e -> e.getKey() + "=" + e.getValue())
                     .toList();
             lines.add("Dropped " + getDroppedCount(pair.getKey()) + " edges from " + pair.getKey() + ": " + String.join(
@@ -89,5 +91,29 @@ public class EdgeLabelFilter {
                     labelCounts));
         }
         return lines;
+    }
+
+    /**
+     * Log one {@code edges_dropped_by_label_filter} event per id pair that had edges dropped, with the count and the
+     * dropped labels, most frequent first.
+     *
+     * @param log The logger to write to
+     */
+    public void logSummary(Logger log) {
+        for (Map.Entry<String, Map<String, Long>> pair : dropped.entrySet()) {
+            Events.warn(log, "edges_dropped_by_label_filter", "edge_collection", pair.getKey(),
+                    "records_rejected", getDroppedCount(pair.getKey()),
+                    "label_counts", sortedLabelCounts(pair.getValue()));
+        }
+    }
+
+    /** Label counts, most frequent first, then by label. */
+    private static Map<String, Long> sortedLabelCounts(Map<String, Long> counts) {
+        Map<String, Long> sorted = new LinkedHashMap<>();
+        counts.entrySet()
+                .stream()
+                .sorted(Map.Entry.<String, Long>comparingByValue().reversed().thenComparing(Map.Entry.comparingByKey()))
+                .forEach(e -> sorted.put(e.getKey(), e.getValue()));
+        return sorted;
     }
 }
