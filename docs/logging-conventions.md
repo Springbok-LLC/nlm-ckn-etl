@@ -339,9 +339,6 @@ reports give the source line each name replaces.
 | `induced_subgraph_extracted` | INFO | `records_in` (graph vertices), `source_collection`, `source_vertices`, `reachable_vertices`, `records_out` (induced edges), `max_depth`, `duration_ms` |
 | `induced_subgraph_empty` | WARN | `reason` (`no_source_vertices`), `source_collection` |
 | `induced_graph_created` | INFO | `graph`, `database`, `vertices_written`, `edges_written`, `vertex_collection_count`, `edge_collection_count`, `duration_ms` |
-| `aql_paths_collected` | INFO | `query_id`, `records_out`, `duration_ms` |
-| `aql_query` | DEBUG | `query_id`, `query` (whitespace collapsed) |
-| `aql_paths_empty` | WARN | `query_id`; the query returned no paths |
 
 ### ArangoDB administration
 
@@ -429,9 +426,6 @@ lines); set `LOG_FORMAT=json` for JSON lines.
 
 ## 7. Open points
 
-- `PhenotypeGraphBuilder` is `@Deprecated` and is not covered. Its audit rows
-  would map onto the `vertices_inserted` and `edges_inserted` names if it is
-  ever revived.
 - The UI (`ui-backend`) vocabulary (`request_finished` and friends) belongs to
   the `nlm-ckn-ui` repo and is not defined here.
 - Per-source `source_version` values for fetch lines come from
