@@ -340,6 +340,8 @@ reports give the source line each name replaces.
 | `induced_subgraph_empty` | WARN | `reason` (`no_source_vertices`), `source_collection` |
 | `induced_graph_created` | INFO | `graph`, `database`, `vertices_written`, `edges_written`, `vertex_collection_count`, `edge_collection_count`, `duration_ms` |
 | `aql_paths_collected` | INFO | `query_id`, `records_out`, `duration_ms` |
+| `aql_query` | DEBUG | `query_id`, `query` (whitespace collapsed) |
+| `aql_paths_empty` | WARN | `query_id`; the query returned no paths |
 
 ### ArangoDB administration
 
