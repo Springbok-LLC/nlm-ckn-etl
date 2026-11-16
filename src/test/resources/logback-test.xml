@@ -1,0 +1,6 @@
+<configuration>
+  <!-- Tests capture events with LogCapture; nothing is written to the console. RunLogTest loads
+       src/main/resources/logback.xml itself to check its output. -->
+  <statusListener class="ch.qos.logback.core.status.NopStatusListener"/>
+  <root level="INFO"/>
+</configuration>

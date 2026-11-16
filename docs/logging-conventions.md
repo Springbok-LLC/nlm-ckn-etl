@@ -119,7 +119,7 @@ fields survive.
 - **Call `Events`, not `System.out`.** `Events.info(LOG, "vertices_inserted",
   "collection", name, "records_out", n)` logs a fixed `snake_case` message and
   fields given as alternating keys and values. A number stays a number in the
-  JSON. `Events.failure(LOG, message, cause, ...)` adds `error_type`, `error`
+  JSON. A field whose value is null is left out. `Events.failure(LOG, message, cause, ...)` adds `error_type`, `error`
   and the stack trace in `exception`. `LOG` is
   `LoggerFactory.getLogger(TheClass.class)`, which becomes the `logger` field.
 - **Wrap each `main()` in `RunLog.run`.** `RunLog.run("TheClass", body,
@@ -293,11 +293,14 @@ reports give the source line each name replaces.
 | Message | Level | Fields |
 | --- | --- | --- |
 | `ontology_downloaded` | INFO | `ontology`, `version_new`, `url`, `status_code`, `bytes`, `duration_ms` |
-| `ontology_updated` | INFO | `ontology`, `version_prev`, `version_new`, `archived_to` |
-| `ontology_unchanged` | INFO | `ontology`, `version_cur`, `version_new` |
-| `ontology_version_not_found` | WARN | `file` |
-| `ontologies_downloaded` | INFO | `records_out`, `duration_ms` |
+| `ontology_updated` | INFO | `ontology`, `version_prev` (left out when unreadable), `version_new`, `archived_to`, and the download fields of `ontology_downloaded` |
+| `ontology_unchanged` | INFO | `ontology`, `version_cur`, `version_new`, and the download fields of `ontology_downloaded` |
+| `ontology_version_not_found` | WARN | `file`; the download is then kept as the newer one |
+| `ontology_file_parsing` | DEBUG | `file` |
+| `ontology_download_failed` | ERROR | `ontology`, `url`, `error_type`, `error`, `duration_ms`; the current file is kept and the other URLs are still tried |
+| `ontologies_downloaded` | INFO | `records_in` (URLs), `records_out`, `records_rejected` (failed URLs), `duration_ms`; the run then fails if any URL failed |
 | `ontology_slimmed` | INFO | `input_file`, `output_file`, `mode`, `records_out`, `records_rejected`, `duration_ms` |
+| `ontology_slim_empty` | WARN | `input_file`, `output_file`, `mode`; the slim kept no classes |
 | `ontology_file_archived` | INFO | `from`, `to` |
 | `taxon_lineages_built` | INFO | `taxa_count`, `permitted_taxa_count` |
 | `ontology_files_not_found` | ERROR | `pattern` |
