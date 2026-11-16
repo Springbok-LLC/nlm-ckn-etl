@@ -328,7 +328,9 @@ reports give the source line each name replaces.
 | `edges_dropped_by_label_filter` | WARN | `edge_collection`, `records_rejected`, `label_counts` |
 | `insert_failed` | ERROR | `operation` (`insert` or `update`), `collection`, `key`, `error_type`, `error`; the first 5 per call only, then the summary counts the rest |
 | `edge_skipped` | WARN | `records_rejected`, `reason` (`unrecognized_collection` or `missing_endpoint`) |
-| `tuples_file_processed` | INFO | `tuples_file`, `records_in`, `records_rejected`, `duration_ms` |
+| `tuples_file_processed` | INFO | `tuples_file`, `records_in`, `triples`, `quintuples`, `records_rejected`, `rejected_by_reason` (an object, left out when nothing was rejected), `duration_ms`; one line per file, the per-step `vertices_*` and `edges_*` lines of `ResultsGraphBuilder` are DEBUG |
+| `tuples_file_failed` | ERROR | `tuples_file`, `error_type`, `error`, `duration_ms`; logged before the run fails |
+| `tuples_files_listed` | INFO | `dir`, `files` |
 | `tuples_files_not_found` | ERROR | `pattern`, `dir` |
 | `graph_loaded` | INFO | `graph`, `records_out`, `edges`, `records_rejected`, `duration_ms` |
 | `source_graph_loaded` | INFO | `vertices`, `edges`, `duration_ms` |
