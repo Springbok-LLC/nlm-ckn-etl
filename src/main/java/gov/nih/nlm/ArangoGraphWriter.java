@@ -7,6 +7,8 @@ import com.arangodb.model.CollectionCreateOptions;
 import gov.nih.nlm.model.ArangoEdge;
 import gov.nih.nlm.model.ArangoVertex;
 import org.jgrapht.graph.DirectedPseudograph;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -16,6 +18,8 @@ import java.util.Set;
 import java.util.stream.Collectors;
 
 public class ArangoGraphWriter {
+
+    private static final Logger LOG = LoggerFactory.getLogger(ArangoGraphWriter.class);
 
     private final ArangoDatabase db;
 
@@ -36,6 +40,7 @@ public class ArangoGraphWriter {
      * @param subgraphName the name for the new named graph
      */
     public void write(DirectedPseudograph<ArangoVertex, ArangoEdge> induced, String subgraphName) {
+        long started = System.nanoTime();
 
         // Discover vertex collections
         Set<String> vertexCollections = induced.vertexSet().stream()
@@ -48,7 +53,6 @@ public class ArangoGraphWriter {
                 .collect(Collectors.toSet());
 
         // Create vertex collections
-        System.out.println("Creating collections...");
         for (String col : vertexCollections) {
             db.createCollection(col);
         }
@@ -59,7 +63,6 @@ public class ArangoGraphWriter {
         }
 
         // Insert vertices
-        System.out.println("Inserting vertices...");
         for (ArangoVertex vertex : induced.vertexSet()) {
             Map<String, Object> doc = new HashMap<>(vertex.properties());
             doc.put("_key", vertex.key());
@@ -67,7 +70,6 @@ public class ArangoGraphWriter {
         }
 
         // Insert edges
-        System.out.println("Inserting edges...");
         for (ArangoEdge edge : induced.edgeSet()) {
             Map<String, Object> doc = new HashMap<>(edge.properties());
             doc.put("_key", edge.key());
@@ -77,7 +79,6 @@ public class ArangoGraphWriter {
         }
 
         // Register as a named graph
-        System.out.println("Registering named graph...");
         List<String> allVertexCols = new ArrayList<>(vertexCollections);
         List<EdgeDefinition> edgeDefs = new ArrayList<>();
 
@@ -90,8 +91,9 @@ public class ArangoGraphWriter {
 
         db.createGraph(subgraphName, edgeDefs);
 
-        System.out.println("Named graph '" + subgraphName + "' created in database '" + db.name() + "'.");
-        System.out.println("  Vertex collections: " + allVertexCols);
-        System.out.println("  Edge collections:   " + edgeCollections);
+        Events.info(LOG, "induced_graph_created", "graph", subgraphName, "database", db.name(),
+                "vertices_written", induced.vertexSet().size(), "edges_written", induced.edgeSet().size(),
+                "vertex_collection_count", vertexCollections.size(), "edge_collection_count", edgeCollections.size(),
+                "duration_ms", RunLog.elapsedMs(started));
     }
 }

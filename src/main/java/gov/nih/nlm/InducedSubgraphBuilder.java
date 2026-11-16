@@ -5,10 +5,14 @@ import com.arangodb.ArangoDatabase;
 import gov.nih.nlm.model.ArangoEdge;
 import gov.nih.nlm.model.ArangoVertex;
 import org.jgrapht.graph.DirectedPseudograph;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.util.Map;
 
 public class InducedSubgraphBuilder {
+
+    private static final Logger LOG = LoggerFactory.getLogger(InducedSubgraphBuilder.class);
 
     private static final int MAX_DEPTH = 10;
 
@@ -37,66 +41,83 @@ public class InducedSubgraphBuilder {
     public void build(String graphName, String sourceCollection, String subgraphName, int maxDepth) {
 
         // Load the full graph from the source database
-        System.out.println("Loading full graph via ArangoGraphLoader...");
         var loader = new ArangoGraphLoader(sourceDb);
         DirectedPseudograph<ArangoVertex, ArangoEdge> graph = loader.load(graphName);
 
         // Find induced subgraph via BFS
-        System.out.println("Finding induced subgraph...");
         var finder = new InducedSubgraphFinder();
         DirectedPseudograph<ArangoVertex, ArangoEdge> induced = finder.find(graph, sourceCollection, maxDepth);
 
         // Add ontology hierarchy paths
-        System.out.println("Adding ontology hierarchy paths...");
         finder.addOntologyHierarchyPaths(graph, induced);
 
         // Write to target database
-        System.out.println("Writing subgraph to target database...");
         var writer = new ArangoGraphWriter(targetDb);
         writer.write(induced, subgraphName);
     }
 
     public static void main(String[] args) {
-        Map<String, String> env = System.getenv();
+        RunLog.run("InducedSubgraphBuilder", () -> run(System.getenv()), "max_depth", MAX_DEPTH);
+    }
 
+    static void run(Map<String, String> env) {
         String host = env.getOrDefault("ARANGO_DB_HOST", "localhost");
         int port = Integer.parseInt(env.getOrDefault("ARANGO_DB_PORT", "8529"));
         String user = env.getOrDefault("ARANGO_DB_USER", "root");
         String password = env.getOrDefault("ARANGO_DB_PASSWORD", "");
-        String ontologyDbName = env.getOrDefault("ARANGO_ONTOLOGY_DB_NAME", "");
-        String phenotypeDbName = env.getOrDefault("ARANGO_PHENOTYPE_DB_NAME", "");
-        String ontologyGraphName = env.getOrDefault("ARANGO_ONTOLOGY_GRAPH_NAME", "");
-        String phenotypeGraphName = env.getOrDefault("ARANGO_PHENOTYPE_GRAPH_NAME", "");
+        String ontologyDbName = requireName(env, "ARANGO_ONTOLOGY_DB_NAME");
+        String phenotypeDbName = requireName(env, "ARANGO_PHENOTYPE_DB_NAME");
+        String ontologyGraphName = requireName(env, "ARANGO_ONTOLOGY_GRAPH_NAME");
+        String phenotypeGraphName = requireName(env, "ARANGO_PHENOTYPE_GRAPH_NAME");
 
+        boolean ssl = ArangoDbUtilities.useSsl(env);
         ArangoDB arango = new ArangoDB.Builder()
                 .host(host, port)
-                .useSsl(ArangoDbUtilities.useSsl(env))
+                .useSsl(ssl)
                 .user(user)
                 .password(password)
                 .build();
+        Events.info(LOG, "arangodb_client_created", "host", host, "port", port, "ssl", ssl, "user", user);
 
-        // Source database (read-only)
-        ArangoDatabase sourceDb = arango.db(ontologyDbName);
+        try {
+            // Source database (read-only)
+            ArangoDatabase sourceDb = arango.db(ontologyDbName);
 
-        // Drop and recreate target database
-        if (arango.db(phenotypeDbName).exists()) {
-            arango.db(phenotypeDbName).drop();
+            // Drop and recreate target database
+            if (arango.db(phenotypeDbName).exists()) {
+                arango.db(phenotypeDbName).drop();
+                Events.warn(LOG, "database_dropped", "database", phenotypeDbName);
+            }
+            if (!arango.createDatabase(phenotypeDbName)) {
+                throw new IllegalStateException("Could not create database: " + phenotypeDbName);
+            }
+            Events.info(LOG, "database_created", "database", phenotypeDbName);
+            ArangoDatabase targetDb = arango.db(phenotypeDbName);
+
+            // Drop existing graph in target if present
+            if (targetDb.graph(phenotypeGraphName).exists()) {
+                targetDb.graph(phenotypeGraphName).drop();
+                Events.warn(LOG, "graph_dropped", "database", phenotypeDbName, "graph", phenotypeGraphName);
+            }
+
+            new InducedSubgraphBuilder(sourceDb, targetDb).build(
+                    ontologyGraphName,
+                    "CS",
+                    phenotypeGraphName,
+                    MAX_DEPTH
+            );
+        } finally {
+            arango.shutdown();
         }
-        arango.createDatabase(phenotypeDbName);
-        ArangoDatabase targetDb = arango.db(phenotypeDbName);
+    }
 
-        // Drop existing graph in target if present
-        if (targetDb.graph(phenotypeGraphName).exists()) {
-            targetDb.graph(phenotypeGraphName).drop();
+    /** A database or graph name from the environment. An empty one would drop and recreate the wrong thing. */
+    private static String requireName(Map<String, String> env, String variable) {
+        String value = env.get(variable);
+        if (value == null || value.isBlank()) {
+            Events.error(LOG, "arangodb_config_missing", "variable", variable);
+            throw new IllegalStateException(variable + " is not set");
         }
-
-        new InducedSubgraphBuilder(sourceDb, targetDb).build(
-                ontologyGraphName,
-                "CS",
-                phenotypeGraphName,
-                MAX_DEPTH
-        );
-
-        arango.shutdown();
+        return value;
     }
 }
