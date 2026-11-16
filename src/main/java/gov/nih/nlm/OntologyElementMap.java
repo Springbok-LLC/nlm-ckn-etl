@@ -19,6 +19,16 @@ public class OntologyElementMap {
     private URI root;
     private final Set<String> ids;
     private final Map<String, OntologyTerm> terms;
+    private final Map<String, Integer> skipped = new java.util.TreeMap<>();
+
+    /** Count an element the parser passed over, by reason, for the per-file log event. */
+    public void skip(String reason) {
+        skipped.merge(reason, 1, Integer::sum);
+    }
+
+    public Map<String, Integer> getSkipped() {
+        return skipped;
+    }
 
     public OntologyElementMap() {
         ids = new HashSet<>();
