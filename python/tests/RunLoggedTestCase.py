@@ -64,6 +64,52 @@ class RunLoggedTestCase(unittest.TestCase):
         self.assertEqual(self.passthrough.getvalue(), line + "\n")
         self.assertEqual(self._by_message("subprocess_output"), [])
 
+    def test_child_counts_are_totalled_by_phase_without_changing_the_line(self):
+        _common.CHILD_COUNTS.take("results")
+        lines = [
+            {"message": "tuples_file_processed", "level": "info", "phase": "results",
+             "records_in": 10, "triples": 6, "quintuples": 4, "records_rejected": 1,
+             "duration_ms": 5},
+            {"message": "tuples_file_processed", "level": "info", "phase": "results",
+             "records_in": 5, "triples": 5, "quintuples": 0, "records_rejected": 0},
+            {"message": "edges_inserted", "level": "info", "phase": "results",
+             "records_in": 9, "records_out": 8, "records_rejected": True},
+            {"message": "database_summary", "level": "info", "phase": "results",
+             "database": "Cell-KN", "vertex_total": 7, "edge_total": 3},
+            {"message": "vertices_inserted", "level": "info", "phase": "ontology",
+             "records_out": 99},
+            {"message": "not_counted", "level": "info", "phase": "results",
+             "records_out": 5},
+        ]
+        script = "\n".join(f"print({json.dumps(json.dumps(x))})" for x in lines)
+        _common._run_logged(_py(script), phase="results")
+        self.assertEqual(
+            self.passthrough.getvalue().splitlines(), [json.dumps(x) for x in lines]
+        )
+        self.assertEqual(
+            _common.CHILD_COUNTS.take("results"),
+            {
+                "loads": {
+                    "tuples_file_processed": {
+                        "events": 2, "records_in": 15, "triples": 11,
+                        "quintuples": 4, "records_rejected": 1,
+                    },
+                    "edges_inserted": {"events": 1, "records_in": 9, "records_out": 8},
+                },
+                "database_totals": {"Cell-KN": {"vertex_total": 7, "edge_total": 3}},
+            },
+        )
+        self.assertEqual(
+            _common.CHILD_COUNTS.take("ontology"),
+            {"loads": {"vertices_inserted": {"events": 1, "records_out": 99}}},
+        )
+        self.assertEqual(_common.CHILD_COUNTS.take("results"), {})
+
+    def test_unstructured_output_is_not_counted(self):
+        _common.CHILD_COUNTS.take("results")
+        _common._run_logged(_py("print('graph_loaded records_out=3')"), phase="results")
+        self.assertEqual(_common.CHILD_COUNTS.take("results"), {})
+
     def test_plain_stdout_becomes_info_event(self):
         _common._run_logged(_py("print('hello from child')"))
         (event,) = self._by_message("subprocess_output")

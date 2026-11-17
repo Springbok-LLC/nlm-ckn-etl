@@ -335,6 +335,48 @@ class FlowTestCase(unittest.TestCase):
         self.assertEqual(done["phase"], "results")
         self.assertEqual((done["tuple_files"], done["tuple_bytes"]), (1, 6))
 
+    def test_phase_finished_carries_what_its_children_logged(self):
+        def build_ontology_graph(*a, **k):
+            pipeline.CHILD_COUNTS.record(
+                {"message": "vertices_inserted", "phase": "ontology",
+                 "records_in": 4, "records_out": 3, "records_rejected": 1}
+            )
+            pipeline.CHILD_COUNTS.record(
+                {"message": "database_summary", "phase": "ontology",
+                 "database": "Cell-KN-Ontologies", "vertex_total": 3, "edge_total": 2}
+            )
+
+        with tempfile.TemporaryDirectory() as d:
+            logs, err = self._run(
+                Path(d),
+                run_ontology=True,
+                overrides={"build_ontology_graph": build_ontology_graph},
+            )
+        self.assertIsNone(err)
+        done = _one(logs, "phase_finished")
+        self.assertEqual(
+            done["loads"],
+            {"vertices_inserted": {"events": 1, "records_in": 4, "records_out": 3,
+                                   "records_rejected": 1}},
+        )
+        self.assertEqual(
+            done["database_totals"],
+            {"Cell-KN-Ontologies": {"vertex_total": 3, "edge_total": 2}},
+        )
+        # The run summary repeats each phase's report.
+        phases = _one(logs, "run_finished")["phases"]
+        self.assertEqual(set(phases), {"ontology"})
+        self.assertEqual(phases["ontology"]["loads"], done["loads"])
+        self.assertEqual(phases["ontology"]["dump"], "arangodump-baseline-jk")
+        self.assertEqual(phases["ontology"]["duration_ms"], done["duration_ms"])
+
+    def test_a_phase_with_no_child_counts_adds_none(self):
+        with tempfile.TemporaryDirectory() as d:
+            logs, _ = self._run(Path(d), run_ontology=True)
+        done = _one(logs, "phase_finished")
+        self.assertNotIn("loads", done)
+        self.assertNotIn("database_totals", done)
+
     def test_failure_logs_run_failed_with_phase_and_no_finish(self):
         with tempfile.TemporaryDirectory() as d:
             # Results phase without a baseline dump raises inside the phase.
