@@ -17,6 +17,9 @@ sys.path.insert(0, str(_SRC))
 import pipeline  # noqa: E402
 
 
+_LOGGER_FIELDS = {"event", "log_level"}
+
+
 def _one(logs, name):
     (event,) = [e for e in logs if e["event"] == name]
     return event
@@ -366,9 +369,11 @@ class FlowTestCase(unittest.TestCase):
         # The run summary repeats each phase's report.
         phases = _one(logs, "run_finished")["phases"]
         self.assertEqual(set(phases), {"ontology"})
-        self.assertEqual(phases["ontology"]["loads"], done["loads"])
         self.assertEqual(phases["ontology"]["dump"], "arangodump-baseline-jk")
-        self.assertEqual(phases["ontology"]["duration_ms"], done["duration_ms"])
+        reported = {
+            k: v for k, v in done.items() if k not in _LOGGER_FIELDS | {"phase"}
+        }
+        self.assertEqual(phases["ontology"], reported)
 
     def test_a_phase_with_no_child_counts_adds_none(self):
         with tempfile.TemporaryDirectory() as d:

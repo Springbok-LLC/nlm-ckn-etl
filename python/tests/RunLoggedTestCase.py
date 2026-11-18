@@ -105,6 +105,23 @@ class RunLoggedTestCase(unittest.TestCase):
         )
         self.assertEqual(_common.CHILD_COUNTS.take("results"), {})
 
+    def test_non_string_message_is_forwarded_and_not_counted(self):
+        _common.CHILD_COUNTS.take("results")
+        lines = [
+            {"message": [], "level": "info", "phase": "results"},
+            {"message": "graph_loaded", "level": "info", "phase": "results",
+             "records_out": 2},
+        ]
+        script = "\n".join(f"print({json.dumps(json.dumps(x))})" for x in lines)
+        _common._run_logged(_py(script), phase="results")
+        self.assertEqual(
+            self.passthrough.getvalue().splitlines(), [json.dumps(x) for x in lines]
+        )
+        self.assertEqual(
+            _common.CHILD_COUNTS.take("results"),
+            {"loads": {"graph_loaded": {"events": 1, "records_out": 2}}},
+        )
+
     def test_unstructured_output_is_not_counted(self):
         _common.CHILD_COUNTS.take("results")
         _common._run_logged(_py("print('graph_loaded records_out=3')"), phase="results")

@@ -1250,7 +1250,7 @@ def build_induced_subgraph(
     """
     _run_logged(
         _java_cmd("gov.nih.nlm.InducedSubgraphBuilder", arango_db_password, java_opts),
-        phase="results",
+        phase="archive",
         cwd=REPO_ROOT,
         env={
             **os.environ,
