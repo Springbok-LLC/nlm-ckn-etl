@@ -309,12 +309,14 @@ _COUNTED_EVENTS = frozenset(
         "tuples_file_processed",
         "graph_loaded",
         "induced_graph_created",
+        "tuples_written",
     }
 )
 _COUNTED_FIELDS = (
     "records_in",
     "records_out",
     "records_rejected",
+    "deduped_removed",
     "edges",
     "triples",
     "quintuples",

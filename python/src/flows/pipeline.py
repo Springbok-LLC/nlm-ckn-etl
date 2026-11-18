@@ -79,6 +79,7 @@ import tempfile
 import os
 import re
 import shutil
+import statistics
 import tarfile
 import time
 import traceback
@@ -135,6 +136,12 @@ _MAX_TOOL_OUTPUT = 32_768
 # Larger than ``{"tuples": []}`` as write_tuples indents it (22 bytes).
 _EMPTY_TUPLE_FILE_MAX_BYTES = 256
 _ERROR_LINE = re.compile(r"\bERROR\b")
+# A tuple file is an outlier when it is smaller than this fraction of the median
+# of its family (the files sharing its name up to the first ``_`` or ``-``, such
+# as the per-dataset ``results_*`` files), and the family has at least
+# ``_OUTLIER_MIN_FAMILY`` files, so a lone file such as ``gene.json`` has no peers.
+_OUTLIER_FRACTION = 0.1
+_OUTLIER_MIN_FAMILY = 3
 
 
 def _ms(started: float) -> int:
@@ -1116,14 +1123,45 @@ def validate_tuple_files(run_name: str = "") -> None:
             f"Ensure data/results-{run_name}/ contains NSForest results (results_ensg_*.csv)."
         )
     sizes = {f.name: f.stat().st_size for f in json_files}
+    empty = set()
     for name, size in sizes.items():
         # A writer ran but produced no rows: an empty file, an empty JSON list,
         # or the ``{"tuples": []}`` object that write_tuples writes.
         if _tuple_file_is_empty(tuples_dir / name, size):
+            empty.add(name)
             _events.warning("tuple_file_empty", file=name, bytes=size)
+    _warn_size_outliers(sizes, empty)
     _events.info(
         "tuple_files_validated", records_out=len(json_files), bytes=sum(sizes.values())
     )
+
+
+def _warn_size_outliers(sizes: dict[str, int], empty: set[str]) -> None:
+    """Warn, as ``tuple_file_size_outlier``, for each file far smaller than its family.
+
+    Files in ``empty`` are left to ``tuple_file_empty``.  The file is kept and the run
+    goes on: a small file can be right, and this is only a prompt to look.
+    """
+    families: dict[str, dict[str, int]] = {}
+    for name, size in sizes.items():
+        if name in empty:
+            continue
+        family = re.split(r"[_.-]", name, maxsplit=1)[0]
+        families.setdefault(family, {})[name] = size
+    for family, members in sorted(families.items()):
+        if len(members) < _OUTLIER_MIN_FAMILY:
+            continue
+        median = statistics.median(members.values())
+        for name, size in sorted(members.items()):
+            if size < _OUTLIER_FRACTION * median:
+                _events.warning(
+                    "tuple_file_size_outlier",
+                    file=name,
+                    bytes=size,
+                    family=family,
+                    family_files=len(members),
+                    family_median_bytes=int(median),
+                )
 
 
 def _tuple_file_is_empty(path: Path, size: int) -> bool:
