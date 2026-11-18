@@ -300,6 +300,93 @@ _MAX_CHILD_LINE = 32_768
 _READER_GRACE_S = 5.0
 
 
+# Child events whose counts the flow totals per phase, and the numeric fields it sums.
+# ``duration_ms`` is left out: the phase already reports its own.
+_COUNTED_EVENTS = frozenset(
+    {
+        "vertices_inserted",
+        "edges_inserted",
+        "tuples_file_processed",
+        "graph_loaded",
+        "induced_graph_created",
+    }
+)
+_COUNTED_FIELDS = (
+    "records_in",
+    "records_out",
+    "records_rejected",
+    "edges",
+    "triples",
+    "quintuples",
+    "vertices_written",
+    "edges_written",
+)
+
+
+class ChildCounts:
+    """Totals of the counts child processes log, by phase.
+
+    ``_forward_child_line`` feeds every structured child record to
+    :meth:`record`, from the two reader threads, and the flow reads a phase's
+    totals back with :meth:`take` when the phase finishes.  Recording changes
+    nothing that is written.
+    """
+
+    def __init__(self) -> None:
+        self._lock = threading.Lock()
+        self._loads: dict[str, dict[str, dict[str, int]]] = {}
+        self._databases: dict[str, dict[str, dict[str, int]]] = {}
+
+    def record(self, record: dict) -> None:
+        """Add one child record to its phase's totals, if it carries counts."""
+        phase = record.get("phase")
+        event = record.get("message")
+        if not isinstance(phase, str) or not isinstance(event, str):
+            return
+        if event == "database_summary" and isinstance(record.get("database"), str):
+            totals = {
+                key: record[key]
+                for key in ("vertex_total", "edge_total")
+                if _is_count(record.get(key))
+            }
+            if totals:
+                with self._lock:
+                    self._databases.setdefault(phase, {})[record["database"]] = totals
+        elif event in _COUNTED_EVENTS:
+            with self._lock:
+                total = self._loads.setdefault(phase, {}).setdefault(event, {"events": 0})
+                total["events"] += 1
+                for key in _COUNTED_FIELDS:
+                    if _is_count(record.get(key)):
+                        total[key] = total.get(key, 0) + record[key]
+
+    def take(self, phase: str) -> dict:
+        """Return and clear a phase's totals: ``loads`` and ``database_totals``.
+
+        A key is left out when the phase's children logged nothing for it.
+        """
+        with self._lock:
+            loads = self._loads.pop(phase, {})
+            databases = self._databases.pop(phase, {})
+        out: dict = {}
+        if loads:
+            out["loads"] = loads
+        if databases:
+            out["database_totals"] = databases
+        return out
+
+
+def _is_count(value) -> bool:
+    return isinstance(value, int) and not isinstance(value, bool)
+
+
+CHILD_COUNTS = ChildCounts()
+
+# Held across writing a structured line and recording it, so the two reader
+# threads record database totals in the order the lines were forwarded.
+_FORWARD_LOCK = threading.Lock()
+
+
 def _forward_child_line(line: str, stream: str, truncated: bool = False) -> None:
     """Emit one line of child output as a structured log line.
 
@@ -328,8 +415,10 @@ def _forward_child_line(line: str, stream: str, truncated: bool = False) -> None
         if isinstance(record, dict) and "message" in record and "level" in record:
             # One write call, so lines from the two reader threads and the
             # parent's own handler cannot interleave mid-line.
-            sys.stdout.write(line + "\n")
-            sys.stdout.flush()
+            with _FORWARD_LOCK:
+                sys.stdout.write(line + "\n")
+                sys.stdout.flush()
+                CHILD_COUNTS.record(record)
             return
     fields = {"stream": stream, "line": line}
     if truncated:
