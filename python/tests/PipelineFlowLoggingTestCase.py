@@ -17,6 +17,9 @@ sys.path.insert(0, str(_SRC))
 import pipeline  # noqa: E402
 
 
+_LOGGER_FIELDS = {"event", "log_level"}
+
+
 def _one(logs, name):
     (event,) = [e for e in logs if e["event"] == name]
     return event
@@ -95,12 +98,26 @@ class ValidationTestCase(unittest.TestCase):
         self.assertEqual(event["family_median_bytes"], 4000)
         self.assertEqual(_all(logs, "tuple_file_empty"), [])
 
+    def test_a_small_non_empty_file_is_still_an_outlier(self):
+        logs = self._tuples(
+            {
+                "results_a.json": "x" * 200,
+                "results_b.json": "x" * 3000,
+                "results_c.json": "x" * 4000,
+            }
+        )
+        self.assertEqual(
+            [e["file"] for e in _all(logs, "tuple_file_size_outlier")],
+            ["results_a.json"],
+        )
+        self.assertEqual(_all(logs, "tuple_file_empty"), [])
+
     def test_small_families_and_empty_files_are_not_outliers(self):
         # Two peers are too few to call either an outlier, and an empty file
         # is tuple_file_empty's.
         logs = self._tuples(
             {
-                "mapping_a.json": "x" * 4000,
+                "mapping_a.json": "x" * 9000,
                 "mapping_b.json": "x" * 400,
                 "r_a.json": "x" * 4000,
                 "r_b.json": "x" * 4000,
@@ -401,9 +418,11 @@ class FlowTestCase(unittest.TestCase):
         # The run summary repeats each phase's report.
         phases = _one(logs, "run_finished")["phases"]
         self.assertEqual(set(phases), {"ontology"})
-        self.assertEqual(phases["ontology"]["loads"], done["loads"])
         self.assertEqual(phases["ontology"]["dump"], "arangodump-baseline-jk")
-        self.assertEqual(phases["ontology"]["duration_ms"], done["duration_ms"])
+        reported = {
+            k: v for k, v in done.items() if k not in _LOGGER_FIELDS | {"phase"}
+        }
+        self.assertEqual(phases["ontology"], reported)
 
     def test_results_phase_totals_the_tuples_the_writers_wrote(self):
         def write_tuples(*a, **k):

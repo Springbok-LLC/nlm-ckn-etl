@@ -1123,25 +1123,29 @@ def validate_tuple_files(run_name: str = "") -> None:
             f"Ensure data/results-{run_name}/ contains NSForest results (results_ensg_*.csv)."
         )
     sizes = {f.name: f.stat().st_size for f in json_files}
+    empty = set()
     for name, size in sizes.items():
         # A writer ran but produced no rows: an empty file, an empty JSON list,
         # or the ``{"tuples": []}`` object that write_tuples writes.
         if _tuple_file_is_empty(tuples_dir / name, size):
+            empty.add(name)
             _events.warning("tuple_file_empty", file=name, bytes=size)
-    _warn_size_outliers(sizes)
+    _warn_size_outliers(sizes, empty)
     _events.info(
         "tuple_files_validated", records_out=len(json_files), bytes=sum(sizes.values())
     )
 
 
-def _warn_size_outliers(sizes: dict[str, int]) -> None:
+def _warn_size_outliers(sizes: dict[str, int], empty: set[str]) -> None:
     """Warn, as ``tuple_file_size_outlier``, for each file far smaller than its family.
 
-    Empty files are left to ``tuple_file_empty``.  The file is kept and the run
+    Files in ``empty`` are left to ``tuple_file_empty``.  The file is kept and the run
     goes on: a small file can be right, and this is only a prompt to look.
     """
     families: dict[str, dict[str, int]] = {}
     for name, size in sizes.items():
+        if name in empty:
+            continue
         family = re.split(r"[_.-]", name, maxsplit=1)[0]
         families.setdefault(family, {})[name] = size
     for family, members in sorted(families.items()):
@@ -1149,7 +1153,7 @@ def _warn_size_outliers(sizes: dict[str, int]) -> None:
             continue
         median = statistics.median(members.values())
         for name, size in sorted(members.items()):
-            if size > _EMPTY_TUPLE_FILE_MAX_BYTES and size < _OUTLIER_FRACTION * median:
+            if size < _OUTLIER_FRACTION * median:
                 _events.warning(
                     "tuple_file_size_outlier",
                     file=name,
@@ -1284,7 +1288,7 @@ def build_induced_subgraph(
     """
     _run_logged(
         _java_cmd("gov.nih.nlm.InducedSubgraphBuilder", arango_db_password, java_opts),
-        phase="results",
+        phase="archive",
         cwd=REPO_ROOT,
         env={
             **os.environ,

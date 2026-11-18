@@ -343,7 +343,7 @@ class ChildCounts:
         """Add one child record to its phase's totals, if it carries counts."""
         phase = record.get("phase")
         event = record.get("message")
-        if not isinstance(phase, str):
+        if not isinstance(phase, str) or not isinstance(event, str):
             return
         if event == "database_summary" and isinstance(record.get("database"), str):
             totals = {
@@ -384,6 +384,10 @@ def _is_count(value) -> bool:
 
 CHILD_COUNTS = ChildCounts()
 
+# Held across writing a structured line and recording it, so the two reader
+# threads record database totals in the order the lines were forwarded.
+_FORWARD_LOCK = threading.Lock()
+
 
 def _forward_child_line(line: str, stream: str, truncated: bool = False) -> None:
     """Emit one line of child output as a structured log line.
@@ -413,9 +417,10 @@ def _forward_child_line(line: str, stream: str, truncated: bool = False) -> None
         if isinstance(record, dict) and "message" in record and "level" in record:
             # One write call, so lines from the two reader threads and the
             # parent's own handler cannot interleave mid-line.
-            sys.stdout.write(line + "\n")
-            sys.stdout.flush()
-            CHILD_COUNTS.record(record)
+            with _FORWARD_LOCK:
+                sys.stdout.write(line + "\n")
+                sys.stdout.flush()
+                CHILD_COUNTS.record(record)
             return
     fields = {"stream": stream, "line": line}
     if truncated:
