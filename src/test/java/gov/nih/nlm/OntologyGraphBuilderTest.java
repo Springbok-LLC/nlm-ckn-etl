@@ -361,6 +361,20 @@ class OntologyGraphBuilderTest {
     }
 
     @Test
+    void parsePredicate_biolinkTerm() {
+        // The ckn-schema is_associated_with relation is mapped to biolink:associated_with
+        var node = NodeFactory.createURI("https://w3id.org/biolink/vocab/associated_with");
+        Map<String, OntologyElementMap> maps = new HashMap<>();
+        maps.put("ro", new OntologyElementMap());
+
+        var pTuple = OntologyGraphBuilder.parsePredicate(maps, node);
+        assertEquals("associated_with", pTuple.term());
+        assertEquals("biolink:associated_with", pTuple.curie());
+        assertEquals("associated with", pTuple.label());
+        assertEquals("ASSOCIATED_WITH", OntologyGraphBuilder.normalizeEdgeLabel(pTuple.label()));
+    }
+
+    @Test
     void parsePredicate_nonUriThrows() {
         var node = NodeFactory.createLiteralString("not a URI");
         Map<String, OntologyElementMap> maps = new HashMap<>();

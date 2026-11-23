@@ -117,10 +117,8 @@ class OpenTargetsTupleWriterTestCase(unittest.TestCase):
             ot, self._make_gene_results(), self._make_uniprot_results()
         )
         preds = [str(t[1]) for t in tuples if len(t) == 3]
-        # is_associated_with = RO_0004029 (was RO_0004010
-        # is_genetic_basis_for_condition, renamed in ckn-schema
-        # v0.0.0-alpha.6)
-        self.assertTrue(any("RO_0004029" in p for p in preds))
+        # is_associated_with maps exactly to biolink:associated_with
+        self.assertTrue(any("biolink/vocab/associated_with" in p for p in preds))
 
     def test_disease_score_edge_annotation(self):
         ot = self._make_ot_base()
@@ -135,7 +133,7 @@ class OpenTargetsTupleWriterTestCase(unittest.TestCase):
         # relationship triple it describes -- same subject, predicate, and
         # object -- or it silently orphans onto an edge that does not exist.
         relationship_triples = [
-            t for t in tuples if len(t) == 3 and "RO_0004029" in str(t[1])
+            t for t in tuples if len(t) == 3 and "biolink/vocab/associated_with" in str(t[1])
         ]
         self.assertEqual(len(relationship_triples), 1)
         subject, predicate, obj = relationship_triples[0]
@@ -151,7 +149,7 @@ class OpenTargetsTupleWriterTestCase(unittest.TestCase):
             ot, self._make_gene_results(), self._make_uniprot_results()
         )
         preds = [str(t[1]) for t in tuples if len(t) == 3]
-        self.assertFalse(any("RO_0004029" in p for p in preds))
+        self.assertFalse(any("biolink/vocab/associated_with" in p for p in preds))
 
     # ----- Drug tests -----
 
