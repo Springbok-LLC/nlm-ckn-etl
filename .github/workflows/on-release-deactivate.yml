@@ -17,6 +17,7 @@ on:
 jobs:
   deactivate:
     name: Mark deployment inactive
+    if: github.repository_owner == 'Springbok-LLC'
     runs-on: ubuntu-latest
     permissions:
       deployments: write

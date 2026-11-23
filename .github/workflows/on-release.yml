@@ -1,6 +1,8 @@
 name: On Release — Trigger ETL
 
 # Fires when a GitHub Release is published on this (ETL) repo.
+# Every job is guarded to the Springbok-LLC fork: the workflow is promoted to
+# NIH-NLM/nlm-ckn-etl unchanged, and a release published there must not submit a job.
 # Submits an AWS Batch job running release.py end-to-end (fetch + full ETL).
 # Returns immediately — monitor via CloudWatch (/batch/nlm-ckn-release) or the Batch console.
 #
@@ -24,6 +26,7 @@ on:
 jobs:
   test:
     name: Run tests
+    if: github.repository_owner == 'Springbok-LLC'
     uses: ./.github/workflows/ci.yml
     permissions:
       id-token: write      # ci.yml's build-fetcher job declares id-token: write
@@ -33,6 +36,7 @@ jobs:
 
   build:
     name: Build and push pipeline image
+    if: github.repository_owner == 'Springbok-LLC'
     needs: test
     uses: ./.github/workflows/build-image.yml
     secrets:
@@ -44,6 +48,7 @@ jobs:
 
   submit:
     name: Submit Batch release job
+    if: github.repository_owner == 'Springbok-LLC'
     needs: build
     runs-on: ubuntu-latest
     permissions:

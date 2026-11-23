@@ -158,6 +158,11 @@ public class OntologyGraphBuilder {
                 if (path.contains("/dc/")) {
                     curie = "dc:" + term;
                     label = term;
+                } else if (path.contains("/biolink/vocab/")) {
+                    // Biolink predicates, such as biolink:associated_with, are not RO-shaped, so the CURIE keeps the
+                    // underscores and the label is the term with spaces, as for the RO labels
+                    curie = "biolink:" + term;
+                    label = term.replace("_", " ");
                 } else {
                     curie = term.replace("_", ":");
                     if (ontologyElementMaps.get("ro").getTerms().containsKey(term)) {
