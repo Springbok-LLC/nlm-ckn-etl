@@ -101,6 +101,7 @@ from _common import (
     ARANGO_DB_PORT,
     ARANGO_DB_SCHEME,
     ARANGO_DB_VOLUME_NAME,
+    CHILD_COUNTS,
     CLASSPATH,
     DEFAULT_JAVA_OPTS,
     REPO_ROOT,
@@ -155,18 +156,22 @@ def _phase(name: str, summary: dict, **fields):
 
     Binds ``phase`` for every line logged inside and records the phase in
     ``summary`` (``phase`` is the one in progress, ``durations`` the finished
-    ones).  Yields a dict the caller fills with the counts to add to
-    ``phase_finished``.  No ``phase_finished`` is logged if the body raises; the
+    ones, ``phases`` what each reported).  Yields a dict the caller fills with
+    the counts to add to ``phase_finished``; the totals the phase's child
+    processes logged (``loads``, ``database_totals``) are added to it.  No ``phase_finished`` is logged if the body raises; the
     flow logs ``run_failed`` instead.
     """
     started = time.monotonic()
     summary["phase"] = name
+    CHILD_COUNTS.take(name)  # totals left by an earlier run that failed in this phase
     _events.info("phase_started", phase=name, **fields)
     finish: dict = {}
     with structlog.contextvars.bound_contextvars(phase=name):
         yield finish
     duration_ms = _ms(started)
+    finish.update(CHILD_COUNTS.take(name))
     summary["durations"][name] = duration_ms
+    summary["phases"][name] = {"duration_ms": duration_ms, **fields, **finish}
     summary["phase"] = None
     _events.info("phase_finished", phase=name, duration_ms=duration_ms, **fields, **finish)
 
@@ -1245,7 +1250,7 @@ def build_induced_subgraph(
     """
     _run_logged(
         _java_cmd("gov.nih.nlm.InducedSubgraphBuilder", arango_db_password, java_opts),
-        phase="results",
+        phase="archive",
         cwd=REPO_ROOT,
         env={
             **os.environ,
@@ -1856,7 +1861,7 @@ def nlm_ckn_etl(
         results sources).  Defaults to ``$CKN_RUN`` or ``'full'``.
     """
     started = time.monotonic()
-    summary: dict = {"phase": None, "durations": {}, "skipped": []}
+    summary: dict = {"phase": None, "durations": {}, "phases": {}, "skipped": []}
     try:
         _run_etl(
             run_ontology,
@@ -1886,6 +1891,7 @@ def nlm_ckn_etl(
         phases_run=list(summary["durations"]),
         phases_skipped=summary["skipped"],
         phase_durations_ms=summary["durations"],
+        phases=summary["phases"],
     )
 
 

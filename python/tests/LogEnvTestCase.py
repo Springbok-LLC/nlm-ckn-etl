@@ -151,10 +151,14 @@ class LaunchEnvTestCase(unittest.TestCase):
     def test_results_launches_are_phase_results(self):
         pipeline.write_tuples.fn("pw")
         self._assert_context("results")
-        for task in (pipeline.build_results_graph, pipeline.build_induced_subgraph):
-            self.run_mock.reset_mock()
-            task.fn("pw")
-            self._assert_context("results")
+        self.run_mock.reset_mock()
+        pipeline.build_results_graph.fn("pw")
+        self._assert_context("results")
+
+    def test_induced_subgraph_launch_is_phase_archive(self):
+        # It runs in the archive phase, so its counts must reach that phase.
+        pipeline.build_induced_subgraph.fn("pw")
+        self._assert_context("archive")
 
 
 if __name__ == "__main__":
