@@ -744,7 +744,8 @@ def _print_annotations(report, prefix, stream):
         props = [f"title={_escape(f.check, prop=True)}"]
         if f.path and prefix is not None:
             props.insert(0, f"file={_escape(prefix + f.path, prop=True)}")
-        print(f"::{level} {','.join(props)}::{_escape(f.message)}", file=stream)
+        # GitHub reads annotations from the stream.
+        print(f"::{level} {','.join(props)}::{_escape(f.message)}", file=stream)  # noqa: T201
 
 
 def main(argv=None):
@@ -785,7 +786,7 @@ def main(argv=None):
     report = validate(data_dir)
 
     if args.json:
-        print(
+        print(  # noqa: T201 -- --json owns stdout
             json.dumps(
                 {
                     "data_dir": str(report.data_dir),

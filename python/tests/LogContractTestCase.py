@@ -78,7 +78,10 @@ class LogContractTestCase(unittest.TestCase):
     def test_validator_logs_only_json_on_stderr(self):
         with tempfile.TemporaryDirectory() as data_dir:
             done = subprocess.run(
-                [sys.executable, str(_SRC / "ProductionDataValidator.py"), "--data-dir", data_dir],
+                [
+                    sys.executable, str(_SRC / "ProductionDataValidator.py"),
+                    "--data-dir", data_dir, "--no-annotations",
+                ],
                 capture_output=True, text=True, env=_env(), timeout=60,
             )
         self.assertEqual(done.returncode, 1, done.stderr)  # an empty tree is an error
@@ -88,6 +91,19 @@ class LogContractTestCase(unittest.TestCase):
         messages = [r["message"] for r in records]
         self.assertEqual(messages[-1], "validation_finished")
         self.assertIn("validation_finding", messages)
+
+    def test_validator_annotations_are_the_only_other_stderr_lines(self):
+        # Under GitHub Actions the validator adds ``::error`` annotations beside
+        # the JSON; they are meant for the runner, so they are the one exception.
+        with tempfile.TemporaryDirectory() as data_dir:
+            done = subprocess.run(
+                [sys.executable, str(_SRC / "ProductionDataValidator.py"), "--data-dir", data_dir],
+                capture_output=True, text=True, env={**_env(), "GITHUB_ACTIONS": "true"}, timeout=60,
+            )
+        lines = done.stderr.splitlines()
+        annotations = [x for x in lines if x.startswith("::")]
+        self.assertTrue(annotations, done.stderr)
+        self._assert_contract(_records("\n".join(x for x in lines if not x.startswith("::"))))
 
 
 if __name__ == "__main__":

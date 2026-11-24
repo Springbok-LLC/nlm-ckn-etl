@@ -26,10 +26,11 @@ _NAME = re.compile(r"[a-z][a-z0-9_]*$")
 _LEVELS = {"debug", "info", "warning", "error", "critical", "exception"}
 
 # Call sites whose event name is not a literal, so it cannot be checked here.
-# Each is a (file, line text) pair; a new one has to be added on purpose, with
-# its names documented by hand.
+# Each is a (file, "function: call") pair, so a second dynamic call in the same
+# file is not let through by the first; a new one has to be added on purpose,
+# with its names documented by hand.
 _DYNAMIC_PYTHON = {
-    ("TupleWriterUtilities.py", "_events.warning"),
+    ("TupleWriterUtilities.py", "log: _events.warning(event)"),
 }
 
 
@@ -76,16 +77,32 @@ def _aliases(tree: ast.AST, loggers: set[str]) -> set[str]:
     return aliases
 
 
+def _calls(tree: ast.AST):
+    """Every call in ``tree`` with the name of the function it sits in."""
+
+    def walk(node, scope):
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+            scope = node.name
+        if isinstance(node, ast.Call):
+            yield node, scope
+        for child in ast.iter_child_nodes(node):
+            yield from walk(child, scope)
+
+    yield from walk(tree, "<module>")
+
+
 def python_events(source: str) -> tuple[set[str], list[str]]:
-    """Event names logged in ``source``, and the calls whose name is not a literal."""
+    """Event names logged in ``source``, and the calls whose name is not a literal.
+
+    A call that is not a literal is reported as ``"function: call"``, naming the
+    function it is in and its event argument.
+    """
     tree = ast.parse(source)
     loggers = _loggers(tree)
     aliases = _aliases(tree, loggers)
     names: set[str] = set()
     dynamic: list[str] = []
-    for node in ast.walk(tree):
-        if not isinstance(node, ast.Call):
-            continue
+    for node, scope in _calls(tree):
         func = node.func
         is_method = (
             isinstance(func, ast.Attribute)
@@ -99,13 +116,30 @@ def python_events(source: str) -> tuple[set[str], list[str]]:
         if isinstance(first, ast.Constant) and isinstance(first.value, str):
             names.add(first.value)
         else:
-            dynamic.append(ast.unparse(func))
+            arg = ast.unparse(first) if first is not None else ""
+            dynamic.append(f"{scope}: {ast.unparse(func)}({arg})")
     return names, dynamic
 
 
+# A string literal, a character literal, or a comment: whichever starts first.
+_JAVA_SKIP = re.compile(
+    r'"(?:\\.|[^"\\\n])*"' r"|'(?:\\.|[^'\\\n])*'" r"|//[^\n]*|/\*.*?\*/",
+    re.DOTALL,
+)
+
+
+def _strip_java_comments(source: str) -> str:
+    """``source`` without comments; text inside string literals is kept."""
+    return _JAVA_SKIP.sub(lambda m: m.group(0) if m.group(0)[0] in "\"'" else " ", source)
+
+
+# The event argument is a whole literal (a ``,`` or ``)`` follows it), or else it
+# is reported as not a literal: ``"a" + suffix`` is not the event ``a``.
 _JAVA_CALL = re.compile(
-    r"\bEvents\s*\.\s*(?:info|warn|error|debug)\s*\(\s*\w+\s*,\s*(\"[^\"]*\"|[^\s,)]+)"
-    r"|\bEvents\s*\.\s*failure\s*\(\s*\w+\s*,\s*(\"[^\"]*\"|[^\s,)]+)"
+    r"\bEvents\s*\.\s*(?:info|warn|error|debug)\s*\(\s*\w+\s*,\s*"
+    r"(\"[^\"]*\"(?=\s*[,)])|[^,)]+)"
+    r"|\bEvents\s*\.\s*failure\s*\(\s*\w+\s*,\s*"
+    r"(\"[^\"]*\"(?=\s*[,)])|[^,)]+)"
 )
 
 
@@ -113,10 +147,10 @@ def java_events(source: str) -> tuple[set[str], list[str]]:
     """Event names logged in ``source``, and the calls whose name is not a literal."""
     names: set[str] = set()
     dynamic: list[str] = []
-    for match in _JAVA_CALL.finditer(source):
-        arg = match.group(1) or match.group(2)
-        if arg.startswith('"'):
-            names.add(arg.strip('"'))
+    for match in _JAVA_CALL.finditer(_strip_java_comments(source)):
+        arg = (match.group(1) or match.group(2)).strip()
+        if re.fullmatch(r'"[^"]*"', arg):
+            names.add(arg[1:-1])
         else:
             dynamic.append(arg)
     return names, dynamic
@@ -221,7 +255,36 @@ class ExtractionTestCase(unittest.TestCase):
             "_events = structlog.get_logger(__name__)\n"
             "_events.warning(event, x=1)\n"
         )
-        self.assertEqual(python_events(source), (set(), ["_events.warning"]))
+        self.assertEqual(python_events(source), (set(), ["<module>: _events.warning(event)"]))
+
+    def test_python_dynamic_call_is_identified_by_function_and_argument(self):
+        source = (
+            "import structlog\n"
+            "_events = structlog.get_logger(__name__)\n"
+            "def log():\n"
+            "    _events.warning(event)\n"
+            "def other():\n"
+            "    _events.warning(event)\n"
+            "    _events.warning(second)\n"
+        )
+        _, dynamic = python_events(source)
+        self.assertEqual(
+            dynamic,
+            [
+                "log: _events.warning(event)",
+                "other: _events.warning(event)",
+                "other: _events.warning(second)",
+            ],
+        )
+        # Only the one on the allowlist would be let through.
+        allowed = {("x.py", "log: _events.warning(event)")}
+        self.assertEqual(
+            sorted({("x.py", d) for d in dynamic} - allowed),
+            [
+                ("x.py", "other: _events.warning(event)"),
+                ("x.py", "other: _events.warning(second)"),
+            ],
+        )
 
     def test_java_literal_multiline_and_failure_calls(self):
         source = (
@@ -232,6 +295,22 @@ class ExtractionTestCase(unittest.TestCase):
             'Events.failure(LOG, "c_failed", e, "k", v);\n'
         )
         self.assertEqual(java_events(source), ({"a_started", "b_skipped", "c_failed"}, []))
+
+    def test_java_concatenated_name_is_not_a_literal(self):
+        source = 'Events.info(LOG, "run_started" + suffix, "k", v);'
+        names, dynamic = java_events(source)
+        self.assertEqual(names, set())
+        self.assertEqual(len(dynamic), 1)
+
+    def test_java_comments_are_ignored(self):
+        source = (
+            '// Events.info(LOG, "line_comment");\n'
+            '/* Events.warn(LOG, "block_comment"); */\n'
+            '/*\n * Events.warn(LOG, "multiline_comment");\n */\n'
+            'String s = "// not a comment"; Events.info(LOG, "kept", "k", s);\n'
+            "Events.warn(\n    LOG,\n    \"multiline_call\");\n"
+        )
+        self.assertEqual(java_events(source), ({"kept", "multiline_call"}, []))
 
     def test_java_non_literal_name_is_reported(self):
         self.assertEqual(java_events("Events.info(LOG, name, 1);"), (set(), ["name"]))

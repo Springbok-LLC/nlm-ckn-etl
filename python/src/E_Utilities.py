@@ -421,8 +421,8 @@ def get_data_for_gene_id(gene_id, do_write=False):
 
 
 def main():
-    print(get_data_for_pmid("37291214"))
-    print(get_data_for_gene_id("1080"))
+    print(get_data_for_pmid("37291214"))  # noqa: T201 -- demo
+    print(get_data_for_gene_id("1080"))  # noqa: T201 -- demo
 
 
 if __name__ == "__main__":
