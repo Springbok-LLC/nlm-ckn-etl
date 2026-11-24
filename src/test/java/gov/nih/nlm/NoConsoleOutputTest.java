@@ -12,6 +12,7 @@ import java.util.stream.Stream;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
  * Main code logs through {@link Events}; a {@code System.out} or {@code System.err}
@@ -20,7 +21,10 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 class NoConsoleOutputTest {
 
     private static final Path MAIN = Path.of("src/main/java");
-    private static final Pattern CONSOLE = Pattern.compile("\\bSystem\\s*\\.\\s*(out|err)\\b");
+    // System.out, or a static import that lets the code write ``out.println``.
+    private static final Pattern CONSOLE = Pattern.compile(
+            "\\bSystem\\s*\\.\\s*(out|err)\\b"
+            + "|\\bimport\\s+static\\s+java\\s*\\.\\s*lang\\s*\\.\\s*System\\s*\\.\\s*(out|err|\\*)\\s*;");
 
     @Test
     void mainCodeDoesNotWriteToTheConsole() throws IOException {
@@ -39,9 +43,13 @@ class NoConsoleOutputTest {
 
     @Test
     void thePatternMatchesTheCallsItShouldCatch() {
-        assertFalse(!CONSOLE.matcher("System.out.println(x);").find());
-        assertFalse(!CONSOLE.matcher("System . err.print(x);").find());
+        assertTrue(CONSOLE.matcher("System.out.println(x);").find());
+        assertTrue(CONSOLE.matcher("System . err.print(x);").find());
         assertFalse(CONSOLE.matcher("System.getProperty(\"out\")").find());
+        assertTrue(CONSOLE.matcher("import static java.lang.System.out;").find());
+        assertTrue(CONSOLE.matcher("import static java.lang.System.err;").find());
+        assertTrue(CONSOLE.matcher("import static java.lang.System.*;").find());
+        assertFalse(CONSOLE.matcher("import static java.lang.Math.max;").find());
     }
 
     private static String read(Path p) {
