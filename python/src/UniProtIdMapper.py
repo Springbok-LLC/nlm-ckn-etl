@@ -425,7 +425,7 @@ def main():
         # on the API and so is less stable:
         # results = get_id_mapping_results_stream(link)
 
-    print(results)
+    print(results)  # noqa: T201 -- demo
     # {'results': [{'from': 'P05067', 'to': 'CHEMBL2487'}], 'failedIds': ['P12345']}
 
 
