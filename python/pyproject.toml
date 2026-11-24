@@ -53,6 +53,17 @@ exclude = [
     "venv",
 ]
 
+[tool.ruff.lint]
+# A print bypasses the structured log; see docs/logging-conventions.md.
+extend-select = ["T20"]
+
+[tool.ruff.lint.per-file-ignores]
+# __main__ demos
+"src/E_Utilities.py" = ["T201"]
+"src/UniProtIdMapper.py" = ["T201"]
+# The validator's output is its interface: GitHub annotations and --json.
+"src/ProductionDataValidator.py" = ["T201"]
+
 [build-system]
 requires = ["poetry-core"]
 build-backend = "poetry.core.masonry.api"

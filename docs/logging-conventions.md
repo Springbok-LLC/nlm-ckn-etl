@@ -200,6 +200,10 @@ event names out of the Python and Java sources and fails on one that has no row
 in the first column of a table here. A row may name several events. An event
 name that is not a literal cannot be read, so use a literal.
 
+No code writes to the console directly. Ruff's `T20` rule rejects `print` in
+`python/src` (the `__main__` demos and the validator's own output are exempt),
+and `NoConsoleOutputTest` rejects `System.out` and `System.err` in Java main.
+
 ### Run and phase lifecycle (every surface)
 
 | Message | Level | Fields |
