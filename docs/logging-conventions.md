@@ -4,6 +4,7 @@ The vocabulary every log line in this repo draws from: the `message` names, the
 `reason` values, and the field names. Java, the Python scripts and the Prefect
 flows all use it, so a query written against one surface works on the others.
 
+How to read the logs of a run is in [logging-operations.md](logging-operations.md).
 The schema itself (core fields, correlation, CloudWatch wiring) is in
 `nlm-ckn-rnd/docs/proposals/logging-approach.md`. The sites that this
 vocabulary replaces are listed in [logging-audit/](logging-audit/README.md).
@@ -37,8 +38,7 @@ name here is the `snake_case` form (`arangodb_ready`).
 6. **Log with structlog, not `get_run_logger()`.** In production the Prefect
    server is ephemeral (its SQLite database lives on tmpfs and goes with the
    container), so stdout is the only durable record and the Prefect UI is not
-   a sink worth bridging. The few lines that still use `get_run_logger()` are
-   converted as their phase 2 issue lands.
+   a sink worth bridging. No code uses `get_run_logger()` now.
 7. **A new name goes in the tables below in the same PR that first emits it.**
    Reuse an existing name when the meaning matches.
 
@@ -438,5 +438,6 @@ lines); set `LOG_FORMAT=json` for JSON lines.
 
 - The UI (`ui-backend`) vocabulary (`request_finished` and friends) belongs to
   the `nlm-ckn-ui` repo and is not defined here.
-- Per-source `source_version` values for fetch lines come from
-  `fetch-status.json` and `fetch-info.json`; phase 2 wires that read-back.
+- `source_version` for each source is read back from `fetch-status.json` and
+  logged as `source_versions_resolved`, by the fetch flow and again by the
+  pipeline flow. A source that recorded no version is left out.

@@ -1,5 +1,11 @@
 # Logging audit: existing print and log statements
 
+> **Historical snapshot.** This audit drove the migration, and the sites it
+> lists have since been converted. Do not read it as the current state of the
+> code: the vocabulary is [../logging-conventions.md](../logging-conventions.md),
+> and the tests in `python/tests/LoggingVocabularyTestCase.py` and
+> `NoConsoleOutputTest` keep the code to it.
+
 Audit of every console output statement in this repo, done 2026-09-28 to inform
 the migration to the structured-logging approach in
 `nlm-ckn-rnd/docs/proposals/logging-approach.md`. Line numbers are as of `main`

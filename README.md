@@ -370,6 +370,15 @@ lifecycle, and per-phase read/write details.
 | `pipeline.py` | Three-phase ETL: build the ontology graph (Phase 1), write tuples and build the results graph (Phase 2), and dump the golden archive (Phase 3) |
 | `release.py` | End-to-end release from an nlm-ckn GitHub tag: extract results, refresh the cache via `fetch.py`, then run the full `pipeline.py` |
 
+### Logging
+
+Every process logs one JSON object per line to stdout; `LOG_FORMAT=console`
+gives readable lines for a local run. See
+[`docs/logging-operations.md`](docs/logging-operations.md) for how to read a
+run's logs and its summary, and
+[`docs/logging-conventions.md`](docs/logging-conventions.md) for the event
+names and fields.
+
 ### Prerequisites
 
 Run the flows from the `python/` directory with ArangoDB running and the
