@@ -195,6 +195,11 @@ Names below are the contract. The fields listed are the ones a line carries
 in addition to the core fields and the common ones in section 3. The audit
 reports give the source line each name replaces.
 
+`python/tests/LoggingVocabularyTestCase.py` enforces the contract: it reads the
+event names out of the Python and Java sources and fails on one that has no row
+in the first column of a table here. A row may name several events. An event
+name that is not a literal cannot be read, so use a literal.
+
 ### Run and phase lifecycle (every surface)
 
 | Message | Level | Fields |
