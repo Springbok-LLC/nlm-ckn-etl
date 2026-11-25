@@ -53,6 +53,11 @@ exclude = [
     "venv",
 ]
 
+[tool.ruff.lint]
+# A print bypasses the structured log; see docs/logging-conventions.md.
+# The demos and the validator's own output carry a noqa.
+extend-select = ["T20"]
+
 [build-system]
 requires = ["poetry-core"]
 build-backend = "poetry.core.masonry.api"
